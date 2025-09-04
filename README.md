@@ -90,7 +90,7 @@ pnpm run demo:browser
 <html>
 <head>
     <script type="module">
-        import { busApi } from './dist/request-lib.es.js'
+        import { busApi } from 'request-bus'
         
         // 获取用户信息（带重试）
         const user = await busApi.user.getUserInfo('1')
