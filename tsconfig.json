@@ -1,24 +1,48 @@
 {
   "compilerOptions": {
-    "target": "es2022",
+    "target": "ES2020",
     "useDefineForClassFields": true,
-    "module": "esnext",
-    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "lib": ["ES2020", "DOM", "DOM.Iterable"],
+    "types": ["node"],
+    "module": "ESNext",
     "skipLibCheck": true,
 
-    /* Bundler mode */
+    /* Browser bundler mode */
     "moduleResolution": "bundler",
-    "allowImportingTsExtensions": true,
+    "allowImportingTsExtensions": false,
+    "resolveJsonModule": true,
     "isolatedModules": true,
-    "moduleDetection": "force",
-    "noEmit": true,
+    "declaration": true,
+    "declarationMap": true,
+    "sourceMap": true,
+    "outDir": "./dist",
+
+    /* Browser compatibility */
+    "esModuleInterop": true,
+    "allowSyntheticDefaultImports": true,
+    "forceConsistentCasingInFileNames": true,
 
     /* Linting */
     "strict": true,
-    "noUnusedLocals": true,
-    "noUnusedParameters": true,
+    "noUnusedLocals": false,
+    "noUnusedParameters": false,
     "noFallthroughCasesInSwitch": true,
-    "noUncheckedSideEffectImports": true
+
+    /* Path mapping for monorepo */
+    "baseUrl": ".",
+    "paths": {
+      "request-core": ["./packages/request-core/src"],
+      "request-imp-axios": ["./packages/request-imp-axios/src"],
+      "request-imp-fetch": ["./packages/request-imp-fetch/src"],
+      "request-bus": ["./packages/request-bus/src"]
+    }
   },
-  "include": ["packages", "apps"]
+  "include": [],
+  "references": [
+    { "path": "./packages/request-core" },
+    { "path": "./packages/request-imp-axios" },
+    { "path": "./packages/request-imp-fetch" },
+    { "path": "./packages/request-bus" },
+    { "path": "./apps/demo-app" }
+  ]
 }

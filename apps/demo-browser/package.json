@@ -1,0 +1,17 @@
+{
+  "name": "demo-browser",
+  "version": "0.0.1",
+  "description": "请求库浏览器演示应用",
+  "type": "module",
+  "scripts": {
+    "dev": "vite serve . --port 3000",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "request-bus": "workspace:*"
+  },
+  "devDependencies": {
+    "vite": "^5.0.0"
+  }
+}

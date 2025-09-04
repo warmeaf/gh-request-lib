@@ -1,7 +1,7 @@
 {
-  "name": "request-imp-fetch",
+  "name": "request-core",
   "version": "0.0.1",
-  "description": "基于 Fetch API 的请求实现层",
+  "description": "请求库核心层 - 定义接口和实现与具体请求库无关的高级功能",
   "type": "module",
   "main": "./dist/index.js",
   "module": "./dist/index.js",
@@ -28,18 +28,17 @@
     "dev": "tsc --watch",
     "clean": "rimraf dist"
   },
-  "dependencies": {
-    "request-core": "workspace:*"
-  },
   "devDependencies": {
     "typescript": "~5.9.2",
     "rimraf": "^5.0.0"
   },
   "keywords": [
-    "fetch",
+    "request",
     "http",
     "browser",
-    "typescript"
+    "typescript",
+    "cache",
+    "retry"
   ],
   "author": "",
   "license": "ISC"

@@ -2,25 +2,25 @@
   "name": "gh-request-lib",
   "private": true,
   "version": "0.0.0",
+  "description": "分层架构的前端请求库 - Monorepo",
   "type": "module",
-  "files": [
-    "dist",
-    "index.d.ts"
-  ],
-  "main": "./dist/gh-request-lib.umd.cjs",
-  "module": "./dist/gh-request-lib.js",
-  "types": "./index.d.ts",
-  "exports": {
-    "types": "./index.d.ts",
-    "import": "./dist/gh-request-lib.js",
-    "require": "./dist/gh-request-lib.umd.cjs"
-  },
   "scripts": {
-    "dev": "vite",
-    "build": "tsc && vite build"
+    "build": "pnpm -r run build",
+    "build:browser": "pnpm -r run build && vite build",
+    "dev": "pnpm -r run dev",
+    "clean": "pnpm -r run clean",
+    "demo": "pnpm --filter demo-app run dev",
+    "demo:browser": "vite serve apps/demo-browser --port 3000",
+    "install-deps": "pnpm install"
   },
   "devDependencies": {
+    "@types/node": "^24.3.0",
+    "rimraf": "^5.0.0",
     "typescript": "~5.9.2",
-    "vite": "^7.0.6"
+    "vite": "^5.0.0"
+  },
+  "engines": {
+    "node": ">=16",
+    "pnpm": ">=8"
   }
 }
