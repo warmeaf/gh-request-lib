@@ -1,8 +1,12 @@
 // 浏览器演示主文件
 import { busApi } from 'request-bus'
+import userApi from './api/user'
+import postApi from './api/post'
 
 // 全局变量，供 HTML 中的函数使用
 window.busApi = busApi
+window.userApi = userApi
+window.postApi = postApi
 window.testBasicRequest = testBasicRequest
 window.testUserList = testUserList
 window.testRetry = testRetry
@@ -55,7 +59,7 @@ async function testBasicRequest() {
     log('basic-result', '正在获取用户信息...', 'loading')
     
     try {
-        const user = await busApi.user.getUserInfo('1')
+        const user = await userApi.getUserInfo('1')
         log('basic-result', `获取用户信息成功：\n${JSON.stringify(user, null, 2)}`, 'success')
     } catch (error) {
         log('basic-result', `获取用户信息失败：${error.message}`, 'error')
@@ -66,7 +70,7 @@ async function testUserList() {
     log('basic-result', '正在获取用户列表...', 'loading')
     
     try {
-        const users = await busApi.user.getUserList()
+        const users = await userApi.getUserList()
         log('basic-result', `获取用户列表成功，共 ${users.length} 个用户：\n${JSON.stringify(users.slice(0, 3), null, 2)}...`, 'success')
     } catch (error) {
         log('basic-result', `获取用户列表失败：${error.message}`, 'error')
@@ -79,7 +83,7 @@ async function testRetry() {
     
     try {
         // 尝试获取不存在的用户，会触发重试
-        const user = await busApi.user.getUserInfo('999999')
+        const user = await userApi.getUserInfo('999999')
         log('retry-result', `意外成功：\n${JSON.stringify(user, null, 2)}`, 'success')
     } catch (error) {
         log('retry-result', `重试后最终失败（这是预期的）：${error.message}`, 'error')
@@ -93,14 +97,14 @@ async function testCache() {
     try {
         appendLog('cache-result', '首次请求用户列表（应该发起网络请求）...', 'loading')
         const start1 = Date.now()
-        const users1 = await busApi.user.getUserList()
+        const users1 = await userApi.getUserList()
         const time1 = Date.now() - start1
         
         appendLog('cache-result', `首次请求完成，耗时：${time1}ms，用户数：${users1.length}`, 'success')
         
         appendLog('cache-result', '再次请求用户列表（应该命中缓存）...', 'loading')
         const start2 = Date.now()
-        const users2 = await busApi.user.getUserList()
+        const users2 = await userApi.getUserList()
         const time2 = Date.now() - start2
         
         appendLog('cache-result', `缓存请求完成，耗时：${time2}ms，用户数：${users2.length}`, 'success')
@@ -121,7 +125,7 @@ async function testPost() {
     log('post-result', '正在创建新文章...', 'loading')
     
     try {
-        const newPost = await busApi.post.createPost({
+        const newPost = await postApi.createPost({
             userId: 1,
             title: '浏览器演示文章',
             body: '这是在浏览器中创建的测试文章，用于演示 POST 请求功能。'
@@ -139,7 +143,7 @@ async function testError() {
     
     try {
         // 尝试访问不存在的端点
-        await busApi.post.getPost(99999)
+        await postApi.getPost(99999)
         log('error-result', '意外成功（这不应该发生）', 'error')
     } catch (error) {
         log('error-result', `成功捕获错误（这是预期的）：\n错误类型：${error.constructor.name}\n错误信息：${error.message}`, 'success')
@@ -159,7 +163,7 @@ async function testPerformance() {
         // 创建多个并发请求
         for (let i = 1; i <= concurrency; i++) {
             requests.push(
-                busApi.user.getUserInfo(i.toString()).then(user => ({
+                userApi.getUserInfo(i.toString()).then(user => ({
                     success: true,
                     userId: i,
                     data: user

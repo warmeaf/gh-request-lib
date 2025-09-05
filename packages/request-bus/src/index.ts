@@ -1,17 +1,21 @@
 import { RequestConfig, RequestImplementation } from './config'
-import { UserApi } from './apis/user'
-import { PostApi } from './apis/post'
 
 /**
  * @description 业务层 API 集合
  */
 class BusApi {
-  public user: UserApi
-  public post: PostApi
+  private apiMap: Map<string, any> = new Map()
 
-  constructor() {
-    this.user = new UserApi()
-    this.post = new PostApi()
+  register(name: string, apiClass: any): void {
+    this.apiMap.set(name, new apiClass(RequestConfig.getInstance()))
+  }
+
+  clearApiMap(): void {
+    this.apiMap.clear()
+  }
+
+  getApi(name: string): any {
+    return this.apiMap.get(name)
   }
 
   /**
@@ -21,10 +25,18 @@ class BusApi {
   switchImplementation(implementation: RequestImplementation): void {
     RequestConfig.reset()
     RequestConfig.createRequestCore(implementation)
-    
-    // 重新创建 API 实例
-    this.user = new UserApi()
-    this.post = new PostApi()
+
+    this.apiMap.forEach((api) => {
+      api.core = RequestConfig.getInstance()
+    })
+  }
+
+  /**
+   * 清除缓存
+   * @param key 缓存键
+   */
+  clearCache(key?: string): void {
+    RequestConfig.getInstance().clearCache(key)
   }
 
   /**
@@ -39,9 +51,6 @@ class BusApi {
 export const busApi = new BusApi()
 
 // 导出类型
-export type { UserInfo } from './apis/user'
-export type { PostInfo } from './apis/post'
 export type { RequestImplementation } from './config'
 
-// 导出类（如果需要创建多个实例）
-export { BusApi, UserApi, PostApi }
+export { BusApi }
