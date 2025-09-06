@@ -1,21 +1,58 @@
 import { RequestConfig, RequestImplementation } from './config'
+import { RequestCore } from 'request-core'
+
+/**
+ * @description API 类的接口定义
+ */
+export interface ApiClass {
+  new (requestCore: RequestCore): ApiInstance
+}
+
+/**
+ * @description API 实例的接口定义
+ */
+export interface ApiInstance {
+  requestCore: RequestCore
+  [key: string]: any
+}
 
 /**
  * @description 业务层 API 集合
  */
 class RequestBus {
-  private apiMap: Map<string, any> = new Map()
+  private apiMap: Map<string, ApiInstance> = new Map()
 
-  register(name: string, apiClass: any): any {
-    this.apiMap.set(name, new apiClass(RequestConfig.getInstance()))
-    return this.getApi(name)
+  register(name: string, apiClass: ApiClass): ApiInstance {
+    if (!name) {
+      throw new Error('name is required')
+    }
+    if (!apiClass) {
+      throw new Error('apiClass is required')
+    }
+    if (this.apiMap.has(name)) {
+      throw new Error(`${name} already registered`)
+    }
+
+    const apiInstance = new apiClass(RequestConfig.getInstance())
+    this.apiMap.set(name, apiInstance)
+    return apiInstance
   }
 
-  clearApiMap(): void {
+  deleteApi(name: string): void {
+    if (!name) {
+      throw new Error('name is required')
+    }
+    this.apiMap.delete(name)
+  }
+
+  deleteAllApi(): void {
     this.apiMap.clear()
   }
 
-  getApi(name: string): any {
+  getApi(name: string): ApiInstance | undefined {
+    if (!name) {
+      throw new Error('name is required')
+    }
     return this.apiMap.get(name)
   }
 
