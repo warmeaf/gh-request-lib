@@ -4,14 +4,14 @@ import { RequestCore } from 'request-core'
 /**
  * @description API 类的接口定义
  */
-export interface ApiClass {
+interface ApiClass {
   new (requestCore: RequestCore): ApiInstance
 }
 
 /**
  * @description API 实例的接口定义
  */
-export interface ApiInstance {
+interface ApiInstance {
   requestCore: RequestCore
   [key: string]: any
 }
@@ -90,5 +90,6 @@ export const requestBus = new RequestBus()
 
 // 导出类型
 export type { RequestImplementation } from './config'
+export type { ApiClass, ApiInstance }
 
 export { RequestBus }
