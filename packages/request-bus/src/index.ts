@@ -3,11 +3,12 @@ import { RequestConfig, RequestImplementation } from './config'
 /**
  * @description 业务层 API 集合
  */
-class BusApi {
+class RequestBus {
   private apiMap: Map<string, any> = new Map()
 
-  register(name: string, apiClass: any): void {
+  register(name: string, apiClass: any): any {
     this.apiMap.set(name, new apiClass(RequestConfig.getInstance()))
+    return this.getApi(name)
   }
 
   clearApiMap(): void {
@@ -27,7 +28,7 @@ class BusApi {
     RequestConfig.createRequestCore(implementation)
 
     this.apiMap.forEach((api) => {
-      api.core = RequestConfig.getInstance()
+      api.requestCore = RequestConfig.getInstance()
     })
   }
 
@@ -48,9 +49,9 @@ class BusApi {
 }
 
 // 创建并导出单例
-export const busApi = new BusApi()
+export const requestBus = new RequestBus()
 
 // 导出类型
 export type { RequestImplementation } from './config'
 
-export { BusApi }
+export { RequestBus }

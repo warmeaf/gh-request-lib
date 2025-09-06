@@ -1,10 +1,10 @@
 // 浏览器演示主文件
-import { busApi } from 'request-bus'
+import { requestBus } from 'request-bus'
 import userApi from './api/user'
 import postApi from './api/post'
 
 // 全局变量，供 HTML 中的函数使用
-window.busApi = busApi
+window.requestBus = requestBus
 window.userApi = userApi
 window.postApi = postApi
 window.testBasicRequest = testBasicRequest
@@ -22,7 +22,7 @@ document.addEventListener('DOMContentLoaded', () => {
     radios.forEach(radio => {
         radio.addEventListener('change', (e) => {
             if (e.target.checked) {
-                busApi.switchImplementation(e.target.value)
+                requestBus.switchImplementation(e.target.value)
                 log('basic-result', `已切换到 ${e.target.value} 实现`, 'success')
             }
         })
@@ -116,7 +116,7 @@ async function testCache() {
 }
 
 function clearCache() {
-    busApi.clearAllCache()
+    requestBus.clearAllCache()
     log('cache-result', '缓存已清除', 'success')
 }
 
@@ -206,5 +206,5 @@ async function testPerformance() {
 // 页面加载完成后的初始化
 document.addEventListener('DOMContentLoaded', () => {
     console.log('🚀 请求库浏览器演示已加载')
-    console.log('busApi:', busApi)
+    console.log('requestBus:', requestBus)
 })

@@ -1,9 +1,9 @@
-import { busApi } from 'request-bus'
-console.log('busApi', busApi)
+import { requestBus } from 'request-bus'
+console.log('requestBus', requestBus)
 
 class UserApi {
-  constructor(core) {
-    this.core = core
+  constructor(requestCore) {
+    this.requestCore = requestCore
   }
 
   /**
@@ -17,7 +17,7 @@ class UserApi {
     console.log(`[UserApi] 获取用户信息: ${userId}`)
 
     // 使用带重试的请求
-    const userInfo = await this.core.getWithRetry(url, 2)
+    const userInfo = await this.requestCore.getWithRetry(url, 2)
 
     // 业务层数据转换
     return {
@@ -35,7 +35,7 @@ class UserApi {
     console.log('[UserApi] 获取用户列表')
 
     // 使用带缓存的请求，缓存 2 分钟
-    return this.core.getWithCache(url, { ttl: 2 * 60 * 1000 })
+    return this.requestCore.getWithCache(url, { ttl: 2 * 60 * 1000 })
   }
 
   /**
@@ -48,10 +48,10 @@ class UserApi {
 
     console.log(`[UserApi] 更新用户信息: ${userId}`)
 
-    return this.core.put(url, userData)
+    return this.requestCore.put(url, userData)
   }
 }
 
-busApi.register('user', UserApi)
+const userApi = requestBus.register('user', UserApi)
 
-export default busApi.getApi('user')
+export default userApi

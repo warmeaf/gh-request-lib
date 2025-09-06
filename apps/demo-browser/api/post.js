@@ -1,8 +1,8 @@
-import { busApi } from 'request-bus'
+import { requestBus } from 'request-bus'
 
 class PostApi {
-  constructor(core) {
-    this.core = core
+  constructor(requestCore) {
+    this.requestCore = requestCore
   }
 
   /**
@@ -19,7 +19,7 @@ class PostApi {
     console.log('[PostApi] 获取文章列表')
 
     // 使用带缓存的请求
-    return this.core.getWithCache(url, { ttl: 5 * 60 * 1000 })
+    return this.requestCore.getWithCache(url, { ttl: 5 * 60 * 1000 })
   }
 
   /**
@@ -31,7 +31,7 @@ class PostApi {
 
     console.log(`[PostApi] 获取文章: ${postId}`)
 
-    return this.core.getWithRetry(url)
+    return this.requestCore.getWithRetry(url)
   }
 
   /**
@@ -43,10 +43,10 @@ class PostApi {
 
     console.log('[PostApi] 创建文章')
 
-    return this.core.post(url, postData)
+    return this.requestCore.post(url, postData)
   }
 }
 
-busApi.register('post', PostApi)
+const postApi = requestBus.register('post', PostApi)
 
-export default busApi.getApi('post')
+export default postApi
