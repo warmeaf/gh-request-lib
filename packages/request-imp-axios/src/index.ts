@@ -11,10 +11,23 @@ export class AxiosRequestor implements Requestor {
    * @returns Promise<T>
    */
   async request<T>(config: RequestConfig): Promise<T> {
+    // 过滤 params 中的 null 和 undefined 值
+    let filteredParams = config.params
+    if (config.params) {
+      filteredParams = Object.keys(config.params).reduce((acc, key) => {
+        const value = config.params![key]
+        if (value !== null && value !== undefined) {
+          acc[key] = value
+        }
+        return acc
+      }, {} as Record<string, any>)
+    }
+
     const axiosConfig: AxiosRequestConfig = {
       url: config.url,
       method: config.method,
       data: config.data,
+      params: filteredParams,
       headers: config.headers,
       timeout: config.timeout || 10000, // 默认 10 秒超时
     }

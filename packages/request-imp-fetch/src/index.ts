@@ -10,7 +10,20 @@ export class FetchRequestor implements Requestor {
    * @returns Promise<T>
    */
   async request<T>(config: RequestConfig): Promise<T> {
-    const { url, method, data, headers = {}, timeout = 10000 } = config
+    const { url, method, data, params, headers = {}, timeout = 10000 } = config
+
+    // 处理 params 参数，转换为查询字符串
+    let requestUrl = url
+    if (params) {
+      const urlObj = new URL(url, typeof window !== 'undefined' ? window.location.origin : 'http://localhost')
+      Object.keys(params).forEach(key => {
+        const value = params[key]
+        if (value !== null && value !== undefined) {
+          urlObj.searchParams.set(key, String(value))
+        }
+      })
+      requestUrl = urlObj.toString()
+    }
 
     const fetchOptions: RequestInit = {
       method,
@@ -37,7 +50,7 @@ export class FetchRequestor implements Requestor {
 
       fetchOptions.signal = controller.signal
 
-      const response = await fetch(url, fetchOptions)
+      const response = await fetch(requestUrl, fetchOptions)
       clearTimeout(timeoutId)
 
       if (!response.ok) {
