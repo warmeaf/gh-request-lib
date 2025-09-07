@@ -1,6 +1,19 @@
 // 导出核心接口和类型
-export type { Requestor, RequestConfig, RequestParams, RequestData } from './interface'
-export { RequestError } from './interface'
+export type { 
+  Requestor, 
+  RequestConfig, 
+  RequestParams, 
+  RequestData,
+  RequestErrorContext,
+  RequestInterceptor,
+  GlobalConfig,
+  RequestBuilder,
+  FileUploadOptions,
+  PaginationParams,
+  PaginatedResponse,
+  RestfulOptions
+} from './interface'
+export { RequestError, RequestErrorType } from './interface'
 export type { RetryConfig } from './features/retry'
 export type { CacheConfig } from './features/cache'
 export type { ConcurrentConfig, ConcurrentResult } from './features/concurrent'

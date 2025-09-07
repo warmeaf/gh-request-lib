@@ -1,0 +1,8 @@
+---
+description: 日志和注释规范
+globs:
+alwaysApply: true
+---
+
+console 打印统一使用英文
+注释统一使用中文
