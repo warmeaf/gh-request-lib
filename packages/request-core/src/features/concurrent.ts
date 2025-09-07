@@ -1,4 +1,4 @@
-import { Requestor, RequestConfig } from '../interface'
+import { Requestor, RequestConfig, RequestError } from '../interface'
 
 /**
  * @description 并发请求配置
@@ -80,12 +80,7 @@ export class ConcurrentFeature {
 
     try {
       if (timeout && timeout > 0) {
-        await Promise.race([
-          Promise.all(tasks),
-          new Promise<void>((_, reject) =>
-            setTimeout(() => reject(new Error(`并发请求超时: ${timeout}ms`)), timeout)
-          )
-        ])
+        await this.awaitWithTimeout(Promise.all(tasks), timeout)
       } else {
         await Promise.all(tasks)
       }
@@ -101,7 +96,7 @@ export class ConcurrentFeature {
   }
 
   /**
-   * 限制并发数量的并发请求
+   * 限制并发数量的并发请求 - 使用真正的并发池
    */
   private async requestWithConcurrencyLimit<T>(
     configs: RequestConfig[],
@@ -109,56 +104,72 @@ export class ConcurrentFeature {
     failFast: boolean,
     timeout?: number
   ): Promise<ConcurrentResult<T>[]> {
-    const results: Array<ConcurrentResult<T> | undefined> = new Array(configs.length)
+    // 参数验证
+    if (maxConcurrency <= 0) {
+      throw new RequestError('Max concurrency must be positive')
+    }
 
-    const executeRequest = async (config: RequestConfig, index: number): Promise<void> => {
+    const results: Array<ConcurrentResult<T> | undefined> = new Array(configs.length)
+    const executing = new Set<Promise<void>>()
+    let index = 0
+
+    const executeRequest = async (config: RequestConfig, requestIndex: number): Promise<void> => {
       try {
-        console.log(`[Concurrent] 发起第${index + 1}个请求 (并发限制: ${maxConcurrency}): ${config.url}`)
+        console.log(`[Concurrent] 发起第${requestIndex + 1}个请求 (并发限制: ${maxConcurrency}): ${config.url}`)
         const data = await this.requestor.request<T>(config)
-        results[index] = {
+        results[requestIndex] = {
           success: true,
           data,
           config,
-          index
+          index: requestIndex
         }
       } catch (error) {
-        console.error(`[Concurrent] 第${index + 1}个请求失败: ${config.url}`, error)
+        console.error(`[Concurrent] 第${requestIndex + 1}个请求失败: ${config.url}`, error)
         if (failFast) {
           throw error
         }
-        results[index] = {
+        results[requestIndex] = {
           success: false,
           error,
           config,
-          index
+          index: requestIndex
         }
       }
     }
 
-    const processBatch = async (batch: Array<{ config: RequestConfig; index: number }>): Promise<void> => {
-      await Promise.all(batch.map(({ config, index }) => executeRequest(config, index)))
-    }
+    const processNext = async (): Promise<void> => {
+      while (index < configs.length) {
+        // 等待有空闲槽位
+        while (executing.size >= maxConcurrency) {
+          await Promise.race(executing)
+        }
 
-    const batches: Array<Array<{ config: RequestConfig; index: number }>> = []
-    for (let i = 0; i < configs.length; i += maxConcurrency) {
-      batches.push(
-        configs.slice(i, i + maxConcurrency).map((config, batchIndex) => ({
-          config,
-          index: i + batchIndex
-        }))
-      )
+        const currentIndex = index++
+        const config = configs[currentIndex]
+        
+        const promise = executeRequest(config, currentIndex).finally(() => {
+          executing.delete(promise)
+        })
+        
+        executing.add(promise)
+
+        if (failFast) {
+          // 在 failFast 模式下，一旦有错误就立即抛出
+          promise.catch(() => {
+            // 错误会在 executeRequest 中处理
+          })
+        }
+      }
+
+      // 等待所有剩余请求完成
+      await Promise.all(executing)
     }
 
     try {
       if (timeout && timeout > 0) {
-        await Promise.race([
-          this.processBatchesSequentially(batches, processBatch),
-          new Promise<void>((_, reject) =>
-            setTimeout(() => reject(new Error(`并发请求超时: ${timeout}ms`)), timeout)
-          )
-        ])
+        await this.awaitWithTimeout(processNext(), timeout)
       } else {
-        await this.processBatchesSequentially(batches, processBatch)
+        await processNext()
       }
     } catch (error) {
       if (failFast) {
@@ -171,16 +182,28 @@ export class ConcurrentFeature {
     return denseResults
   }
 
+
   /**
-   * 顺序处理批次
+   * 包装一个带全局超时的等待逻辑，并在提前完成时清理定时器
    */
-  private async processBatchesSequentially(
-    batches: Array<Array<{ config: RequestConfig; index: number }>>,
-    processBatch: (batch: Array<{ config: RequestConfig; index: number }>) => Promise<void>
-  ): Promise<void> {
-    for (const batch of batches) {
-      await processBatch(batch)
-    }
+  private awaitWithTimeout<T>(promise: Promise<T>, timeout: number): Promise<T> {
+    return new Promise<T>((resolve, reject) => {
+      let settled = false
+      const onResolve = (value: T) => {
+        if (settled) return
+        settled = true
+        clearTimeout(timer)
+        resolve(value)
+      }
+      const onReject = (err: any) => {
+        if (settled) return
+        settled = true
+        clearTimeout(timer)
+        reject(err)
+      }
+      const timer = setTimeout(() => onReject(new Error(`并发请求超时: ${timeout}ms`)), timeout)
+      promise.then(onResolve, onReject)
+    })
   }
 
   /**

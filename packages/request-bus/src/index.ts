@@ -4,8 +4,8 @@ import { RequestCore } from 'request-core'
 /**
  * @description API 类的接口定义
  */
-interface ApiClass {
-  new (requestCore: RequestCore): ApiInstance
+interface ApiClass<T extends ApiInstance = ApiInstance> {
+  new (requestCore: RequestCore): T
 }
 
 /**
@@ -22,7 +22,7 @@ interface ApiInstance {
 class RequestBus {
   private apiMap: Map<string, ApiInstance> = new Map()
 
-  register(name: string, apiClass: ApiClass): ApiInstance {
+  register<T extends ApiInstance>(name: string, apiClass: ApiClass<T>): T {
     if (!name) {
       throw new Error('name is required')
     }
@@ -49,18 +49,24 @@ class RequestBus {
     this.apiMap.clear()
   }
 
-  getApi(name: string): ApiInstance | undefined {
+  getApi<T extends ApiInstance = ApiInstance>(name: string): T | undefined {
     if (!name) {
       throw new Error('name is required')
     }
-    return this.apiMap.get(name)
+    return this.apiMap.get(name) as T | undefined
   }
 
   /**
    * 切换请求实现
    * @param implementation 实现方式
+   * @param options 可选项：是否清空缓存
    */
-  switchImplementation(implementation: RequestImplementation): void {
+  switchImplementation(implementation: RequestImplementation, options?: { clearCache?: boolean }): void {
+    const shouldClear = Boolean(options?.clearCache)
+    if (shouldClear) {
+      try { RequestConfig.getInstance().clearCache() } catch {}
+    }
+
     RequestConfig.reset()
     RequestConfig.createRequestCore(implementation)
 
@@ -82,6 +88,16 @@ class RequestBus {
    */
   clearAllCache(): void {
     RequestConfig.getInstance().clearCache()
+  }
+
+  /**
+   * 销毁所有资源
+   */
+  destroy(): void {
+    try {
+      RequestConfig.getInstance().destroy()
+    } catch {}
+    this.deleteAllApi()
   }
 }
 

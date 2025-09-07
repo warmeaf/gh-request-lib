@@ -1,4 +1,4 @@
-import { Requestor, RequestConfig } from './interface'
+import { Requestor, RequestConfig, RequestError } from './interface'
 import { RetryFeature, RetryConfig } from './features/retry'
 import { CacheFeature, CacheConfig } from './features/cache'
 import { ConcurrentFeature, ConcurrentConfig, ConcurrentResult } from './features/concurrent'
@@ -22,10 +22,48 @@ export class RequestCore {
   }
 
   /**
+   * 验证请求配置
+   */
+  private validateConfig(config: RequestConfig): void {
+    if (!config) {
+      throw new RequestError('Request config is required')
+    }
+    if (!config.url || typeof config.url !== 'string') {
+      throw new RequestError('URL is required and must be a string')
+    }
+    if (!config.method) {
+      throw new RequestError('HTTP method is required')
+    }
+    if (config.timeout !== undefined && (typeof config.timeout !== 'number' || config.timeout < 0)) {
+      throw new RequestError('Timeout must be a positive number')
+    }
+  }
+
+  /**
+   * 执行请求并处理性能监控
+   */
+  private async executeWithMonitoring<T>(config: RequestConfig): Promise<T> {
+    const startTime = performance.now()
+    
+    try {
+      config.onStart?.(config)
+      const result = await this.requestor.request<T>(config)
+      const duration = performance.now() - startTime
+      config.onEnd?.(config, duration)
+      return result
+    } catch (error) {
+      const duration = performance.now() - startTime
+      config.onError?.(config, error, duration)
+      throw error
+    }
+  }
+
+  /**
    * 基础请求方法
    */
   async request<T>(config: RequestConfig): Promise<T> {
-    return this.requestor.request<T>(config)
+    this.validateConfig(config)
+    return this.executeWithMonitoring<T>(config)
   }
 
   /**
@@ -170,5 +208,12 @@ export class RequestCore {
    */
   hasConcurrentFailures<T>(results: ConcurrentResult<T>[]): boolean {
     return this.concurrentFeature.hasFailures(results)
+  }
+
+  /**
+   * 销毁请求核心实例，清理资源
+   */
+  destroy(): void {
+    this.cacheFeature.destroy()
   }
 }

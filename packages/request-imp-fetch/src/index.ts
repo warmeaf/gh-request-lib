@@ -1,4 +1,4 @@
-import { Requestor, RequestConfig } from 'request-core'
+import { Requestor, RequestConfig, RequestError } from 'request-core'
 
 /**
  * @description 基于 Fetch API 的 Requestor 接口实现。
@@ -10,12 +10,13 @@ export class FetchRequestor implements Requestor {
    * @returns Promise<T>
    */
   async request<T>(config: RequestConfig): Promise<T> {
-    const { url, method, data, params, headers = {}, timeout = 10000 } = config
+    const { url, method, data, params, headers = {}, timeout = 10000, signal, responseType = 'json' } = config
 
     // 处理 params 参数，转换为查询字符串
     let requestUrl = url
     if (params) {
-      const urlObj = new URL(url, typeof window !== 'undefined' ? window.location.origin : 'http://localhost')
+      const base = typeof window !== 'undefined' ? window.location.origin : undefined
+      const urlObj = new URL(url, base)
       Object.keys(params).forEach(key => {
         const value = params[key]
         if (value !== null && value !== undefined) {
@@ -28,14 +29,24 @@ export class FetchRequestor implements Requestor {
     const fetchOptions: RequestInit = {
       method,
       headers: {
-        'Content-Type': 'application/json',
         ...headers,
       },
     }
 
     // 处理请求体
     if (data && ['POST', 'PUT', 'PATCH'].includes(method)) {
-      fetchOptions.body = typeof data === 'string' ? data : JSON.stringify(data)
+      const isFormLike = typeof FormData !== 'undefined' && data instanceof FormData
+      const isBlob = typeof Blob !== 'undefined' && data instanceof Blob
+      const isArrayBuffer = typeof ArrayBuffer !== 'undefined' && (data instanceof ArrayBuffer)
+      if (!isFormLike && !isBlob && !isArrayBuffer) {
+        if (!fetchOptions.headers) fetchOptions.headers = {}
+        if (!(fetchOptions.headers as Record<string, string>)['Content-Type']) {
+          (fetchOptions.headers as Record<string, string>)['Content-Type'] = 'application/json'
+        }
+        fetchOptions.body = typeof data === 'string' ? data : JSON.stringify(data)
+      } else {
+        fetchOptions.body = data as any
+      }
     }
 
     console.log('[FetchRequestor] 使用 Fetch API 发送请求...', {
@@ -48,16 +59,38 @@ export class FetchRequestor implements Requestor {
       const controller = new AbortController()
       const timeoutId = setTimeout(() => controller.abort(), timeout)
 
+      // 合并外部 signal
+      if (signal) {
+        if (signal.aborted) controller.abort()
+        else signal.addEventListener('abort', () => controller.abort())
+      }
       fetchOptions.signal = controller.signal
 
       const response = await fetch(requestUrl, fetchOptions)
       clearTimeout(timeoutId)
 
       if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`)
+        throw new RequestError(
+          `HTTP error! status: ${response.status}`,
+          response.status,
+          true
+        )
       }
 
-      // 尝试解析 JSON，如果失败则返回文本
+      // 按期望响应类型解析
+      if (responseType === 'text') {
+        const text = await response.text()
+        return text as unknown as T
+      }
+      if (responseType === 'blob') {
+        const blob = await response.blob()
+        return blob as unknown as T
+      }
+      if (responseType === 'arraybuffer') {
+        const buf = await response.arrayBuffer()
+        return buf as unknown as T
+      }
+      // 默认 json，若失败则退回 text
       try {
         const result = await response.json()
         return result as T
@@ -67,7 +100,28 @@ export class FetchRequestor implements Requestor {
       }
     } catch (error) {
       console.error('[FetchRequestor] 请求失败:', error)
-      throw error
+      
+      // 统一错误处理
+      if (error instanceof RequestError) {
+        throw error
+      }
+      
+      // 将其他错误包装为 RequestError
+      if (error instanceof Error) {
+        throw new RequestError(
+          error.message,
+          undefined,
+          false,
+          error
+        )
+      }
+      
+      throw new RequestError(
+        'Unknown error occurred',
+        undefined,
+        false,
+        error
+      )
     }
   }
 }

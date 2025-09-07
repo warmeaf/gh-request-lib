@@ -1,5 +1,6 @@
 // 导出核心接口和类型
 export type { Requestor, RequestConfig } from './interface'
+export { RequestError } from './interface'
 export type { RetryConfig } from './features/retry'
 export type { CacheConfig } from './features/cache'
 export type { ConcurrentConfig, ConcurrentResult } from './features/concurrent'

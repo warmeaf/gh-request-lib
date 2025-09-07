@@ -54,6 +54,6 @@ export class RequestConfig {
    * 重置实例（用于切换实现）
    */
   static reset(): void {
-    this.instance = null as any
+    this.instance = undefined as any as RequestCore
   }
 }
