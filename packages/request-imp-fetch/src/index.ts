@@ -1,4 +1,4 @@
-import { Requestor, RequestConfig, RequestError, RequestErrorType } from 'request-core'
+import { Requestor, RequestConfig, RequestError, ErrorHandler, LogFormatter } from 'request-core'
 
 /**
  * @description 基于 Fetch API 的 Requestor 接口实现。
@@ -50,10 +50,8 @@ export class FetchRequestor implements Requestor {
       }
     }
 
-    console.log('[FetchRequestor] Sending request with Fetch API...', {
-      method,
-      url
-    })
+    const startTime = Date.now()
+    console.log(LogFormatter.formatRequestStart('FetchRequestor', method, url))
 
     try {
       // 创建带超时的 Promise
@@ -71,67 +69,80 @@ export class FetchRequestor implements Requestor {
       clearTimeout(timeoutId)
 
       if (!response.ok) {
-        throw new RequestError(`HTTP error! status: ${response.status}`, {
-          status: response.status,
-          isHttpError: true,
-          type: RequestErrorType.HTTP_ERROR,
-          context: {
+        throw ErrorHandler.createHttpError(
+          response.status,
+          `HTTP error! status: ${response.status}`,
+          {
             url: config.url,
-            method: config.method,
-            timestamp: Date.now()
+            method: config.method
           }
-        })
+        )
       }
 
       // 按期望响应类型解析
+      let result: T
       if (responseType === 'text') {
         const text = await response.text()
-        return text as unknown as T
-      }
-      if (responseType === 'blob') {
+        result = text as unknown as T
+      } else if (responseType === 'blob') {
         const blob = await response.blob()
-        return blob as unknown as T
-      }
-      if (responseType === 'arraybuffer') {
+        result = blob as unknown as T
+      } else if (responseType === 'arraybuffer') {
         const buf = await response.arrayBuffer()
-        return buf as unknown as T
+        result = buf as unknown as T
+      } else {
+        // 默认 json，若失败则退回 text
+        try {
+          result = await response.json()
+        } catch {
+          const text = await response.text()
+          result = text as unknown as T
+        }
       }
-      // 默认 json，若失败则退回 text
-      try {
-        const result = await response.json()
-        return result as T
-      } catch {
-        const text = await response.text()
-        return text as unknown as T
-      }
-    } catch (error) {
-      console.error('[FetchRequestor] Request failed:', error)
       
-      // 统一错误处理
+      const duration = Date.now() - startTime
+      console.log(LogFormatter.formatRequestSuccess('FetchRequestor', method, url, duration))
+      return result
+      
+    } catch (error) {
+      const duration = Date.now() - startTime
+      console.error(LogFormatter.formatRequestError('FetchRequestor', method, url, error, duration))
+      
+      // 如果已经是 RequestError（比如 HTTP 错误），直接抛出
       if (error instanceof RequestError) {
         throw error
       }
       
-      // 将其他错误包装为 RequestError
+      // 处理 Fetch 特定错误
       if (error instanceof Error) {
-        throw new RequestError(error.message, {
-          originalError: error,
-          type: error.name === 'AbortError' ? RequestErrorType.TIMEOUT_ERROR : RequestErrorType.NETWORK_ERROR,
-          context: {
+        // 超时错误
+        if (error.name === 'AbortError') {
+          throw ErrorHandler.createTimeoutError(
+            `Request timeout after ${timeout}ms`,
+            {
+              url: config.url,
+              method: config.method,
+              timeout,
+              originalError: error
+            }
+          )
+        }
+        
+        // 网络错误
+        throw ErrorHandler.createNetworkError(
+          error.message,
+          {
             url: config.url,
             method: config.method,
-            timestamp: Date.now()
+            originalError: error
           }
-        })
+        )
       }
       
-      throw new RequestError('Unknown error occurred', {
-        originalError: error,
-        context: {
-          url: config.url,
-          method: config.method,
-          timestamp: Date.now()
-        }
+      // 使用通用错误处理器
+      throw ErrorHandler.wrapError(error, {
+        url: config.url,
+        method: config.method
       })
     }
   }

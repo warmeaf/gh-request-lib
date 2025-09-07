@@ -1,4 +1,5 @@
 import { Requestor, RequestConfig, RequestError } from '../interface'
+import { LogFormatter } from '../utils/error-handler'
 
 /**
  * @description 重试配置
@@ -83,15 +84,18 @@ export class RetryFeature {
 
     while (attempt < maxAttempts) {
       try {
-        console.log(`[Retry] Making request to: ${config.url} (attempt ${attempt + 1}/${maxAttempts})`)
+        const attemptMessage = `🔄 [Retry] Making request (attempt ${attempt + 1}/${maxAttempts})`
+        console.log(`${attemptMessage}\n  URL: ${config.url}\n  Method: ${config.method}`)
+        
         return await this.requestor.request<T>(config)
       } catch (error) {
         lastError = error
         const isLastAttempt = attempt === maxAttempts - 1
-        
-        console.error(`[Retry] Request failed, remaining retries: ${maxAttempts - attempt - 1}`, error)
+        const remainingRetries = maxAttempts - attempt - 1
         
         if (isLastAttempt || !shouldRetry(error, attempt)) {
+          const finalMessage = `❌ [Retry] Request failed after ${attempt + 1} attempts`
+          console.error(`${finalMessage}\n  URL: ${config.url}\n  Error: ${error instanceof Error ? error.message : String(error)}`)
           throw error
         }
 
@@ -99,6 +103,9 @@ export class RetryFeature {
         const delayBase = backoff === 1 ? baseDelay : baseDelay * Math.pow(backoff, attempt)
         const jitterDelta = jitter > 0 ? delayBase * (Math.random() * jitter) : 0
         const waitMs = Math.max(0, Math.floor(delayBase + jitterDelta))
+        
+        const retryMessage = `⏳ [Retry] Request failed, will retry in ${waitMs}ms`
+        console.warn(`${retryMessage}\n  URL: ${config.url}\n  Remaining retries: ${remainingRetries}\n  Error: ${error instanceof Error ? error.message : String(error)}`)
         
         if (waitMs > 0) {
           await new Promise(resolve => setTimeout(resolve, waitMs))

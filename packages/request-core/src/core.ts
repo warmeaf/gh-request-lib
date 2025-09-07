@@ -19,12 +19,42 @@ import { ConcurrentFeature, ConcurrentConfig, ConcurrentResult } from './feature
 /**
  * @description 高级请求核心层 - 提供丰富的便利方法和开发体验
  */
+/**
+ * @description 性能统计信息
+ */
+export interface PerformanceStats {
+  totalRequests: number
+  successfulRequests: number
+  failedRequests: number
+  averageResponseTime: number
+  totalResponseTime: number
+  minResponseTime: number
+  maxResponseTime: number
+  requestsByMethod: Record<string, number>
+  errorsByType: Record<string, number>
+  lastResetTime: number
+}
+
 export class RequestCore {
   private retryFeature: RetryFeature
   private cacheFeature: CacheFeature
   private concurrentFeature: ConcurrentFeature
   private globalConfig: GlobalConfig = {}
   private interceptors: RequestInterceptor[] = []
+  
+  // 性能监控
+  private performanceStats: PerformanceStats = {
+    totalRequests: 0,
+    successfulRequests: 0,
+    failedRequests: 0,
+    averageResponseTime: 0,
+    totalResponseTime: 0,
+    minResponseTime: Infinity,
+    maxResponseTime: 0,
+    requestsByMethod: {},
+    errorsByType: {},
+    lastResetTime: Date.now()
+  }
 
   /**
    * 通过依赖注入接收一个实现了 Requestor 接口的实例。
@@ -192,6 +222,9 @@ export class RequestCore {
       const result = await this.requestor.request<T>(config)
       const duration = performance.now() - startTime
       
+      // 更新性能统计 - 成功
+      this.updatePerformanceStats(config.method, duration, true)
+      
       // 调试日志 - 成功
       if (config.debug || this.globalConfig.debug) {
         console.log('✅ 响应:', result)
@@ -219,6 +252,9 @@ export class RequestCore {
           }
         }
       )
+      
+      // 更新性能统计 - 失败
+      this.updatePerformanceStats(config.method, duration, false, enhancedError.type)
       
       // 调试日志 - 失败
       if (config.debug || this.globalConfig.debug) {
@@ -656,6 +692,61 @@ export class RequestCore {
   }
   
   /**
+   * 更新性能统计
+   */
+  private updatePerformanceStats(method: string, duration: number, success: boolean, errorType?: string): void {
+    this.performanceStats.totalRequests++
+    this.performanceStats.totalResponseTime += duration
+    
+    if (success) {
+      this.performanceStats.successfulRequests++
+    } else {
+      this.performanceStats.failedRequests++
+      if (errorType) {
+        this.performanceStats.errorsByType[errorType] = (this.performanceStats.errorsByType[errorType] || 0) + 1
+      }
+    }
+    
+    // 更新方法统计
+    this.performanceStats.requestsByMethod[method] = (this.performanceStats.requestsByMethod[method] || 0) + 1
+    
+    // 更新响应时间统计
+    this.performanceStats.averageResponseTime = this.performanceStats.totalResponseTime / this.performanceStats.totalRequests
+    this.performanceStats.minResponseTime = Math.min(this.performanceStats.minResponseTime, duration)
+    this.performanceStats.maxResponseTime = Math.max(this.performanceStats.maxResponseTime, duration)
+  }
+  
+  /**
+   * 获取性能统计信息
+   */
+  getPerformanceStats(): PerformanceStats {
+    return {
+      ...this.performanceStats,
+      averageResponseTime: Math.round(this.performanceStats.averageResponseTime * 100) / 100,
+      minResponseTime: this.performanceStats.minResponseTime === Infinity ? 0 : Math.round(this.performanceStats.minResponseTime * 100) / 100,
+      maxResponseTime: Math.round(this.performanceStats.maxResponseTime * 100) / 100
+    }
+  }
+  
+  /**
+   * 重置性能统计
+   */
+  resetPerformanceStats(): void {
+    this.performanceStats = {
+      totalRequests: 0,
+      successfulRequests: 0,
+      failedRequests: 0,
+      averageResponseTime: 0,
+      totalResponseTime: 0,
+      minResponseTime: Infinity,
+      maxResponseTime: 0,
+      requestsByMethod: {},
+      errorsByType: {},
+      lastResetTime: Date.now()
+    }
+  }
+  
+  /**
    * 销毁请求核心实例，清理资源
    */
   destroy(): void {
@@ -663,6 +754,7 @@ export class RequestCore {
     this.concurrentFeature.destroy()
     this.clearInterceptors()
     this.globalConfig = {}
+    this.resetPerformanceStats()
   }
 }
 
@@ -720,14 +812,12 @@ class RequestBuilderImpl<T> implements RequestBuilder<T> {
   }
   
   retry(retries: number): RequestBuilder<T> {
-    // 这里可以添加重试逻辑
-    this.config.metadata = { ...this.config.metadata, retries }
+    this.config.metadata = { ...this.config.metadata, retryConfig: { retries } }
     return this
   }
   
   cache(ttl?: number): RequestBuilder<T> {
-    // 这里可以添加缓存逻辑
-    this.config.metadata = { ...this.config.metadata, cache: { ttl } }
+    this.config.metadata = { ...this.config.metadata, cacheConfig: { ttl } }
     return this
   }
   
@@ -763,6 +853,21 @@ class RequestBuilderImpl<T> implements RequestBuilder<T> {
       this.config.method = 'GET'
     }
     
-    return this.core.request<T>(this.config as RequestConfig)
+    const requestConfig = this.config as RequestConfig
+    
+    // 检查是否有重试配置
+    const retryConfig = this.config.metadata?.retryConfig as any
+    if (retryConfig) {
+      return this.core.requestWithRetry<T>(requestConfig, retryConfig)
+    }
+    
+    // 检查是否有缓存配置  
+    const cacheConfig = this.config.metadata?.cacheConfig as any
+    if (cacheConfig) {
+      return this.core.requestWithCache<T>(requestConfig, cacheConfig)
+    }
+    
+    // 普通请求
+    return this.core.request<T>(requestConfig)
   }
 }

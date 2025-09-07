@@ -20,8 +20,13 @@ export type { ConcurrentConfig, ConcurrentResult } from './features/concurrent'
 
 // 导出核心类
 export { RequestCore } from './core'
+// 导出性能监控相关类型
+export type { PerformanceStats } from './core'
 
 // 导出功能类（如果需要单独使用）
 export { RetryFeature } from './features/retry'
 export { CacheFeature } from './features/cache'
 export { ConcurrentFeature } from './features/concurrent'
+
+// 导出工具类
+export { ErrorHandler, LogFormatter } from './utils/error-handler'

@@ -1,5 +1,5 @@
 import axios, { AxiosRequestConfig, AxiosResponse, AxiosError } from 'axios'
-import { Requestor, RequestConfig, RequestError, RequestErrorType } from 'request-core'
+import { Requestor, RequestConfig, RequestError, ErrorHandler, LogFormatter } from 'request-core'
 
 /**
  * @description 基于 Axios 的 Requestor 接口实现。
@@ -38,57 +38,55 @@ export class AxiosRequestor implements Requestor {
       Object.assign(axiosConfig, { signal: config.signal })
     }
 
-    console.log('[AxiosRequestor] Sending request with Axios...', {
-      method: config.method,
-      url: config.url
-    })
+    const startTime = Date.now()
+    console.log(LogFormatter.formatRequestStart('AxiosRequestor', config.method, config.url))
 
     try {
       const response: AxiosResponse<T> = await axios.request(axiosConfig)
+      const duration = Date.now() - startTime
+      console.log(LogFormatter.formatRequestSuccess('AxiosRequestor', config.method, config.url, duration))
       return response.data
     } catch (error) {
-      console.error('[AxiosRequestor] Request failed:', error)
+      const duration = Date.now() - startTime
+      console.error(LogFormatter.formatRequestError('AxiosRequestor', config.method, config.url, error, duration))
       
-      // 统一错误处理
+      // 如果已经是 RequestError，直接抛出
       if (error instanceof RequestError) {
         throw error
       }
       
-      // 处理 Axios 错误
+      // 处理 Axios 特定错误
       if (axios.isAxiosError(error)) {
         const axiosError = error as AxiosError
-        throw new RequestError(axiosError.message, {
-          status: axiosError.response?.status,
-          isHttpError: !!axiosError.response,
-          originalError: axiosError,
-          type: axiosError.response?.status ? RequestErrorType.HTTP_ERROR : RequestErrorType.NETWORK_ERROR,
-          context: {
-            url: config.url,
-            method: config.method,
-            timestamp: Date.now()
-          }
-        })
-      }
-      
-      // 处理其他错误
-      if (error instanceof Error) {
-        throw new RequestError(error.message, {
-          originalError: error,
-          context: {
-            url: config.url,
-            method: config.method,
-            timestamp: Date.now()
-          }
-        })
-      }
-      
-      throw new RequestError('Unknown error occurred', {
-        originalError: error,
-        context: {
-          url: config.url,
-          method: config.method,
-          timestamp: Date.now()
+        
+        if (axiosError.response) {
+          // HTTP 错误响应
+          throw ErrorHandler.createHttpError(
+            axiosError.response.status,
+            `HTTP ${axiosError.response.status}: ${axiosError.message}`,
+            {
+              url: config.url,
+              method: config.method,
+              originalError: axiosError
+            }
+          )
+        } else {
+          // 网络错误或其他错误
+          throw ErrorHandler.createNetworkError(
+            axiosError.message,
+            {
+              url: config.url,
+              method: config.method,
+              originalError: axiosError
+            }
+          )
         }
+      }
+      
+      // 使用通用错误处理器
+      throw ErrorHandler.wrapError(error, {
+        url: config.url,
+        method: config.method
       })
     }
   }

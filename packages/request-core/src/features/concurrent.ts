@@ -1,4 +1,5 @@
 import { Requestor, RequestConfig, RequestError } from '../interface'
+import { LogFormatter } from '../utils/error-handler'
 
 /**
  * @description 并发请求配置
@@ -157,6 +158,72 @@ class Semaphore {
 /**
  * @description 高性能并发请求功能 - 使用信号量机制
  */
+/**
+ * @description 高效结果收集器 - 使用紧凑数据结构
+ * 
+ * 专为并发请求设计的结果收集器，优化了内存使用和数据访问性能。
+ * 相比于传统的Array.filter()方式，这个收集器提供了更高效的数据处理方法。
+ * 
+ * 主要优化：
+ * - 预分配数组空间，避免动态扩容
+ * - 使用索引直接访问，避免重复遍历
+ * - 分离成功和失败结果的处理逻辑
+ * - 提供实时状态查询功能
+ * 
+ * @template T 请求结果的数据类型
+ */
+class ResultCollector<T> {
+  private results: Array<ConcurrentResult<T> | undefined>
+  private completedCount = 0
+  private readonly totalCount: number
+  
+  constructor(totalCount: number) {
+    this.totalCount = totalCount
+    this.results = new Array(totalCount)
+  }
+  
+  setResult(index: number, result: ConcurrentResult<T>): void {
+    if (this.results[index] === undefined) {
+      this.completedCount++
+    }
+    this.results[index] = result
+  }
+  
+  getCompletedCount(): number {
+    return this.completedCount
+  }
+  
+  isComplete(): boolean {
+    return this.completedCount >= this.totalCount
+  }
+  
+  getResults(): ConcurrentResult<T>[] {
+    return this.results.filter((r): r is ConcurrentResult<T> => Boolean(r))
+  }
+  
+  getSuccessfulResults(): T[] {
+    const results: T[] = []
+    for (let i = 0; i < this.results.length; i++) {
+      const result = this.results[i]
+      if (result?.success && result.data !== undefined) {
+        results.push(result.data)
+      }
+    }
+    return results
+  }
+  
+  getFailedResults(): ConcurrentResult<T>[] {
+    const results: ConcurrentResult<T>[] = []
+    for (let i = 0; i < this.results.length; i++) {
+      const result = this.results[i]
+      if (result && !result.success) {
+        results.push(result)
+      }
+    }
+    return results
+  }
+}
+
 export class ConcurrentFeature {
   private stats: ConcurrentStats = {
     total: 0,
@@ -201,19 +268,19 @@ export class ConcurrentFeature {
     // 重置统计
     this.resetStats(configs.length)
     
-    const results: Array<ConcurrentResult<T> | undefined> = new Array(configs.length)
+    const collector = new ResultCollector<T>(configs.length)
     const startTime = Date.now()
     
     const tasks = configs.map(async (config, index) => {
       const requestStart = Date.now()
       
       try {
-        console.log(`[Concurrent] Starting unlimited request ${index + 1}: ${config.url}`)
+        console.log(LogFormatter.formatConcurrentLog('start', index, configs.length, config.url))
         
         const data = await this.requestor.request<T>(config)
         const duration = Date.now() - requestStart
         
-        results[index] = {
+        const result: ConcurrentResult<T> = {
           success: true,
           data,
           config,
@@ -221,19 +288,27 @@ export class ConcurrentFeature {
           duration,
           retryCount: 0
         }
+        collector.setResult(index, result)
+        
+        console.log(LogFormatter.formatConcurrentLog('complete', index, configs.length, config.url, {
+          'duration': `${Math.round(duration)}ms`
+        }))
         
         this.updateSuccessStats(duration)
         
       } catch (error) {
         const duration = Date.now() - requestStart
         
-        console.error(`[Concurrent] Request ${index + 1} failed: ${config.url}`, error)
+        console.error(LogFormatter.formatConcurrentLog('failed', index, configs.length, config.url, {
+          'duration': `${Math.round(duration)}ms`,
+          'error': error instanceof Error ? error.message : String(error)
+        }))
         
         if (failFast) {
           throw error
         }
         
-        results[index] = {
+        const result: ConcurrentResult<T> = {
           success: false,
           error,
           config,
@@ -241,6 +316,7 @@ export class ConcurrentFeature {
           duration,
           retryCount: 0
         }
+        collector.setResult(index, result)
         
         this.updateFailureStats(duration)
       }
@@ -271,8 +347,7 @@ export class ConcurrentFeature {
     this.stats.maxConcurrencyUsed = configs.length // 无限制并发
     this.updateFinalStats(Date.now() - startTime, configs.length)
 
-    const denseResults = results.filter((r): r is ConcurrentResult<T> => Boolean(r))
-    return denseResults
+    return collector.getResults()
   }
 
   /**
@@ -294,7 +369,7 @@ export class ConcurrentFeature {
     
     const semaphore = new Semaphore(maxConcurrency)
     this.activeSemaphores.add(semaphore) // 追踪信号量
-    const results: Array<ConcurrentResult<T> | undefined> = new Array(configs.length)
+    const collector = new ResultCollector<T>(configs.length)
     const startTime = Date.now()
     
     // 创建所有任务，但不立即执行
@@ -303,7 +378,7 @@ export class ConcurrentFeature {
         config, 
         index, 
         semaphore, 
-        results, 
+        collector, 
         failFast
       )
     )
@@ -328,8 +403,7 @@ export class ConcurrentFeature {
     this.activeSemaphores.delete(semaphore)
     semaphore.destroy()
     
-    const denseResults = results.filter((r): r is ConcurrentResult<T> => Boolean(r))
-    return denseResults
+    return collector.getResults()
   }
   
   /**
@@ -339,7 +413,7 @@ export class ConcurrentFeature {
     config: RequestConfig,
     index: number,
     semaphore: Semaphore,
-    results: Array<ConcurrentResult<T> | undefined>,
+    collector: ResultCollector<T>,
     failFast: boolean
   ): Promise<void> {
     const requestStartTime = Date.now()
@@ -355,15 +429,15 @@ export class ConcurrentFeature {
         currentConcurrency
       )
       
-      console.log(
-        `[Concurrent] Starting request ${index + 1} ` +
-        `(active: ${currentConcurrency}, waiting: ${semaphore.waitingCount()}): ${config.url}`
-      )
+      console.log(LogFormatter.formatConcurrentLog('start', index, this.stats.total, config.url, {
+        'active requests': currentConcurrency,
+        'waiting': semaphore.waitingCount()
+      }))
       
       const data = await this.requestor.request<T>(config)
       const duration = Date.now() - requestStartTime
       
-      results[index] = {
+      const result: ConcurrentResult<T> = {
         success: true,
         data,
         config,
@@ -371,13 +445,22 @@ export class ConcurrentFeature {
         duration,
         retryCount: 0
       }
+      collector.setResult(index, result)
+      
+      console.log(LogFormatter.formatConcurrentLog('complete', index, this.stats.total, config.url, {
+        'duration': `${Math.round(duration)}ms`,
+        'active requests': currentConcurrency - 1
+      }))
       
       this.updateSuccessStats(duration)
       
     } catch (error) {
       const duration = Date.now() - requestStartTime
       
-      console.error(`[Concurrent] Request ${index + 1} failed: ${config.url}`, error)
+      console.error(LogFormatter.formatConcurrentLog('failed', index, this.stats.total, config.url, {
+        'duration': `${Math.round(duration)}ms`,
+        'error': error instanceof Error ? error.message : String(error)
+      }))
       
       if (failFast) {
         // 释放信号量后抛出错误
@@ -385,7 +468,7 @@ export class ConcurrentFeature {
         throw error
       }
       
-      results[index] = {
+      const result: ConcurrentResult<T> = {
         success: false,
         error,
         config,
@@ -393,12 +476,13 @@ export class ConcurrentFeature {
         duration,
         retryCount: 0
       }
+      collector.setResult(index, result)
       
       this.updateFailureStats(duration)
       
     } finally {
-      // 释放信号量
-      if (!failFast || results[index]?.success) {
+      // 释放信号量（除非是failFast且失败的情况，因为此时已经在catch中释放了）
+      if (!failFast || collector.getResults()[index]?.success !== false) {
         semaphore.release()
       }
     }
@@ -509,23 +593,35 @@ export class ConcurrentFeature {
   }
 
   /**
-   * 获取成功的请求结果
+   * 获取成功的请求结果 - 使用优化的数据结构处理
    * @param results 并发请求结果数组
    * @returns 成功的请求数据数组
    */
   getSuccessfulResults<T>(results: ConcurrentResult<T>[]): T[] {
-    return results
-      .filter(result => result.success)
-      .map(result => result.data!)
+    const successfulData: T[] = []
+    for (let i = 0; i < results.length; i++) {
+      const result = results[i]
+      if (result.success && result.data !== undefined) {
+        successfulData.push(result.data)
+      }
+    }
+    return successfulData
   }
 
   /**
-   * 获取失败的请求结果
+   * 获取失败的请求结果 - 使用优化的数据结构处理
    * @param results 并发请求结果数组
    * @returns 失败的请求结果数组
    */
   getFailedResults<T>(results: ConcurrentResult<T>[]): ConcurrentResult<T>[] {
-    return results.filter(result => !result.success)
+    const failedResults: ConcurrentResult<T>[] = []
+    for (let i = 0; i < results.length; i++) {
+      const result = results[i]
+      if (!result.success) {
+        failedResults.push(result)
+      }
+    }
+    return failedResults
   }
 
   /**

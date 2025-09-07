@@ -1,4 +1,5 @@
 import { Requestor, RequestConfig, RequestError } from '../interface'
+import { LogFormatter } from '../utils/error-handler'
 
 /**
  * @description 缓存配置
@@ -44,9 +45,9 @@ export class CacheFeature {
   }
 
   /**
-   * 懒清理过期缓存 - 仅在必要时执行
+   * 增量清理过期缓存 - 每次只清理部分项目，分散性能开销
    */
-  private lazyCleanupIfNeeded(): void {
+  private incrementalCleanupIfNeeded(): void {
     const now = Date.now()
     
     // 如果距离上次清理不足5分钟且缓存未满，跳过清理
@@ -56,37 +57,69 @@ export class CacheFeature {
     }
     
     this.lastCleanupTime = now
+    
+    // 增量清理：每次最多检查100个项目
+    const maxCheckCount = Math.min(100, this.cache.size)
+    const entries = Array.from(this.cache.entries())
+    const startIndex = Math.floor(Math.random() * Math.max(1, entries.length - maxCheckCount))
+    
     const expiredKeys: string[] = []
     
-    for (const [key, item] of this.cache.entries()) {
+    for (let i = startIndex; i < Math.min(startIndex + maxCheckCount, entries.length); i++) {
+      const [key, item] = entries[i]
       if (now - item.timestamp >= item.ttl) {
         expiredKeys.push(key)
       }
     }
     
     // 批量删除过期项
-    expiredKeys.forEach(key => this.cache.delete(key))
+    if (expiredKeys.length > 0) {
+      expiredKeys.forEach(key => this.cache.delete(key))
+      console.log(LogFormatter.formatCacheLog('clear', `${expiredKeys.length} expired items`, {
+        'remaining items': this.cache.size
+      }))
+    }
     
-    // 如果仍然超出容量，执行LRU淘汰
+    // 如果仍然超出容量，执行增量LRU淘汰
     if (this.cache.size > this.maxEntries) {
-      this.evictLRU(this.cache.size - this.maxEntries)
+      const toEvict = Math.min(50, this.cache.size - this.maxEntries) // 每次最多淘汰50项
+      this.incrementalEvictLRU(toEvict)
     }
   }
   
   /**
-   * LRU淘汰最少使用的缓存项
+   * 增量LRU淘汰 - 避免一次性处理大量数据
    */
-  private evictLRU(count: number): void {
+  private incrementalEvictLRU(count: number): void {
     if (count <= 0) return
     
+    // 随机采样方式获取候选项，避免全量排序
+    const sampleSize = Math.min(Math.max(count * 3, 100), this.cache.size)
     const entries = Array.from(this.cache.entries())
-    // 按访问时间排序，最少访问的在前面
-    entries.sort(([,a], [,b]) => a.accessTime - b.accessTime)
+    const sampledEntries: Array<[string, CacheItem<unknown>]> = []
     
-    for (let i = 0; i < count && i < entries.length; i++) {
-      this.cache.delete(entries[i][0])
+    // 随机采样
+    for (let i = 0; i < sampleSize; i++) {
+      const randomIndex = Math.floor(Math.random() * entries.length)
+      sampledEntries.push(entries[randomIndex])
+    }
+    
+    // 对采样结果排序，选择最少使用的项目
+    sampledEntries.sort(([,a], [,b]) => a.accessTime - b.accessTime)
+    
+    const actualEvictCount = Math.min(count, sampledEntries.length)
+    for (let i = 0; i < actualEvictCount; i++) {
+      this.cache.delete(sampledEntries[i][0])
+    }
+    
+    if (actualEvictCount > 0) {
+      console.log(LogFormatter.formatCacheLog('clear', `${actualEvictCount} LRU items`, {
+        'remaining items': this.cache.size,
+        'max entries': this.maxEntries
+      }))
     }
   }
+  
 
   /**
    * 销毁缓存功能，清理资源
@@ -291,15 +324,18 @@ export class CacheFeature {
       this.maxEntries = maxEntries
     }
     
-    // 执行懒清理
-    this.lazyCleanupIfNeeded()
+    // 执行增量清理
+    this.incrementalCleanupIfNeeded()
     
     const cacheKey = this.generateCacheKey(config, key)
 
     // 检查缓存
     const cachedItem = this.cache.get(cacheKey)
     if (cachedItem && this.isCacheValidAndUpdate(cachedItem)) {
-      console.log(`[Cache] Cache hit: ${cacheKey.substring(0, 50)}...`)
+      console.log(LogFormatter.formatCacheLog('hit', cacheKey, {
+        'ttl remaining': `${Math.round((cachedItem.ttl - (Date.now() - cachedItem.timestamp)) / 1000)}s`,
+        'access count': cachedItem.accessCount + 1
+      }))
       return this.safeCloneData(cachedItem.data, clone) as T
     }
 
@@ -309,7 +345,10 @@ export class CacheFeature {
     }
 
     // 发起请求
-    console.log(`[Cache] Cache miss, making request: ${config.url}`)
+    console.log(LogFormatter.formatCacheLog('miss', cacheKey, {
+      'reason': cachedItem ? 'expired' : 'not found',
+      'will fetch': config.url
+    }))
     const data = await this.requestor.request<T>(config)
 
     // 存储缓存
@@ -322,6 +361,12 @@ export class CacheFeature {
       accessCount: 1
     })
 
+    console.log(LogFormatter.formatCacheLog('set', cacheKey, {
+      'ttl': `${Math.round(ttl / 1000)}s`,
+      'cache size': this.cache.size,
+      'max entries': this.maxEntries
+    }))
+
     return this.safeCloneData(data, clone) as T
   }
 
@@ -330,9 +375,23 @@ export class CacheFeature {
    */
   clearCache(key?: string): void {
     if (key) {
+      const existed = this.cache.has(key)
       this.cache.delete(key)
+      
+      if (existed) {
+        console.log(LogFormatter.formatCacheLog('clear', key, {
+          'remaining items': this.cache.size
+        }))
+      }
     } else {
+      const previousSize = this.cache.size
       this.cache.clear()
+      
+      if (previousSize > 0) {
+        console.log(LogFormatter.formatCacheLog('clear', 'all items', {
+          'cleared count': previousSize
+        }))
+      }
     }
   }
 
