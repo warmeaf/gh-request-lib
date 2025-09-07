@@ -1,6 +1,7 @@
 import { Requestor, RequestConfig } from './interface'
 import { RetryFeature, RetryConfig } from './features/retry'
 import { CacheFeature, CacheConfig } from './features/cache'
+import { ConcurrentFeature, ConcurrentConfig, ConcurrentResult } from './features/concurrent'
 
 /**
  * @description 核心层，封装与具体实现无关的高级功能。
@@ -8,6 +9,7 @@ import { CacheFeature, CacheConfig } from './features/cache'
 export class RequestCore {
   private retryFeature: RetryFeature
   private cacheFeature: CacheFeature
+  private concurrentFeature: ConcurrentFeature
 
   /**
    * 通过依赖注入接收一个实现了 Requestor 接口的实例。
@@ -16,6 +18,7 @@ export class RequestCore {
   constructor(private requestor: Requestor) {
     this.retryFeature = new RetryFeature(requestor)
     this.cacheFeature = new CacheFeature(requestor)
+    this.concurrentFeature = new ConcurrentFeature(requestor)
   }
 
   /**
@@ -86,5 +89,86 @@ export class RequestCore {
    */
   clearCache(key?: string): void {
     this.cacheFeature.clearCache(key)
+  }
+
+  /**
+   * 并发请求
+   * @param configs 请求配置数组
+   * @param concurrentConfig 并发配置
+   */
+  async requestConcurrent<T>(
+    configs: RequestConfig[],
+    concurrentConfig?: ConcurrentConfig
+  ): Promise<ConcurrentResult<T>[]> {
+    return this.concurrentFeature.requestConcurrent<T>(configs, concurrentConfig)
+  }
+
+  /**
+   * 并发执行多个相同配置的请求
+   * @param config 请求配置
+   * @param count 请求次数
+   * @param concurrentConfig 并发配置
+   */
+  async requestMultiple<T>(
+    config: RequestConfig,
+    count: number,
+    concurrentConfig?: ConcurrentConfig
+  ): Promise<ConcurrentResult<T>[]> {
+    return this.concurrentFeature.requestMultiple<T>(config, count, concurrentConfig)
+  }
+
+  /**
+   * 并发 GET 请求
+   * @param urls URL数组
+   * @param concurrentConfig 并发配置
+   */
+  async getConcurrent<T>(
+    urls: string[],
+    concurrentConfig?: ConcurrentConfig
+  ): Promise<ConcurrentResult<T>[]> {
+    const configs = urls.map(url => ({ url, method: 'GET' as const }))
+    return this.requestConcurrent<T>(configs, concurrentConfig)
+  }
+
+  /**
+   * 并发 POST 请求
+   * @param requests POST请求配置数组
+   * @param concurrentConfig 并发配置
+   */
+  async postConcurrent<T>(
+    requests: Array<{ url: string; data?: any; config?: Partial<RequestConfig> }>,
+    concurrentConfig?: ConcurrentConfig
+  ): Promise<ConcurrentResult<T>[]> {
+    const configs = requests.map(({ url, data, config = {} }) => ({
+      url,
+      method: 'POST' as const,
+      data,
+      ...config
+    }))
+    return this.requestConcurrent<T>(configs, concurrentConfig)
+  }
+
+  /**
+   * 获取成功的请求结果
+   * @param results 并发请求结果数组
+   */
+  getSuccessfulResults<T>(results: ConcurrentResult<T>[]): T[] {
+    return this.concurrentFeature.getSuccessfulResults(results)
+  }
+
+  /**
+   * 获取失败的请求结果
+   * @param results 并发请求结果数组
+   */
+  getFailedResults<T>(results: ConcurrentResult<T>[]): ConcurrentResult<T>[] {
+    return this.concurrentFeature.getFailedResults(results)
+  }
+
+  /**
+   * 检查是否有请求失败
+   * @param results 并发请求结果数组
+   */
+  hasConcurrentFailures<T>(results: ConcurrentResult<T>[]): boolean {
+    return this.concurrentFeature.hasFailures(results)
   }
 }
