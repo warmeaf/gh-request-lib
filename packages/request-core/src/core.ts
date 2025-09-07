@@ -12,49 +12,30 @@ import {
   PaginationParams,
   PaginatedResponse
 } from './interface'
-import { RetryFeature, RetryConfig } from './features/retry'
-import { CacheFeature, CacheConfig } from './features/cache'
-import { ConcurrentFeature, ConcurrentConfig, ConcurrentResult } from './features/concurrent'
+import { RetryConfig } from './features/retry'
+import { CacheConfig } from './features/cache'
+import { ConcurrentConfig, ConcurrentResult } from './features/concurrent'
+
+// 导入管理器
+import { PerformanceMonitor, PerformanceStats } from './managers/performance-monitor'
+import { InterceptorManager } from './managers/interceptor-manager'
+import { ConfigManager } from './managers/config-manager'
+import { RequestExecutor } from './managers/request-executor'
+import { ConvenienceMethods, ConvenienceExecutor } from './managers/convenience-methods'
+import { FeatureManager } from './managers/feature-manager'
 
 /**
- * @description 高级请求核心层 - 提供丰富的便利方法和开发体验
+ * @description 重构后的请求核心层 - 作为协调者组合各个管理器
  */
-/**
- * @description 性能统计信息
- */
-export interface PerformanceStats {
-  totalRequests: number
-  successfulRequests: number
-  failedRequests: number
-  averageResponseTime: number
-  totalResponseTime: number
-  minResponseTime: number
-  maxResponseTime: number
-  requestsByMethod: Record<string, number>
-  errorsByType: Record<string, number>
-  lastResetTime: number
-}
 
-export class RequestCore {
-  private retryFeature: RetryFeature
-  private cacheFeature: CacheFeature
-  private concurrentFeature: ConcurrentFeature
-  private globalConfig: GlobalConfig = {}
-  private interceptors: RequestInterceptor[] = []
-  
-  // 性能监控
-  private performanceStats: PerformanceStats = {
-    totalRequests: 0,
-    successfulRequests: 0,
-    failedRequests: 0,
-    averageResponseTime: 0,
-    totalResponseTime: 0,
-    minResponseTime: Infinity,
-    maxResponseTime: 0,
-    requestsByMethod: {},
-    errorsByType: {},
-    lastResetTime: Date.now()
-  }
+export class RequestCore implements ConvenienceExecutor {
+  // 管理器组合
+  private performanceMonitor: PerformanceMonitor
+  private interceptorManager: InterceptorManager
+  private configManager: ConfigManager
+  private requestExecutor: RequestExecutor
+  private convenienceMethods: ConvenienceMethods
+  private featureManager: FeatureManager
 
   /**
    * 通过依赖注入接收一个实现了 Requestor 接口的实例。
@@ -62,22 +43,33 @@ export class RequestCore {
    * @param globalConfig 全局配置
    */
   constructor(private requestor: Requestor, globalConfig?: GlobalConfig) {
-    this.retryFeature = new RetryFeature(requestor)
-    this.cacheFeature = new CacheFeature(requestor)
-    this.concurrentFeature = new ConcurrentFeature(requestor)
+    // 初始化各个管理器
+    this.performanceMonitor = new PerformanceMonitor()
+    this.interceptorManager = new InterceptorManager()
+    this.configManager = new ConfigManager()
+    this.requestExecutor = new RequestExecutor(requestor)
+    this.convenienceMethods = new ConvenienceMethods(this)
+    this.featureManager = new FeatureManager(requestor)
     
     if (globalConfig) {
       this.setGlobalConfig(globalConfig)
     }
   }
   
+  // ==================== 核心接口方法 ====================
+
   /**
    * 设置全局配置
    */
   setGlobalConfig(config: GlobalConfig): void {
-    this.globalConfig = { ...this.globalConfig, ...config }
+    this.configManager.setGlobalConfig(config)
+    
+    // 处理拦截器
     if (config.interceptors) {
-      this.interceptors = [...config.interceptors]
+      this.interceptorManager.clear()
+      config.interceptors.forEach(interceptor => {
+        this.interceptorManager.add(interceptor)
+      })
     }
   }
   
@@ -85,207 +77,61 @@ export class RequestCore {
    * 添加拦截器
    */
   addInterceptor(interceptor: RequestInterceptor): void {
-    this.interceptors.push(interceptor)
+    this.interceptorManager.add(interceptor)
   }
   
   /**
    * 清除所有拦截器
    */
   clearInterceptors(): void {
-    this.interceptors = []
+    this.interceptorManager.clear()
   }
 
   /**
-   * 增强的请求配置验证 - 提供详细的错误信息
-   */
-  private validateConfig(config: RequestConfig): void {
-    if (!config) {
-      throw new RequestError('Request config is required', {
-        type: RequestErrorType.VALIDATION_ERROR,
-        suggestion: '请提供有效的请求配置对象',
-        code: 'CONFIG_REQUIRED'
-      })
-    }
-    
-    if (!config.url || typeof config.url !== 'string') {
-      throw new RequestError('URL is required and must be a string', {
-        type: RequestErrorType.VALIDATION_ERROR,
-        suggestion: '请提供有效的URL字符串，例如："https://api.example.com/users"',
-        code: 'INVALID_URL',
-        context: { url: config.url }
-      })
-    }
-    
-    if (!config.method) {
-      throw new RequestError('HTTP method is required', {
-        type: RequestErrorType.VALIDATION_ERROR,
-        suggestion: '请提供有效的HTTP方法，如：GET, POST, PUT, DELETE等',
-        code: 'METHOD_REQUIRED',
-        context: { url: config.url }
-      })
-    }
-    
-    if (config.timeout !== undefined && (typeof config.timeout !== 'number' || config.timeout < 0)) {
-      throw new RequestError('Timeout must be a positive number', {
-        type: RequestErrorType.VALIDATION_ERROR,
-        suggestion: '请设置一个大于0的数字，单位为毫秒，例如：5000',
-        code: 'INVALID_TIMEOUT',
-        context: { url: config.url, metadata: { timeout: config.timeout } }
-      })
-    }
-  }
-  
-  /**
-   * 合并全局配置和请求配置
-   */
-  private mergeConfig(config: RequestConfig): RequestConfig {
-    const merged: RequestConfig = {
-      timeout: this.globalConfig.timeout,
-      debug: this.globalConfig.debug,
-      ...config
-    }
-    
-    // 合并URL
-    if (this.globalConfig.baseURL && !config.url.startsWith('http')) {
-      merged.url = this.globalConfig.baseURL.replace(/\/$/, '') + '/' + config.url.replace(/^\//, '')
-    }
-    
-    // 合并请求头
-    if (this.globalConfig.headers || config.headers) {
-      merged.headers = {
-        ...this.globalConfig.headers,
-        ...config.headers
-      }
-    }
-    
-    return merged
-  }
-  
-  /**
-   * 执行拦截器链
-   */
-  private async executeInterceptors<T>(config: RequestConfig, execution: () => Promise<T>): Promise<T> {
-    let processedConfig = config
-    
-    // 执行请求拦截器
-    for (const interceptor of this.interceptors) {
-      if (interceptor.onRequest) {
-        processedConfig = await interceptor.onRequest(processedConfig)
-      }
-    }
-    
-    try {
-      let result = await execution()
-      
-      // 执行响应拦截器
-      for (const interceptor of this.interceptors) {
-        if (interceptor.onResponse) {
-          result = await interceptor.onResponse(result, processedConfig)
-        }
-      }
-      
-      return result
-    } catch (error) {
-      let processedError = error instanceof RequestError ? error : new RequestError(
-        error instanceof Error ? error.message : 'Unknown error',
-        { originalError: error, context: { url: processedConfig.url, method: processedConfig.method } }
-      )
-      
-      // 执行错误拦截器
-      for (const interceptor of this.interceptors) {
-        if (interceptor.onError) {
-          processedError = await interceptor.onError(processedError, processedConfig)
-        }
-      }
-      
-      throw processedError
-    }
-  }
-
-  /**
-   * 增强的请求执行 - 包含性能监控、调试和错误处理
-   */
-  private async executeWithMonitoring<T>(config: RequestConfig): Promise<T> {
-    const startTime = performance.now()
-    const requestId = this.generateRequestId()
-    
-    // 调试日志
-    if (config.debug || this.globalConfig.debug) {
-      console.group(`🚀 Request [${requestId}] ${config.method} ${config.url}`)
-      console.log('配置:', config)
-      console.log('时间:', new Date().toISOString())
-    }
-    
-    try {
-      config.onStart?.(config)
-      
-      const result = await this.requestor.request<T>(config)
-      const duration = performance.now() - startTime
-      
-      // 更新性能统计 - 成功
-      this.updatePerformanceStats(config.method, duration, true)
-      
-      // 调试日志 - 成功
-      if (config.debug || this.globalConfig.debug) {
-        console.log('✅ 响应:', result)
-        console.log(`⏱️ 耗时: ${Math.round(duration)}ms`)
-        console.groupEnd()
-      }
-      
-      config.onEnd?.(config, duration)
-      return result
-      
-    } catch (error) {
-      const duration = performance.now() - startTime
-      
-      // 增强错误信息
-      const enhancedError = error instanceof RequestError ? error : new RequestError(
-        error instanceof Error ? error.message : 'Unknown error occurred',
-        {
-          originalError: error,
-          context: {
-            url: config.url,
-            method: config.method,
-            duration,
-            timestamp: Date.now(),
-            tag: config.tag
-          }
-        }
-      )
-      
-      // 更新性能统计 - 失败
-      this.updatePerformanceStats(config.method, duration, false, enhancedError.type)
-      
-      // 调试日志 - 失败
-      if (config.debug || this.globalConfig.debug) {
-        console.error('❌ 错误:', enhancedError.toDisplayMessage())
-        console.log(`⏱️ 耗时: ${Math.round(duration)}ms`)
-        console.groupEnd()
-      }
-      
-      config.onError?.(config, enhancedError, duration)
-      throw enhancedError
-    }
-  }
-  
-  /**
-   * 生成请求ID
-   */
-  private generateRequestId(): string {
-    return Math.random().toString(36).substring(2, 15)
-  }
-
-  /**
-   * 基础请求方法 - 支持拦截器和全局配置
+   * 基础请求方法 - 核心执行接口
+   * @param config 请求配置
+   * @returns 请求结果
    */
   async request<T>(config: RequestConfig): Promise<T> {
-    const mergedConfig = this.mergeConfig(config)
-    this.validateConfig(mergedConfig)
+    // 验证和合并配置
+    this.configManager.validateRequestConfig(config)
+    const mergedConfig = this.configManager.mergeConfigs(config)
     
-    return this.executeInterceptors(mergedConfig, () => 
-      this.executeWithMonitoring<T>(mergedConfig)
-    )
+    // 记录请求开始
+    this.performanceMonitor.recordRequestStart(mergedConfig)
+    const startTime = Date.now()
+    
+    try {
+      // 执行拦截器链和实际请求
+      const result = await this.interceptorManager.executeChain(
+        mergedConfig,
+        (processedConfig) => this.requestExecutor.execute<T>(processedConfig)
+      )
+      
+      // 记录请求成功
+      this.performanceMonitor.recordRequestEnd(mergedConfig, startTime, true)
+      
+      return result
+    } catch (error) {
+      // 记录请求失败
+      const requestError = error instanceof RequestError ? error : new RequestError(
+        error instanceof Error ? error.message : 'Unknown error'
+      )
+      
+      this.performanceMonitor.recordRequestEnd(mergedConfig, startTime, false, requestError)
+      
+      throw error
+    }
   }
+
+  /**
+   * ConvenienceExecutor 接口实现 - 供便利方法使用
+   */
+  async execute<T>(config: RequestConfig): Promise<T> {
+    return this.request<T>(config)
+  }
+
+  // ==================== 便利方法委托 ====================
   
   /**
    * 创建链式调用构建器
@@ -294,467 +140,216 @@ export class RequestCore {
     return new RequestBuilderImpl<T>(this)
   }
 
-  /**
-   * GET 请求
-   */
+  // HTTP 方法委托
   async get<T>(url: string, config?: Partial<RequestConfig>): Promise<T> {
-    return this.request<T>({ url, method: 'GET', ...config })
+    return this.convenienceMethods.get<T>(url, config)
   }
 
-  /**
-   * POST 请求
-   */
   async post<T>(url: string, data?: any, config?: Partial<RequestConfig>): Promise<T> {
-    return this.request<T>({ url, method: 'POST', data, ...config })
+    return this.convenienceMethods.post<T>(url, data, config)
   }
 
-  /**
-   * PUT 请求
-   */
   async put<T>(url: string, data?: any, config?: Partial<RequestConfig>): Promise<T> {
-    return this.request<T>({ url, method: 'PUT', data, ...config })
+    return this.convenienceMethods.put<T>(url, data, config)
   }
 
-  /**
-   * DELETE 请求
-   */
   async delete<T>(url: string, config?: Partial<RequestConfig>): Promise<T> {
-    return this.request<T>({ url, method: 'DELETE', ...config })
+    return this.convenienceMethods.delete<T>(url, config)
   }
 
-  /**
-   * 带重试的请求
-   */
+  async patch<T>(url: string, data?: any, config?: Partial<RequestConfig>): Promise<T> {
+    return this.convenienceMethods.patch<T>(url, data, config)
+  }
+
+  async head(url: string, config?: Partial<RequestConfig>): Promise<void> {
+    return this.convenienceMethods.head(url, config)
+  }
+
+  async options<T = any>(url: string, config?: Partial<RequestConfig>): Promise<T> {
+    return this.convenienceMethods.options<T>(url, config)
+  }
+
+  // ==================== 功能特性委托 ====================
+
+  // 重试功能
   async requestWithRetry<T>(config: RequestConfig, retryConfig?: RetryConfig): Promise<T> {
-    return this.retryFeature.requestWithRetry<T>(config, retryConfig)
+    return this.featureManager.requestWithRetry<T>(config, retryConfig)
   }
 
-  /**
-   * 带重试的 GET 请求 - 统一使用RetryConfig
-   */
   async getWithRetry<T>(url: string, retryConfig: RetryConfig = { retries: 3 }): Promise<T> {
-    return this.requestWithRetry<T>({ url, method: 'GET' }, retryConfig)
+    return this.featureManager.getWithRetry<T>(url, retryConfig)
   }
   
-  /**
-   * 带重试的 POST 请求
-   */
   async postWithRetry<T>(url: string, data?: any, retryConfig: RetryConfig = { retries: 3 }): Promise<T> {
-    return this.requestWithRetry<T>({ url, method: 'POST', data }, retryConfig)
+    return this.featureManager.postWithRetry<T>(url, data, retryConfig)
   }
 
-  /**
-   * 带缓存的请求
-   */
+  // 缓存功能
   async requestWithCache<T>(config: RequestConfig, cacheConfig?: CacheConfig): Promise<T> {
-    return this.cacheFeature.requestWithCache<T>(config, cacheConfig)
+    return this.featureManager.requestWithCache<T>(config, cacheConfig)
   }
 
-  /**
-   * 带缓存的 GET 请求
-   */
   async getWithCache<T>(url: string, cacheConfig?: CacheConfig): Promise<T> {
-    return this.requestWithCache<T>({ url, method: 'GET' }, cacheConfig)
+    return this.featureManager.getWithCache<T>(url, cacheConfig)
   }
 
-  /**
-   * 清除缓存
-   */
   clearCache(key?: string): void {
-    this.cacheFeature.clearCache(key)
+    this.featureManager.clearCache(key)
   }
 
-  /**
-   * 并发请求
-   * @param configs 请求配置数组
-   * @param concurrentConfig 并发配置
-   */
+  // 并发功能
   async requestConcurrent<T>(
     configs: RequestConfig[],
     concurrentConfig?: ConcurrentConfig
   ): Promise<ConcurrentResult<T>[]> {
-    return this.concurrentFeature.requestConcurrent<T>(configs, concurrentConfig)
+    return this.featureManager.requestConcurrent<T>(configs, concurrentConfig)
   }
 
-  /**
-   * 并发执行多个相同配置的请求
-   * @param config 请求配置
-   * @param count 请求次数
-   * @param concurrentConfig 并发配置
-   */
   async requestMultiple<T>(
     config: RequestConfig,
     count: number,
     concurrentConfig?: ConcurrentConfig
   ): Promise<ConcurrentResult<T>[]> {
-    return this.concurrentFeature.requestMultiple<T>(config, count, concurrentConfig)
+    return this.featureManager.requestMultiple<T>(config, count, concurrentConfig)
   }
 
-  /**
-   * 并发 GET 请求
-   * @param urls URL数组
-   * @param concurrentConfig 并发配置
-   */
   async getConcurrent<T>(
     urls: string[],
     concurrentConfig?: ConcurrentConfig
   ): Promise<ConcurrentResult<T>[]> {
-    const configs = urls.map(url => ({ url, method: 'GET' as const }))
-    return this.requestConcurrent<T>(configs, concurrentConfig)
+    return this.featureManager.getConcurrent<T>(urls, concurrentConfig)
   }
 
-  /**
-   * 并发 POST 请求
-   * @param requests POST请求配置数组
-   * @param concurrentConfig 并发配置
-   */
   async postConcurrent<T>(
     requests: Array<{ url: string; data?: any; config?: Partial<RequestConfig> }>,
     concurrentConfig?: ConcurrentConfig
   ): Promise<ConcurrentResult<T>[]> {
-    const configs = requests.map(({ url, data, config = {} }) => ({
-      url,
-      method: 'POST' as const,
-      data,
-      ...config
-    }))
-    return this.requestConcurrent<T>(configs, concurrentConfig)
+    return this.featureManager.postConcurrent<T>(requests, concurrentConfig)
   }
 
-  /**
-   * 获取成功的请求结果
-   * @param results 并发请求结果数组
-   */
   getSuccessfulResults<T>(results: ConcurrentResult<T>[]): T[] {
-    return this.concurrentFeature.getSuccessfulResults(results)
+    return this.featureManager.getSuccessfulResults(results)
   }
 
-  /**
-   * 获取失败的请求结果
-   * @param results 并发请求结果数组
-   */
   getFailedResults<T>(results: ConcurrentResult<T>[]): ConcurrentResult<T>[] {
-    return this.concurrentFeature.getFailedResults(results)
+    return this.featureManager.getFailedResults(results)
   }
 
-  /**
-   * 检查是否有请求失败
-   * @param results 并发请求结果数组
-   */
   hasConcurrentFailures<T>(results: ConcurrentResult<T>[]): boolean {
-    return this.concurrentFeature.hasFailures(results)
+    return this.featureManager.hasConcurrentFailures(results)
   }
 
-  // ==================== 便利方法 ====================
+  // ==================== 扩展便利方法委托 ====================
   
-  /**
-   * PATCH 请求
-   */
-  async patch<T>(url: string, data?: any, config?: Partial<RequestConfig>): Promise<T> {
-    return this.request<T>({ url, method: 'PATCH', data, ...config })
-  }
-  
-  /**
-   * HEAD 请求
-   */
-  async head(url: string, config?: Partial<RequestConfig>): Promise<void> {
-    return this.request<void>({ url, method: 'HEAD', ...config })
-  }
-  
-  /**
-   * OPTIONS 请求
-   */
-  async options<T = any>(url: string, config?: Partial<RequestConfig>): Promise<T> {
-    return this.request<T>({ url, method: 'OPTIONS', ...config })
-  }
-  
-  /**
-   * 快速 JSON POST 请求
-   */
+  // 内容类型特定方法
   async postJson<T>(url: string, data: any, config?: Partial<RequestConfig>): Promise<T> {
-    return this.request<T>({
-      url,
-      method: 'POST',
-      data,
-      headers: {
-        'Content-Type': 'application/json',
-        ...config?.headers
-      },
-      ...config
-    })
+    return this.convenienceMethods.postJson<T>(url, data, config)
   }
   
-  /**
-   * 快速 JSON PUT 请求
-   */
   async putJson<T>(url: string, data: any, config?: Partial<RequestConfig>): Promise<T> {
-    return this.request<T>({
-      url,
-      method: 'PUT',
-      data,
-      headers: {
-        'Content-Type': 'application/json',
-        ...config?.headers
-      },
-      ...config
-    })
+    return this.convenienceMethods.putJson<T>(url, data, config)
   }
   
-  /**
-   * 表单数据 POST 请求
-   */
   async postForm<T>(url: string, data: Record<string, string | number | boolean>, config?: Partial<RequestConfig>): Promise<T> {
-    const formData = new URLSearchParams()
-    Object.entries(data).forEach(([key, value]) => {
-      formData.append(key, String(value))
-    })
-    
-    return this.request<T>({
-      url,
-      method: 'POST',
-      data: formData,
-      headers: {
-        'Content-Type': 'application/x-www-form-urlencoded',
-        ...config?.headers
-      },
-      ...config
-    })
+    return this.convenienceMethods.postForm<T>(url, data, config)
   }
   
-  /**
-   * 文件上传
-   */
+  // 文件操作
   async uploadFile<T = any>(url: string, options: FileUploadOptions, config?: Partial<RequestConfig>): Promise<T> {
-    const formData = new FormData()
-    formData.append(options.name || 'file', options.file, options.filename)
-    
-    // 添加额外数据
-    if (options.additionalData) {
-      Object.entries(options.additionalData).forEach(([key, value]) => {
-        formData.append(key, String(value))
-      })
-    }
-    
-    return this.request<T>({
-      url,
-      method: 'POST',
-      data: formData,
-      ...config
-    })
+    return this.convenienceMethods.uploadFile<T>(url, options, config)
   }
   
-  /**
-   * 下载文件
-   */
   async downloadFile(url: string, filename?: string, config?: Partial<RequestConfig>): Promise<Blob> {
-    const blob = await this.request<Blob>({
-      url,
-      method: 'GET',
-      responseType: 'blob',
-      ...config
-    })
-    
-    // 如果是浏览器环境，自动触发下载
-    if (typeof window !== 'undefined' && filename) {
-      const downloadUrl = URL.createObjectURL(blob)
-      const link = document.createElement('a')
-      link.href = downloadUrl
-      link.download = filename
-      document.body.appendChild(link)
-      link.click()
-      document.body.removeChild(link)
-      URL.revokeObjectURL(downloadUrl)
-    }
-    
-    return blob
+    return this.convenienceMethods.downloadFile(url, filename, config)
   }
   
-  /**
-   * 分页请求
-   */
+  // 分页和批量
   async getPaginated<T>(
     url: string, 
     pagination: PaginationParams = {}, 
     config?: Partial<RequestConfig>
   ): Promise<PaginatedResponse<T>> {
-    const params = {
-      page: pagination.page || 1,
-      limit: pagination.limit || pagination.size || 20,
-      ...pagination,
-      ...config?.params
-    }
-    
-    return this.request<PaginatedResponse<T>>({
-      url,
-      method: 'GET',
-      params,
-      ...config
-    })
+    return this.convenienceMethods.getPaginated<T>(url, pagination, config)
   }
-  
-  /**
-   * 帶超时的请求
-   */
-  async withTimeout<T>(timeoutMs: number, requestFn: () => Promise<T>): Promise<T> {
-    const controller = new AbortController()
-    const timeoutId = setTimeout(() => controller.abort(), timeoutMs)
-    
-    try {
-      return await requestFn()
-    } catch (error) {
-      if (controller.signal.aborted) {
-        throw new RequestError(`Request timeout after ${timeoutMs}ms`, {
-          type: RequestErrorType.TIMEOUT_ERROR,
-          suggestion: `请尝试增加超时时间或检查网络状况`,
-          code: 'REQUEST_TIMEOUT'
-        })
-      }
-      throw error
-    } finally {
-      clearTimeout(timeoutId)
-    }
-  }
-  
-  /**
-   * 重试并带指数退避
-   */
-  async retryWithBackoff<T>(
-    requestFn: () => Promise<T>,
-    maxRetries: number = 3,
-    initialDelay: number = 1000
-  ): Promise<T> {
-    let lastError: Error = new Error('No attempts made')
-    
-    for (let attempt = 0; attempt <= maxRetries; attempt++) {
-      try {
-        return await requestFn()
-      } catch (error) {
-        lastError = error instanceof Error ? error : new Error('Unknown error')
-        
-        if (attempt === maxRetries) break
-        
-        const delay = initialDelay * Math.pow(2, attempt)
-        await new Promise(resolve => setTimeout(resolve, delay))
-      }
-    }
-    
-    throw new RequestError(`Request failed after ${maxRetries + 1} attempts`, {
-      type: RequestErrorType.RETRY_ERROR,
-      originalError: lastError,
-      suggestion: '请检查网络连接或服务器状态',
-      code: 'MAX_RETRIES_EXCEEDED'
-    })
-  }
-  
-  /**
-   * 批量请求并返回成功的结果
-   */
+
   async batchRequests<T>(requests: RequestConfig[], options?: {
     concurrency?: number
     ignoreErrors?: boolean
   }): Promise<T[]> {
-    const results = await this.requestConcurrent<T>(requests, {
-      maxConcurrency: options?.concurrency,
-      failFast: !options?.ignoreErrors
-    })
-    
-    return this.getSuccessfulResults(results)
+    return this.featureManager.batchRequests<T>(requests, options)
   }
+  // ==================== 统计和管理方法 ====================
   
-  // ==================== 状态和管理方法 ====================
   
   /**
    * 获取全局配置
    */
   getGlobalConfig(): GlobalConfig {
-    return { ...this.globalConfig }
+    return this.configManager.getGlobalConfig()
   }
   
   /**
    * 获取拦截器列表
    */
   getInterceptors(): RequestInterceptor[] {
-    return [...this.interceptors]
+    return this.interceptorManager.getAll()
   }
   
   /**
    * 获取缓存统计
    */
   getCacheStats() {
-    return this.cacheFeature.getCacheStats()
+    return this.featureManager.getCacheStats()
   }
   
   /**
    * 获取并发统计
    */
   getConcurrentStats() {
-    return this.concurrentFeature.getConcurrentStats()
-  }
-  
-  /**
-   * 更新性能统计
-   */
-  private updatePerformanceStats(method: string, duration: number, success: boolean, errorType?: string): void {
-    this.performanceStats.totalRequests++
-    this.performanceStats.totalResponseTime += duration
-    
-    if (success) {
-      this.performanceStats.successfulRequests++
-    } else {
-      this.performanceStats.failedRequests++
-      if (errorType) {
-        this.performanceStats.errorsByType[errorType] = (this.performanceStats.errorsByType[errorType] || 0) + 1
-      }
-    }
-    
-    // 更新方法统计
-    this.performanceStats.requestsByMethod[method] = (this.performanceStats.requestsByMethod[method] || 0) + 1
-    
-    // 更新响应时间统计
-    this.performanceStats.averageResponseTime = this.performanceStats.totalResponseTime / this.performanceStats.totalRequests
-    this.performanceStats.minResponseTime = Math.min(this.performanceStats.minResponseTime, duration)
-    this.performanceStats.maxResponseTime = Math.max(this.performanceStats.maxResponseTime, duration)
+    return this.featureManager.getConcurrentStats()
   }
   
   /**
    * 获取性能统计信息
    */
   getPerformanceStats(): PerformanceStats {
-    return {
-      ...this.performanceStats,
-      averageResponseTime: Math.round(this.performanceStats.averageResponseTime * 100) / 100,
-      minResponseTime: this.performanceStats.minResponseTime === Infinity ? 0 : Math.round(this.performanceStats.minResponseTime * 100) / 100,
-      maxResponseTime: Math.round(this.performanceStats.maxResponseTime * 100) / 100
-    }
+    return this.performanceMonitor.getStats()
   }
   
   /**
    * 重置性能统计
    */
   resetPerformanceStats(): void {
-    this.performanceStats = {
-      totalRequests: 0,
-      successfulRequests: 0,
-      failedRequests: 0,
-      averageResponseTime: 0,
-      totalResponseTime: 0,
-      minResponseTime: Infinity,
-      maxResponseTime: 0,
-      requestsByMethod: {},
-      errorsByType: {},
-      lastResetTime: Date.now()
-    }
+    this.performanceMonitor.reset()
   }
   
   /**
    * 销毁请求核心实例，清理资源
    */
   destroy(): void {
-    this.cacheFeature.destroy()
-    this.concurrentFeature.destroy()
+    this.featureManager.destroy()
     this.clearInterceptors()
-    this.globalConfig = {}
+    this.configManager.reset()
     this.resetPerformanceStats()
+  }
+
+  /**
+   * 获取所有管理器的统计信息
+   */
+  getAllStats(): {
+    performance: PerformanceStats
+    cache: any
+    concurrent: any
+    interceptors: any
+    config: any
+  } {
+    return {
+      performance: this.getPerformanceStats(),
+      cache: this.getCacheStats(),
+      concurrent: this.getConcurrentStats(),
+      interceptors: this.interceptorManager.getStats(),
+      config: this.configManager.getStats()
+    }
   }
 }
 
