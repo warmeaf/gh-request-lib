@@ -5,7 +5,7 @@ import { Requestor, RequestConfig, RequestError } from '../interface'
  */
 export interface ConcurrentConfig {
   maxConcurrency?: number // 最大并发数，默认不限制
-  failFast?: boolean // 是否快速失败，默认false
+  failFast?: boolean // 是否快速失败，默认为false
   timeout?: number // 整体超时时间
 }
 
@@ -56,7 +56,7 @@ export class ConcurrentFeature {
     const results: Array<ConcurrentResult<T> | undefined> = new Array(configs.length)
     const tasks = configs.map(async (config, index) => {
       try {
-        console.log(`[Concurrent] 发起第${index + 1}个请求: ${config.url}`)
+        console.log(`[Concurrent] Starting request ${index + 1}: ${config.url}`)
         const data = await this.requestor.request<T>(config)
         results[index] = {
           success: true,
@@ -65,7 +65,7 @@ export class ConcurrentFeature {
           index
         }
       } catch (error) {
-        console.error(`[Concurrent] 第${index + 1}个请求失败: ${config.url}`, error)
+        console.error(`[Concurrent] Request ${index + 1} failed: ${config.url}`, error)
         if (failFast) {
           throw error
         }
@@ -96,7 +96,7 @@ export class ConcurrentFeature {
   }
 
   /**
-   * 限制并发数量的并发请求 - 使用真正的并发池
+   * 限制并发数量的并发请求，使用真正的并发池
    */
   private async requestWithConcurrencyLimit<T>(
     configs: RequestConfig[],
@@ -104,7 +104,7 @@ export class ConcurrentFeature {
     failFast: boolean,
     timeout?: number
   ): Promise<ConcurrentResult<T>[]> {
-    // 参数验证
+    // 参数校验
     if (maxConcurrency <= 0) {
       throw new RequestError('Max concurrency must be positive')
     }
@@ -115,7 +115,7 @@ export class ConcurrentFeature {
 
     const executeRequest = async (config: RequestConfig, requestIndex: number): Promise<void> => {
       try {
-        console.log(`[Concurrent] 发起第${requestIndex + 1}个请求 (并发限制: ${maxConcurrency}): ${config.url}`)
+        console.log(`[Concurrent] Starting request ${requestIndex + 1} (concurrency limit: ${maxConcurrency}): ${config.url}`)
         const data = await this.requestor.request<T>(config)
         results[requestIndex] = {
           success: true,
@@ -124,7 +124,7 @@ export class ConcurrentFeature {
           index: requestIndex
         }
       } catch (error) {
-        console.error(`[Concurrent] 第${requestIndex + 1}个请求失败: ${config.url}`, error)
+        console.error(`[Concurrent] Request ${requestIndex + 1} failed: ${config.url}`, error)
         if (failFast) {
           throw error
         }
@@ -154,9 +154,9 @@ export class ConcurrentFeature {
         executing.add(promise)
 
         if (failFast) {
-          // 在 failFast 模式下，一旦有错误就立即抛出
+          // 在快速失败模式下，一旦有错误就立即抛出
           promise.catch(() => {
-            // 错误会在 executeRequest 中处理
+            // 错误会在执行请求中处理
           })
         }
       }

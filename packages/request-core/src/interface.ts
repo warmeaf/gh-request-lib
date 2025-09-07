@@ -27,7 +27,7 @@ export interface RequestConfig {
   timeout?: number
   signal?: AbortSignal
   responseType?: 'json' | 'text' | 'blob' | 'arraybuffer'
-  // 性能监控钩子
+  // 性能监控回调函数
   onStart?: (config: RequestConfig) => void
   onEnd?: (config: RequestConfig, duration: number) => void
   onError?: (config: RequestConfig, error: unknown, duration: number) => void
@@ -45,7 +45,7 @@ export class RequestError extends Error {
   ) {
     super(message)
     this.name = 'RequestError'
-    // 保持错误堆栈
+    // 保持错误堆栈信息
     if (Error.captureStackTrace) {
       Error.captureStackTrace(this, RequestError)
     }

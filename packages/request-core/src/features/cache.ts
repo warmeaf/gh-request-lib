@@ -4,8 +4,8 @@ import { Requestor, RequestConfig, RequestError } from '../interface'
  * @description 缓存配置
  */
 export interface CacheConfig {
-  ttl?: number // 缓存时间(ms)
-  key?: string // 自定义缓存key
+  ttl?: number // 缓存时间(毫秒)
+  key?: string // 自定义缓存键
   clone?: 'none' | 'shallow' | 'deep' // 返回数据是否拷贝，默认不拷贝以保持现状
   maxEntries?: number // 可选的最大缓存条目数（不设置则不限制）
 }
@@ -113,12 +113,12 @@ export class CacheFeature {
     // 检查缓存
     const cachedItem = this.cache.get(cacheKey)
     if (cachedItem && this.isCacheValid(cachedItem)) {
-      console.log(`[Cache] 命中缓存: ${cacheKey}`)
+      console.log(`[Cache] Cache hit: ${cacheKey}`)
       return this.cloneData(cachedItem.data, clone) as T
     }
 
     // 发起请求
-    console.log(`[Cache] 缓存未命中，发起请求: ${config.url}`)
+    console.log(`[Cache] Cache miss, making request: ${config.url}`)
     const data = await this.requestor.request<T>(config)
 
     // 存储缓存
@@ -128,7 +128,7 @@ export class CacheFeature {
       ttl
     })
 
-    // 超出容量时淘汰最早插入的一条（简易 FIFO，保持行为不变基础上提供可选限制）
+    // 超出容量时淘汰最早插入的一条（简易先进先出，保持行为不变基础上提供可选限制）
     if (typeof maxEntries === 'number' && maxEntries > 0 && this.cache.size > maxEntries) {
       const oldestKey = this.cache.keys().next().value as string | undefined
       if (oldestKey !== undefined) {
@@ -162,7 +162,7 @@ export class CacheFeature {
       }
       return data
     }
-    // deep
+    // 深拷贝
     // 优先使用结构化克隆（若可用）
     try {
       // @ts-ignore structuredClone 可能不存在于某些环境
@@ -171,7 +171,7 @@ export class CacheFeature {
         return structuredClone(data)
       }
     } catch {}
-    // 回退到 JSON 深拷贝（非可序列化类型将抛弃元信息）
+    // 回退到JSON深拷贝（非可序列化类型将丢失元信息）
     try {
       return JSON.parse(JSON.stringify(data))
     } catch {

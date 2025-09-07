@@ -6,7 +6,7 @@ import { Requestor, RequestConfig, RequestError } from '../interface'
 export interface RetryConfig {
   retries: number
   delay?: number
-  backoffFactor?: number // 可选指数退避系数(>1)，默认不启用
+  backoffFactor?: number // 可选指数退避系数(大于1)，默认不启用
   jitter?: number // 可选抖动比例(0-1)，默认不启用
   shouldRetry?: (error: unknown, attempt: number) => boolean // 自定义重试条件
 }
@@ -24,9 +24,9 @@ export class RetryFeature {
     // 超过最大重试次数
     if (attempt >= 5) return false
     
-    // 如果是 RequestError，检查状态码
+    // 如果是请求错误，检查状态码
     if (error instanceof RequestError) {
-      // 5xx 服务器错误可以重试
+      // 5xx服务器错误可以重试
       if (error.status && error.status >= 500 && error.status < 600) {
         return true
       }
@@ -58,7 +58,7 @@ export class RetryFeature {
     config: RequestConfig,
     retryConfig: RetryConfig = { retries: 3 }
   ): Promise<T> {
-    // 参数验证
+    // 参数校验
     if (retryConfig.retries < 0) {
       throw new RequestError('Retries must be non-negative')
     }
@@ -72,7 +72,7 @@ export class RetryFeature {
       throw new RequestError('Jitter must be between 0 and 1')
     }
 
-    const maxAttempts = retryConfig.retries + 1 // 第一次尝试 + 重试次数
+    const maxAttempts = retryConfig.retries + 1 // 第一次尝试加上重试次数
     const baseDelay = retryConfig.delay ?? 1000
     const backoff = retryConfig.backoffFactor && retryConfig.backoffFactor > 1 ? retryConfig.backoffFactor : 1
     const jitter = retryConfig.jitter && retryConfig.jitter > 0 && retryConfig.jitter <= 1 ? retryConfig.jitter : 0
@@ -83,19 +83,19 @@ export class RetryFeature {
 
     while (attempt < maxAttempts) {
       try {
-        console.log(`[Retry] 发起请求到: ${config.url} (尝试 ${attempt + 1}/${maxAttempts})`)
+        console.log(`[Retry] Making request to: ${config.url} (attempt ${attempt + 1}/${maxAttempts})`)
         return await this.requestor.request<T>(config)
       } catch (error) {
         lastError = error
         const isLastAttempt = attempt === maxAttempts - 1
         
-        console.error(`[Retry] 请求失败，剩余重试次数: ${maxAttempts - attempt - 1}`, error)
+        console.error(`[Retry] Request failed, remaining retries: ${maxAttempts - attempt - 1}`, error)
         
         if (isLastAttempt || !shouldRetry(error, attempt)) {
           throw error
         }
 
-        // 计算下次等待时间：可选指数退避 + 抖动
+        // 计算下次等待时间：可选指数退避加上抖动
         const delayBase = backoff === 1 ? baseDelay : baseDelay * Math.pow(backoff, attempt)
         const jitterDelta = jitter > 0 ? delayBase * (Math.random() * jitter) : 0
         const waitMs = Math.max(0, Math.floor(delayBase + jitterDelta))
@@ -107,7 +107,7 @@ export class RetryFeature {
       }
     }
     
-    // 理论上不可达，但为了类型安全
+    // 理论上不会达到，但为了类型安全
     throw lastError || new RequestError('Unexpected retry loop exit')
   }
 }

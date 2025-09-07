@@ -34,7 +34,7 @@ export class AxiosRequestor implements Requestor {
     }
     // 取消信号
     if (config.signal) {
-      // Axios >= 1 支持 signal  
+      // Axios版本1及以上支持signal  
       Object.assign(axiosConfig, { signal: config.signal })
     }
 
