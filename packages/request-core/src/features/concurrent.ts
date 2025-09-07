@@ -15,7 +15,7 @@ export interface ConcurrentConfig {
 export interface ConcurrentResult<T> {
   success: boolean
   data?: T
-  error?: any
+  error?: Error | RequestError | unknown
   config: RequestConfig
   index: number
 }
@@ -195,13 +195,13 @@ export class ConcurrentFeature {
         clearTimeout(timer)
         resolve(value)
       }
-      const onReject = (err: any) => {
+      const onReject = (err: unknown) => {
         if (settled) return
         settled = true
         clearTimeout(timer)
         reject(err)
       }
-      const timer = setTimeout(() => onReject(new Error(`并发请求超时: ${timeout}ms`)), timeout)
+      const timer = setTimeout(() => onReject(new Error(`Concurrent request timeout: ${timeout}ms`)), timeout)
       promise.then(onResolve, onReject)
     })
   }

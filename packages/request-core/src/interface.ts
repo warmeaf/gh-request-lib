@@ -1,11 +1,28 @@
 /**
+ * @description 请求参数类型
+ */
+export type RequestParams = Record<string, string | number | boolean | null | undefined>
+
+/**
+ * @description 请求数据类型
+ */
+export type RequestData = 
+  | Record<string, unknown>
+  | string
+  | FormData
+  | Blob
+  | ArrayBuffer
+  | null
+  | undefined
+
+/**
  * @description 请求配置接口
  */
 export interface RequestConfig {
   url: string
   method: 'GET' | 'POST' | 'PUT' | 'DELETE' | 'PATCH'
-  data?: unknown
-  params?: Record<string, unknown>
+  data?: RequestData
+  params?: RequestParams
   headers?: Record<string, string>
   timeout?: number
   signal?: AbortSignal

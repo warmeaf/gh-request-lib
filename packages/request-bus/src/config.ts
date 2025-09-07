@@ -11,7 +11,7 @@ export type RequestImplementation = 'axios' | 'fetch'
  * @description 配置类，负责选择并注入具体的实现
  */
 export class RequestConfig {
-  private static instance: RequestCore
+  private static instance: RequestCore | null = null
   
   /**
    * 创建请求核心实例
@@ -23,15 +23,15 @@ export class RequestConfig {
       
       switch (implementation) {
         case 'axios':
-          console.log('[Config] 使用 Axios 实现')
+          console.log('[Config] Using Axios implementation')
           requestor = new AxiosRequestor()
           break
         case 'fetch':
-          console.log('[Config] 使用 Fetch 实现')
+          console.log('[Config] Using Fetch implementation')
           requestor = new FetchRequestor()
           break
         default:
-          throw new Error(`不支持的实现方式: ${implementation}`)
+          throw new Error(`Unsupported implementation: ${implementation}`)
       }
       
       this.instance = new RequestCore(requestor)
@@ -54,6 +54,9 @@ export class RequestConfig {
    * 重置实例（用于切换实现）
    */
   static reset(): void {
-    this.instance = undefined as any as RequestCore
+    if (this.instance) {
+      this.instance.destroy()
+    }
+    this.instance = null
   }
 }

@@ -20,7 +20,7 @@ export class AxiosRequestor implements Requestor {
           acc[key] = value
         }
         return acc
-      }, {} as Record<string, any>)
+      }, {} as Record<string, string | number | boolean>)
     }
 
     const axiosConfig: AxiosRequestConfig = {
@@ -30,15 +30,15 @@ export class AxiosRequestor implements Requestor {
       params: filteredParams,
       headers: config.headers,
       timeout: config.timeout || 10000, // 默认 10 秒超时
-      responseType: (config.responseType as any) || 'json',
+      responseType: config.responseType || 'json',
     }
     // 取消信号
     if (config.signal) {
-      // Axios >= 1 支持 signal
-      ;(axiosConfig as any).signal = config.signal
+      // Axios >= 1 支持 signal  
+      Object.assign(axiosConfig, { signal: config.signal })
     }
 
-    console.log('[AxiosRequestor] 使用 Axios 发送请求...', {
+    console.log('[AxiosRequestor] Sending request with Axios...', {
       method: config.method,
       url: config.url
     })
@@ -47,7 +47,7 @@ export class AxiosRequestor implements Requestor {
       const response: AxiosResponse<T> = await axios.request(axiosConfig)
       return response.data
     } catch (error) {
-      console.error('[AxiosRequestor] 请求失败:', error)
+      console.error('[AxiosRequestor] Request failed:', error)
       
       // 统一错误处理
       if (error instanceof RequestError) {

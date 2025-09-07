@@ -40,16 +40,17 @@ export class FetchRequestor implements Requestor {
       const isArrayBuffer = typeof ArrayBuffer !== 'undefined' && (data instanceof ArrayBuffer)
       if (!isFormLike && !isBlob && !isArrayBuffer) {
         if (!fetchOptions.headers) fetchOptions.headers = {}
-        if (!(fetchOptions.headers as Record<string, string>)['Content-Type']) {
-          (fetchOptions.headers as Record<string, string>)['Content-Type'] = 'application/json'
+        const headersRecord = fetchOptions.headers as Record<string, string>
+        if (!headersRecord['Content-Type']) {
+          headersRecord['Content-Type'] = 'application/json'
         }
         fetchOptions.body = typeof data === 'string' ? data : JSON.stringify(data)
       } else {
-        fetchOptions.body = data as any
+        fetchOptions.body = data as BodyInit
       }
     }
 
-    console.log('[FetchRequestor] 使用 Fetch API 发送请求...', {
+    console.log('[FetchRequestor] Sending request with Fetch API...', {
       method,
       url
     })
@@ -99,7 +100,7 @@ export class FetchRequestor implements Requestor {
         return text as unknown as T
       }
     } catch (error) {
-      console.error('[FetchRequestor] 请求失败:', error)
+      console.error('[FetchRequestor] Request failed:', error)
       
       // 统一错误处理
       if (error instanceof RequestError) {
