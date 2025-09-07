@@ -1,5 +1,5 @@
 import axios, { AxiosRequestConfig, AxiosResponse, AxiosError } from 'axios'
-import { Requestor, RequestConfig, RequestError } from 'request-core'
+import { Requestor, RequestConfig, RequestError, RequestErrorType } from 'request-core'
 
 /**
  * @description 基于 Axios 的 Requestor 接口实现。
@@ -57,30 +57,39 @@ export class AxiosRequestor implements Requestor {
       // 处理 Axios 错误
       if (axios.isAxiosError(error)) {
         const axiosError = error as AxiosError
-        throw new RequestError(
-          axiosError.message,
-          axiosError.response?.status,
-          !!axiosError.response,
-          axiosError
-        )
+        throw new RequestError(axiosError.message, {
+          status: axiosError.response?.status,
+          isHttpError: !!axiosError.response,
+          originalError: axiosError,
+          type: axiosError.response?.status ? RequestErrorType.HTTP_ERROR : RequestErrorType.NETWORK_ERROR,
+          context: {
+            url: config.url,
+            method: config.method,
+            timestamp: Date.now()
+          }
+        })
       }
       
       // 处理其他错误
       if (error instanceof Error) {
-        throw new RequestError(
-          error.message,
-          undefined,
-          false,
-          error
-        )
+        throw new RequestError(error.message, {
+          originalError: error,
+          context: {
+            url: config.url,
+            method: config.method,
+            timestamp: Date.now()
+          }
+        })
       }
       
-      throw new RequestError(
-        'Unknown error occurred',
-        undefined,
-        false,
-        error
-      )
+      throw new RequestError('Unknown error occurred', {
+        originalError: error,
+        context: {
+          url: config.url,
+          method: config.method,
+          timestamp: Date.now()
+        }
+      })
     }
   }
 }

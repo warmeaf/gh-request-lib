@@ -660,6 +660,7 @@ export class RequestCore {
    */
   destroy(): void {
     this.cacheFeature.destroy()
+    this.concurrentFeature.destroy()
     this.clearInterceptors()
     this.globalConfig = {}
   }
@@ -732,22 +733,22 @@ class RequestBuilderImpl<T> implements RequestBuilder<T> {
   
   json<U = unknown>(): RequestBuilder<U> {
     this.config.responseType = 'json'
-    return this as any
+    return this as unknown as RequestBuilder<U>
   }
   
   text(): RequestBuilder<string> {
     this.config.responseType = 'text'
-    return this as any
+    return this as unknown as RequestBuilder<string>
   }
   
   blob(): RequestBuilder<Blob> {
     this.config.responseType = 'blob'
-    return this as any
+    return this as unknown as RequestBuilder<Blob>
   }
   
   arrayBuffer(): RequestBuilder<ArrayBuffer> {
     this.config.responseType = 'arraybuffer'
-    return this as any
+    return this as unknown as RequestBuilder<ArrayBuffer>
   }
   
   async send(): Promise<T> {

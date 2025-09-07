@@ -156,7 +156,7 @@ export class CacheFeature {
   }
 
   /**
-   * 生成安全的缓存键
+   * 生成安全的缓存键 - 性能优化版本
    */
   private generateCacheKey(config: RequestConfig, customKey?: string): string {
     if (customKey) {
@@ -175,9 +175,9 @@ export class CacheFeature {
       throw new RequestError('Invalid URL for cache key generation')
     }
     
-    // 使用优化的序列化
-    const dataStr = data === undefined ? '' : this.fastStableStringify(data)
-    const paramsStr = params === undefined ? '' : this.fastStableStringify(params)
+    // 快速路径：处理简单情况，避免昂贵的序列化
+    const dataStr = this.getSimpleDataString(data)
+    const paramsStr = this.getSimpleParamsString(params)
     
     const key = `${method}:${url}:body=${dataStr}:params=${paramsStr}`
     
@@ -189,6 +189,61 @@ export class CacheFeature {
     }
     
     return key
+  }
+  
+  /**
+   * 获取简单数据字符串 - 性能优化
+   */
+  private getSimpleDataString(data: unknown): string {
+    if (data === undefined || data === null) return ''
+    
+    // 快速路径：基础类型
+    if (typeof data === 'string') return data
+    if (typeof data === 'number' || typeof data === 'boolean') return String(data)
+    
+    // 快速路径：简单对象（键少于10个且无嵌套）
+    if (typeof data === 'object' && !Array.isArray(data)) {
+      const obj = data as Record<string, unknown>
+      const keys = Object.keys(obj)
+      
+      if (keys.length <= 10 && keys.every(key => 
+        typeof obj[key] === 'string' || 
+        typeof obj[key] === 'number' || 
+        typeof obj[key] === 'boolean' ||
+        obj[key] === null ||
+        obj[key] === undefined
+      )) {
+        // 简单对象，直接序列化
+        return JSON.stringify(obj)
+      }
+    }
+    
+    // 复杂情况：使用优化的深度序列化
+    return this.fastStableStringify(data, { maxDepth: 6, maxKeys: 30 })
+  }
+  
+  /**
+   * 获取简单参数字符串 - 性能优化
+   */
+  private getSimpleParamsString(params: unknown): string {
+    if (!params || typeof params !== 'object') return ''
+    
+    const obj = params as Record<string, unknown>
+    const keys = Object.keys(obj)
+    
+    // 快速路径：参数对象通常都是简单的键值对
+    if (keys.length <= 20 && keys.every(key => 
+      typeof obj[key] === 'string' || 
+      typeof obj[key] === 'number' || 
+      typeof obj[key] === 'boolean' ||
+      obj[key] === null ||
+      obj[key] === undefined
+    )) {
+      return JSON.stringify(obj)
+    }
+    
+    // 复杂参数使用优化序列化
+    return this.fastStableStringify(params, { maxDepth: 4, maxKeys: 20 })
   }
   
   /**

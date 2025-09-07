@@ -36,14 +36,23 @@ export interface ConcurrentStats {
 }
 
 /**
- * @description 高效信号量实现
+ * @description 高效信号量实现 - 带超时和清理机制
  */
 class Semaphore {
   private permits: number
-  private waitingQueue: Array<() => void> = []
+  private waitingQueue: Array<{
+    resolve: () => void
+    reject: (error: Error) => void
+    timeout: NodeJS.Timeout | null
+    timestamp: number
+  }> = []
+  private cleanupInterval: NodeJS.Timeout | null = null
+  private readonly maxWaitTime = 30000 // 30秒最大等待时间
   
   constructor(permits: number) {
     this.permits = permits
+    // 启动定期清理，防止内存泄漏
+    this.startPeriodicCleanup()
   }
   
   async acquire(): Promise<void> {
@@ -52,17 +61,65 @@ class Semaphore {
       return Promise.resolve()
     }
     
-    return new Promise<void>((resolve) => {
-      this.waitingQueue.push(resolve)
+    return new Promise<void>((resolve, reject) => {
+      const timestamp = Date.now()
+      
+      // 设置超时
+      const timeout = setTimeout(() => {
+        this.removeFromQueue(item)
+        reject(new Error(`Semaphore acquire timeout after ${this.maxWaitTime}ms`))
+      }, this.maxWaitTime)
+      
+      const item = { resolve, reject, timeout, timestamp }
+      this.waitingQueue.push(item)
     })
   }
   
   release(): void {
     this.permits++
-    const nextResolve = this.waitingQueue.shift()
-    if (nextResolve) {
+    const nextItem = this.waitingQueue.shift()
+    if (nextItem) {
       this.permits--
-      nextResolve()
+      
+      // 清理超时
+      if (nextItem.timeout) {
+        clearTimeout(nextItem.timeout)
+      }
+      
+      nextItem.resolve()
+    }
+  }
+  
+  private removeFromQueue(targetItem: typeof this.waitingQueue[0]): void {
+    const index = this.waitingQueue.indexOf(targetItem)
+    if (index > -1) {
+      this.waitingQueue.splice(index, 1)
+    }
+  }
+  
+  private startPeriodicCleanup(): void {
+    // 每5分钟清理一次过期的等待项
+    this.cleanupInterval = setInterval(() => {
+      this.cleanupExpiredWaiters()
+    }, 5 * 60 * 1000)
+  }
+  
+  private cleanupExpiredWaiters(): void {
+    const now = Date.now()
+    const expiredItems = this.waitingQueue.filter(item => 
+      now - item.timestamp > this.maxWaitTime
+    )
+    
+    expiredItems.forEach(item => {
+      this.removeFromQueue(item)
+      if (item.timeout) {
+        clearTimeout(item.timeout)
+      }
+      item.reject(new Error('Semaphore acquire expired during cleanup'))
+    })
+    
+    if (expiredItems.length > 0) {
+      console.warn(`[Semaphore] Cleaned up ${expiredItems.length} expired waiters`)
     }
   }
   
@@ -72,6 +129,28 @@ class Semaphore {
   
   waitingCount(): number {
     return this.waitingQueue.length
+  }
+  
+  /**
+   * 销毁信号量，清理所有资源
+   */
+  destroy(): void {
+    // 清理定时器
+    if (this.cleanupInterval) {
+      clearInterval(this.cleanupInterval)
+      this.cleanupInterval = null
+    }
+    
+    // 拒绝所有等待中的请求
+    this.waitingQueue.forEach(item => {
+      if (item.timeout) {
+        clearTimeout(item.timeout)
+      }
+      item.reject(new Error('Semaphore destroyed'))
+    })
+    
+    this.waitingQueue = []
+    this.permits = 0
   }
 }
 
@@ -88,6 +167,7 @@ export class ConcurrentFeature {
     maxConcurrencyUsed: 0
   }
   private durations: number[] = []
+  private activeSemaphores: Set<Semaphore> = new Set()
   
   constructor(private requestor: Requestor) {}
 
@@ -213,6 +293,7 @@ export class ConcurrentFeature {
     this.resetStats(configs.length)
     
     const semaphore = new Semaphore(maxConcurrency)
+    this.activeSemaphores.add(semaphore) // 追踪信号量
     const results: Array<ConcurrentResult<T> | undefined> = new Array(configs.length)
     const startTime = Date.now()
     
@@ -242,6 +323,10 @@ export class ConcurrentFeature {
 
     // 更新最终统计
     this.updateFinalStats(Date.now() - startTime, maxConcurrency)
+    
+    // 清理信号量
+    this.activeSemaphores.delete(semaphore)
+    semaphore.destroy()
     
     const denseResults = results.filter((r): r is ConcurrentResult<T> => Boolean(r))
     return denseResults
@@ -484,5 +569,20 @@ export class ConcurrentFeature {
       successRate: results.length > 0 ? 
         Math.round((successful.length / results.length) * 100) : 0
     }
+  }
+  
+  /**
+   * 销毁并发功能，清理所有资源
+   */
+  destroy(): void {
+    // 销毁所有活跃的信号量
+    this.activeSemaphores.forEach(semaphore => {
+      semaphore.destroy()
+    })
+    this.activeSemaphores.clear()
+    
+    // 重置统计信息
+    this.resetStats(0)
+    this.durations = []
   }
 }

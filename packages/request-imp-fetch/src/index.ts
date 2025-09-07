@@ -1,4 +1,4 @@
-import { Requestor, RequestConfig, RequestError } from 'request-core'
+import { Requestor, RequestConfig, RequestError, RequestErrorType } from 'request-core'
 
 /**
  * @description 基于 Fetch API 的 Requestor 接口实现。
@@ -71,11 +71,16 @@ export class FetchRequestor implements Requestor {
       clearTimeout(timeoutId)
 
       if (!response.ok) {
-        throw new RequestError(
-          `HTTP error! status: ${response.status}`,
-          response.status,
-          true
-        )
+        throw new RequestError(`HTTP error! status: ${response.status}`, {
+          status: response.status,
+          isHttpError: true,
+          type: RequestErrorType.HTTP_ERROR,
+          context: {
+            url: config.url,
+            method: config.method,
+            timestamp: Date.now()
+          }
+        })
       }
 
       // 按期望响应类型解析
@@ -109,20 +114,25 @@ export class FetchRequestor implements Requestor {
       
       // 将其他错误包装为 RequestError
       if (error instanceof Error) {
-        throw new RequestError(
-          error.message,
-          undefined,
-          false,
-          error
-        )
+        throw new RequestError(error.message, {
+          originalError: error,
+          type: error.name === 'AbortError' ? RequestErrorType.TIMEOUT_ERROR : RequestErrorType.NETWORK_ERROR,
+          context: {
+            url: config.url,
+            method: config.method,
+            timestamp: Date.now()
+          }
+        })
       }
       
-      throw new RequestError(
-        'Unknown error occurred',
-        undefined,
-        false,
-        error
-      )
+      throw new RequestError('Unknown error occurred', {
+        originalError: error,
+        context: {
+          url: config.url,
+          method: config.method,
+          timestamp: Date.now()
+        }
+      })
     }
   }
 }
