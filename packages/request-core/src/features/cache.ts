@@ -1,5 +1,6 @@
 import { Requestor, RequestConfig, RequestError } from '../interface'
 import { LogFormatter } from '../utils/error-handler'
+import { CacheKeyGenerator, CacheKeyConfig } from '../cache/cache-key-generator'
 
 /**
  * @description 缓存配置
@@ -9,6 +10,7 @@ export interface CacheConfig {
   key?: string // 自定义缓存键
   clone?: 'none' | 'shallow' | 'deep' // 返回数据是否拷贝，默认不拷贝以保持现状
   maxEntries?: number // 可选的最大缓存条目数（不设置则不限制）
+  keyGenerator?: CacheKeyConfig // 缓存键生成器配置
 }
 
 /**
@@ -22,26 +24,31 @@ interface CacheItem<T = unknown> {
   accessCount: number // 访问计数
 }
 
-/**
- * @description 序列化选项
- */
-interface SerializationOptions {
-  maxDepth: number
-  maxKeys: number
-  visited: WeakSet<object>
-}
 
 /**
- * @description 请求缓存功能 - 使用懒清理和LRU策略
+ * @description 请求缓存功能 - 使用懒清理和LRU策略 + 高性能键生成
  */
 export class CacheFeature {
   private cache = new Map<string, CacheItem<unknown>>()
   private maxEntries: number
   private lastCleanupTime = 0
   private readonly cleanupInterval = 5 * 60 * 1000 // 5分钟清理间隔
+  private keyGenerator: CacheKeyGenerator
   
-  constructor(private requestor: Requestor, maxEntries = 1000) {
+  constructor(
+    private requestor: Requestor, 
+    maxEntries = 1000,
+    keyGeneratorConfig?: CacheKeyConfig
+  ) {
     this.maxEntries = maxEntries
+    this.keyGenerator = new CacheKeyGenerator({
+      includeHeaders: false,
+      headersWhitelist: ['content-type', 'authorization'],
+      maxKeyLength: 256,
+      enableHashCache: true,
+      hashAlgorithm: 'fnv1a',
+      ...keyGeneratorConfig
+    })
   }
 
   /**
@@ -130,166 +137,22 @@ export class CacheFeature {
   }
 
   /**
-   * 高性能稳定序列化：防循环引用，限制深度和键数量
+   * 生成缓存键 - 使用高性能键生成器
    */
-  private fastStableStringify(value: unknown, options?: Partial<SerializationOptions>): string {
-    const opts: SerializationOptions = {
-      maxDepth: options?.maxDepth ?? 8,
-      maxKeys: options?.maxKeys ?? 50,
-      visited: options?.visited ?? new WeakSet()
+  private generateCacheKey(config: RequestConfig, customKey?: string, keyGeneratorConfig?: CacheKeyConfig): string {
+    // 如果有键生成器配置，临时更新配置
+    if (keyGeneratorConfig) {
+      this.keyGenerator.updateConfig(keyGeneratorConfig)
     }
-    
-    return this.stringifyValue(value, opts, 0)
-  }
-  
-  private stringifyValue(value: unknown, opts: SerializationOptions, depth: number): string {
-    // 基础类型快速路径
-    if (value === null) return 'null'
-    if (typeof value !== 'object') return JSON.stringify(value)
-    
-    // 深度检查
-    if (depth >= opts.maxDepth) return '[MaxDepth]'
-    
-    // 循环引用检查
-    if (opts.visited.has(value as object)) return '[Circular]'
-    opts.visited.add(value as object)
     
     try {
-      if (Array.isArray(value)) {
-        return this.stringifyArray(value, opts, depth)
-      } else {
-        return this.stringifyObject(value as Record<string, unknown>, opts, depth)
-      }
-    } finally {
-      opts.visited.delete(value as object)
+      return this.keyGenerator.generateCacheKey(config, customKey)
+    } catch (error) {
+      throw new RequestError(
+        `Failed to generate cache key: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        { originalError: error }
+      )
     }
-  }
-  
-  private stringifyArray(arr: unknown[], opts: SerializationOptions, depth: number): string {
-    // 限制数组长度，避免过大数组影响性能
-    const items = arr.slice(0, opts.maxKeys).map(item => 
-      this.stringifyValue(item, opts, depth + 1)
-    )
-    return '[' + items.join(',') + (arr.length > opts.maxKeys ? ',...' : '') + ']'
-  }
-  
-  private stringifyObject(obj: Record<string, unknown>, opts: SerializationOptions, depth: number): string {
-    const keys = Object.keys(obj).sort()
-    const limitedKeys = keys.slice(0, opts.maxKeys)
-    
-    const entries = limitedKeys.map(key => {
-      const val = obj[key]
-      const keyStr = JSON.stringify(key)
-      const valStr = this.stringifyValue(val, opts, depth + 1)
-      return `${keyStr}:${valStr}`
-    })
-    
-    const result = '{' + entries.join(',') + (keys.length > opts.maxKeys ? ',...' : '') + '}'
-    return result
-  }
-
-  /**
-   * 生成安全的缓存键 - 性能优化版本
-   */
-  private generateCacheKey(config: RequestConfig, customKey?: string): string {
-    if (customKey) {
-      // 安全验证自定义键
-      if (typeof customKey !== 'string' || customKey.length > 200 || 
-          /[\x00-\x1f\x7f-\x9f]/.test(customKey)) {
-        throw new RequestError('Invalid custom cache key: must be a safe string under 200 chars')
-      }
-      return customKey
-    }
-    
-    const { url, method, data, params } = config
-    
-    // 安全检查URL
-    if (!url || typeof url !== 'string' || url.length > 2048) {
-      throw new RequestError('Invalid URL for cache key generation')
-    }
-    
-    // 快速路径：处理简单情况，避免昂贵的序列化
-    const dataStr = this.getSimpleDataString(data)
-    const paramsStr = this.getSimpleParamsString(params)
-    
-    const key = `${method}:${url}:body=${dataStr}:params=${paramsStr}`
-    
-    // 限制缓存键长度
-    if (key.length > 1024) {
-      // 使用哈希缩短过长的键
-      const hash = this.simpleHash(key)
-      return `${method}:${url.substring(0, 100)}:hash=${hash}`
-    }
-    
-    return key
-  }
-  
-  /**
-   * 获取简单数据字符串 - 性能优化
-   */
-  private getSimpleDataString(data: unknown): string {
-    if (data === undefined || data === null) return ''
-    
-    // 快速路径：基础类型
-    if (typeof data === 'string') return data
-    if (typeof data === 'number' || typeof data === 'boolean') return String(data)
-    
-    // 快速路径：简单对象（键少于10个且无嵌套）
-    if (typeof data === 'object' && !Array.isArray(data)) {
-      const obj = data as Record<string, unknown>
-      const keys = Object.keys(obj)
-      
-      if (keys.length <= 10 && keys.every(key => 
-        typeof obj[key] === 'string' || 
-        typeof obj[key] === 'number' || 
-        typeof obj[key] === 'boolean' ||
-        obj[key] === null ||
-        obj[key] === undefined
-      )) {
-        // 简单对象，直接序列化
-        return JSON.stringify(obj)
-      }
-    }
-    
-    // 复杂情况：使用优化的深度序列化
-    return this.fastStableStringify(data, { maxDepth: 6, maxKeys: 30 })
-  }
-  
-  /**
-   * 获取简单参数字符串 - 性能优化
-   */
-  private getSimpleParamsString(params: unknown): string {
-    if (!params || typeof params !== 'object') return ''
-    
-    const obj = params as Record<string, unknown>
-    const keys = Object.keys(obj)
-    
-    // 快速路径：参数对象通常都是简单的键值对
-    if (keys.length <= 20 && keys.every(key => 
-      typeof obj[key] === 'string' || 
-      typeof obj[key] === 'number' || 
-      typeof obj[key] === 'boolean' ||
-      obj[key] === null ||
-      obj[key] === undefined
-    )) {
-      return JSON.stringify(obj)
-    }
-    
-    // 复杂参数使用优化序列化
-    return this.fastStableStringify(params, { maxDepth: 4, maxKeys: 20 })
-  }
-  
-  /**
-   * 简单哈希函数，用于缩短过长的缓存键
-   */
-  private simpleHash(str: string): string {
-    let hash = 0
-    for (let i = 0; i < str.length; i++) {
-      const char = str.charCodeAt(i)
-      hash = ((hash << 5) - hash) + char
-      hash = hash & hash // 转为32位整数
-    }
-    return Math.abs(hash).toString(36)
   }
 
   /**
@@ -309,7 +172,7 @@ export class CacheFeature {
   }
 
   /**
-   * 带缓存的请求 - 优化版本
+   * 带缓存的请求 - 高性能版本
    * @param config 请求配置
    * @param cacheConfig 缓存配置
    */
@@ -317,7 +180,7 @@ export class CacheFeature {
     config: RequestConfig,
     cacheConfig: CacheConfig = { ttl: 5 * 60 * 1000 }
   ): Promise<T> {
-    const { ttl = 5 * 60 * 1000, key, clone = 'none', maxEntries } = cacheConfig
+    const { ttl = 5 * 60 * 1000, key, clone = 'none', maxEntries, keyGenerator } = cacheConfig
     
     // 如果配置了maxEntries，更新实例的maxEntries
     if (typeof maxEntries === 'number' && maxEntries > 0) {
@@ -327,7 +190,7 @@ export class CacheFeature {
     // 执行增量清理
     this.incrementalCleanupIfNeeded()
     
-    const cacheKey = this.generateCacheKey(config, key)
+    const cacheKey = this.generateCacheKey(config, key, keyGenerator)
 
     // 检查缓存
     const cachedItem = this.cache.get(cacheKey)
@@ -451,16 +314,57 @@ export class CacheFeature {
   }
   
   /**
-   * 获取缓存统计信息
+   * 获取缓存统计信息 - 增强版
    */
   getCacheStats(): {
     size: number
     maxEntries: number
     hitRate?: number
+    keyGeneratorStats: ReturnType<CacheKeyGenerator['getStats']>
+    lastCleanup: number
+    cleanupInterval: number
   } {
     return {
       size: this.cache.size,
-      maxEntries: this.maxEntries
+      maxEntries: this.maxEntries,
+      keyGeneratorStats: this.keyGenerator.getStats(),
+      lastCleanup: this.lastCleanupTime,
+      cleanupInterval: this.cleanupInterval
     }
+  }
+
+  /**
+   * 获取键生成器统计信息
+   */
+  getKeyGeneratorStats() {
+    return this.keyGenerator.getStats()
+  }
+
+  /**
+   * 更新键生成器配置
+   */
+  updateKeyGeneratorConfig(config: Partial<CacheKeyConfig>): void {
+    this.keyGenerator.updateConfig(config)
+  }
+
+  /**
+   * 清理键生成器缓存
+   */
+  clearKeyGeneratorCache(): void {
+    this.keyGenerator.clearCache()
+  }
+
+  /**
+   * 重置键生成器统计
+   */
+  resetKeyGeneratorStats(): void {
+    this.keyGenerator.resetStats()
+  }
+
+  /**
+   * 预热键生成器缓存
+   */
+  warmupKeyGeneratorCache(configs: RequestConfig[]): void {
+    this.keyGenerator.warmupCache(configs)
   }
 }

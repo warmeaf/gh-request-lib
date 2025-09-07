@@ -66,3 +66,7 @@ export type {
   CleanupResult,
   CleanupConfig
 } from './memory'
+
+// 导出缓存键生成器
+export { CacheKeyGenerator } from './cache'
+export type { CacheKeyConfig } from './cache'
