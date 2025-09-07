@@ -7,6 +7,7 @@ export interface ConcurrentConfig {
   maxConcurrency?: number // 最大并发数，默认不限制
   failFast?: boolean // 是否快速失败，默认为false
   timeout?: number // 整体超时时间
+  retryOnError?: boolean // 发生错误时是否重试，默认false
 }
 
 /**
@@ -18,12 +19,76 @@ export interface ConcurrentResult<T> {
   error?: Error | RequestError | unknown
   config: RequestConfig
   index: number
+  duration?: number // 请求耗时
+  retryCount?: number // 重试次数
 }
 
 /**
- * @description 并发请求功能
+ * @description 并发性能统计
+ */
+export interface ConcurrentStats {
+  total: number
+  completed: number
+  successful: number
+  failed: number
+  averageDuration: number
+  maxConcurrencyUsed: number
+}
+
+/**
+ * @description 高效信号量实现
+ */
+class Semaphore {
+  private permits: number
+  private waitingQueue: Array<() => void> = []
+  
+  constructor(permits: number) {
+    this.permits = permits
+  }
+  
+  async acquire(): Promise<void> {
+    if (this.permits > 0) {
+      this.permits--
+      return Promise.resolve()
+    }
+    
+    return new Promise<void>((resolve) => {
+      this.waitingQueue.push(resolve)
+    })
+  }
+  
+  release(): void {
+    this.permits++
+    const nextResolve = this.waitingQueue.shift()
+    if (nextResolve) {
+      this.permits--
+      nextResolve()
+    }
+  }
+  
+  available(): number {
+    return this.permits
+  }
+  
+  waitingCount(): number {
+    return this.waitingQueue.length
+  }
+}
+
+/**
+ * @description 高性能并发请求功能 - 使用信号量机制
  */
 export class ConcurrentFeature {
+  private stats: ConcurrentStats = {
+    total: 0,
+    completed: 0,
+    successful: 0,
+    failed: 0,
+    averageDuration: 0,
+    maxConcurrencyUsed: 0
+  }
+  private durations: number[] = []
+  
   constructor(private requestor: Requestor) {}
 
   /**
@@ -46,43 +111,74 @@ export class ConcurrentFeature {
   }
 
   /**
-   * 无限制并发执行所有请求
+   * 无限制并发执行所有请求 - 优化版本
    */
   private async requestAllConcurrent<T>(
     configs: RequestConfig[],
     failFast: boolean,
     timeout?: number
   ): Promise<ConcurrentResult<T>[]> {
+    // 重置统计
+    this.resetStats(configs.length)
+    
     const results: Array<ConcurrentResult<T> | undefined> = new Array(configs.length)
+    const startTime = Date.now()
+    
     const tasks = configs.map(async (config, index) => {
+      const requestStart = Date.now()
+      
       try {
-        console.log(`[Concurrent] Starting request ${index + 1}: ${config.url}`)
+        console.log(`[Concurrent] Starting unlimited request ${index + 1}: ${config.url}`)
+        
         const data = await this.requestor.request<T>(config)
+        const duration = Date.now() - requestStart
+        
         results[index] = {
           success: true,
           data,
           config,
-          index
+          index,
+          duration,
+          retryCount: 0
         }
+        
+        this.updateSuccessStats(duration)
+        
       } catch (error) {
+        const duration = Date.now() - requestStart
+        
         console.error(`[Concurrent] Request ${index + 1} failed: ${config.url}`, error)
+        
         if (failFast) {
           throw error
         }
+        
         results[index] = {
           success: false,
           error,
           config,
-          index
+          index,
+          duration,
+          retryCount: 0
         }
+        
+        this.updateFailureStats(duration)
       }
     })
 
     try {
       if (timeout && timeout > 0) {
-        await this.awaitWithTimeout(Promise.all(tasks), timeout)
+        if (failFast) {
+          await this.awaitWithTimeout(Promise.all(tasks), timeout)
+        } else {
+          await this.awaitWithTimeout(Promise.allSettled(tasks), timeout)
+        }
       } else {
-        await Promise.all(tasks)
+        if (failFast) {
+          await Promise.all(tasks)
+        } else {
+          await Promise.allSettled(tasks)
+        }
       }
     } catch (error) {
       if (failFast) {
@@ -90,13 +186,17 @@ export class ConcurrentFeature {
       }
       // 即使超时，也返回已完成的结果
     }
+    
+    // 更新最终统计
+    this.stats.maxConcurrencyUsed = configs.length // 无限制并发
+    this.updateFinalStats(Date.now() - startTime, configs.length)
 
     const denseResults = results.filter((r): r is ConcurrentResult<T> => Boolean(r))
     return denseResults
   }
 
   /**
-   * 限制并发数量的并发请求，使用真正的并发池
+   * 高效的并发数量控制 - 使用信号量机制
    */
   private async requestWithConcurrencyLimit<T>(
     configs: RequestConfig[],
@@ -109,67 +209,29 @@ export class ConcurrentFeature {
       throw new RequestError('Max concurrency must be positive')
     }
 
+    // 重置统计信息
+    this.resetStats(configs.length)
+    
+    const semaphore = new Semaphore(maxConcurrency)
     const results: Array<ConcurrentResult<T> | undefined> = new Array(configs.length)
-    const executing = new Set<Promise<void>>()
-    let index = 0
-
-    const executeRequest = async (config: RequestConfig, requestIndex: number): Promise<void> => {
-      try {
-        console.log(`[Concurrent] Starting request ${requestIndex + 1} (concurrency limit: ${maxConcurrency}): ${config.url}`)
-        const data = await this.requestor.request<T>(config)
-        results[requestIndex] = {
-          success: true,
-          data,
-          config,
-          index: requestIndex
-        }
-      } catch (error) {
-        console.error(`[Concurrent] Request ${requestIndex + 1} failed: ${config.url}`, error)
-        if (failFast) {
-          throw error
-        }
-        results[requestIndex] = {
-          success: false,
-          error,
-          config,
-          index: requestIndex
-        }
-      }
-    }
-
-    const processNext = async (): Promise<void> => {
-      while (index < configs.length) {
-        // 等待有空闲槽位
-        while (executing.size >= maxConcurrency) {
-          await Promise.race(executing)
-        }
-
-        const currentIndex = index++
-        const config = configs[currentIndex]
-        
-        const promise = executeRequest(config, currentIndex).finally(() => {
-          executing.delete(promise)
-        })
-        
-        executing.add(promise)
-
-        if (failFast) {
-          // 在快速失败模式下，一旦有错误就立即抛出
-          promise.catch(() => {
-            // 错误会在执行请求中处理
-          })
-        }
-      }
-
-      // 等待所有剩余请求完成
-      await Promise.all(executing)
-    }
+    const startTime = Date.now()
+    
+    // 创建所有任务，但不立即执行
+    const tasks = configs.map((config, index) => 
+      this.executeRequestWithSemaphore<T>(
+        config, 
+        index, 
+        semaphore, 
+        results, 
+        failFast
+      )
+    )
 
     try {
       if (timeout && timeout > 0) {
-        await this.awaitWithTimeout(processNext(), timeout)
+        await this.awaitWithTimeout(Promise.allSettled(tasks), timeout)
       } else {
-        await processNext()
+        await Promise.allSettled(tasks)
       }
     } catch (error) {
       if (failFast) {
@@ -178,8 +240,83 @@ export class ConcurrentFeature {
       // 即使超时，也返回已完成的结果
     }
 
+    // 更新最终统计
+    this.updateFinalStats(Date.now() - startTime, maxConcurrency)
+    
     const denseResults = results.filter((r): r is ConcurrentResult<T> => Boolean(r))
     return denseResults
+  }
+  
+  /**
+   * 使用信号量执行单个请求
+   */
+  private async executeRequestWithSemaphore<T>(
+    config: RequestConfig,
+    index: number,
+    semaphore: Semaphore,
+    results: Array<ConcurrentResult<T> | undefined>,
+    failFast: boolean
+  ): Promise<void> {
+    const requestStartTime = Date.now()
+    
+    try {
+      // 获取信号量许可
+      await semaphore.acquire()
+      
+      // 更新并发统计
+      const currentConcurrency = this.stats.total - semaphore.available()
+      this.stats.maxConcurrencyUsed = Math.max(
+        this.stats.maxConcurrencyUsed, 
+        currentConcurrency
+      )
+      
+      console.log(
+        `[Concurrent] Starting request ${index + 1} ` +
+        `(active: ${currentConcurrency}, waiting: ${semaphore.waitingCount()}): ${config.url}`
+      )
+      
+      const data = await this.requestor.request<T>(config)
+      const duration = Date.now() - requestStartTime
+      
+      results[index] = {
+        success: true,
+        data,
+        config,
+        index,
+        duration,
+        retryCount: 0
+      }
+      
+      this.updateSuccessStats(duration)
+      
+    } catch (error) {
+      const duration = Date.now() - requestStartTime
+      
+      console.error(`[Concurrent] Request ${index + 1} failed: ${config.url}`, error)
+      
+      if (failFast) {
+        // 释放信号量后抛出错误
+        semaphore.release()
+        throw error
+      }
+      
+      results[index] = {
+        success: false,
+        error,
+        config,
+        index,
+        duration,
+        retryCount: 0
+      }
+      
+      this.updateFailureStats(duration)
+      
+    } finally {
+      // 释放信号量
+      if (!failFast || results[index]?.success) {
+        semaphore.release()
+      }
+    }
   }
 
 
@@ -208,18 +345,82 @@ export class ConcurrentFeature {
 
   /**
    * 并发执行多个相同配置的请求
-   * @param config 请求配置
-   * @param count 请求次数
-   * @param concurrentConfig 并发配置
-   * @returns 并发请求结果数组
    */
   async requestMultiple<T>(
     config: RequestConfig,
     count: number,
     concurrentConfig: ConcurrentConfig = {}
   ): Promise<ConcurrentResult<T>[]> {
-    const configs = Array(count).fill(config)
+    if (count <= 0) {
+      return []
+    }
+    
+    // 为每个请求创建独立的配置对象，避免引用共享
+    const configs = Array.from({ length: count }, (_, index) => ({
+      ...config,
+      // 添加索引信息以区分不同请求
+      __requestIndex: index
+    }))
+    
     return this.requestConcurrent<T>(configs, concurrentConfig)
+  }
+  
+  /**
+   * 重置统计信息
+   */
+  private resetStats(total: number): void {
+    this.stats = {
+      total,
+      completed: 0,
+      successful: 0,
+      failed: 0,
+      averageDuration: 0,
+      maxConcurrencyUsed: 0
+    }
+    this.durations = []
+  }
+  
+  /**
+   * 更新成功统计
+   */
+  private updateSuccessStats(duration: number): void {
+    this.stats.completed++
+    this.stats.successful++
+    this.durations.push(duration)
+    this.updateAverageDuration()
+  }
+  
+  /**
+   * 更新失败统计
+   */
+  private updateFailureStats(duration: number): void {
+    this.stats.completed++
+    this.stats.failed++
+    this.durations.push(duration)
+    this.updateAverageDuration()
+  }
+  
+  /**
+   * 更新平均耗时
+   */
+  private updateAverageDuration(): void {
+    if (this.durations.length > 0) {
+      this.stats.averageDuration = Math.round(
+        this.durations.reduce((sum, d) => sum + d, 0) / this.durations.length
+      )
+    }
+  }
+  
+  /**
+   * 更新最终统计
+   */
+  private updateFinalStats(totalTime: number, maxConcurrency: number): void {
+    console.log(
+      `[Concurrent] Batch completed: ${this.stats.successful}/${this.stats.total} successful, ` +
+      `avg duration: ${this.stats.averageDuration}ms, ` +
+      `max concurrency used: ${this.stats.maxConcurrencyUsed}/${maxConcurrency}, ` +
+      `total time: ${totalTime}ms`
+    )
   }
 
   /**
@@ -244,10 +445,44 @@ export class ConcurrentFeature {
 
   /**
    * 检查是否有请求失败
-   * @param results 并发请求结果数组
-   * @returns 是否有失败的请求
    */
   hasFailures<T>(results: ConcurrentResult<T>[]): boolean {
     return results.some(result => !result.success)
+  }
+  
+  /**
+   * 获取并发性能统计
+   */
+  getConcurrentStats(): ConcurrentStats {
+    return { ...this.stats }
+  }
+  
+  /**
+   * 获取详细的结果统计
+   */
+  getResultsStats<T>(results: ConcurrentResult<T>[]): {
+    total: number
+    successful: number
+    failed: number
+    averageDuration: number
+    minDuration: number
+    maxDuration: number
+    successRate: number
+  } {
+    const successful = results.filter(r => r.success)
+    const failed = results.filter(r => !r.success)
+    const durations = results.map(r => r.duration || 0).filter(d => d > 0)
+    
+    return {
+      total: results.length,
+      successful: successful.length,
+      failed: failed.length,
+      averageDuration: durations.length > 0 ? 
+        Math.round(durations.reduce((sum, d) => sum + d, 0) / durations.length) : 0,
+      minDuration: durations.length > 0 ? Math.min(...durations) : 0,
+      maxDuration: durations.length > 0 ? Math.max(...durations) : 0,
+      successRate: results.length > 0 ? 
+        Math.round((successful.length / results.length) * 100) : 0
+    }
   }
 }
