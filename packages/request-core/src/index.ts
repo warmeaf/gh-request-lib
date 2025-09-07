@@ -41,3 +41,28 @@ export {
   FeatureManager
 } from './managers'
 export type { ConvenienceExecutor } from './managers'
+
+// 导出内存管理系统
+export { 
+  MemoryManager,
+  ResourceTracker,
+  PerformanceResourceTracker,
+  ErrorLogTracker,
+  DebugInfoTracker,
+  CleanupStrategyFactory,
+  LRUCleanupStrategy,
+  LFUCleanupStrategy,
+  TTLCleanupStrategy,
+  SmartCleanupStrategy
+} from './memory'
+export type { 
+  MemoryStats,
+  MemoryConfig,
+  ManagedResource,
+  GarbageCollectionResult,
+  ResourceTrackerConfig,
+  TrackedResource,
+  CleanupTarget,
+  CleanupResult,
+  CleanupConfig
+} from './memory'
