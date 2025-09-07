@@ -42,7 +42,6 @@
     { "path": "./packages/request-core" },
     { "path": "./packages/request-imp-axios" },
     { "path": "./packages/request-imp-fetch" },
-    { "path": "./packages/request-bus" },
-    { "path": "./apps/demo-app" }
+    { "path": "./packages/request-bus" }
   ]
 }

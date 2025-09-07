@@ -47,7 +47,6 @@
 │       └── package.json
 │
 ├── apps/
-│   ├── demo-app/                 # Node.js 演示应用
 │   └── demo-browser/             # 浏览器演示应用
 └── README.md
 ```

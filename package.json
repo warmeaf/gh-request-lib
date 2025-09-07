@@ -9,7 +9,6 @@
     "build:browser": "pnpm -r run build && vite build",
     "dev": "pnpm -r run dev",
     "clean": "pnpm -r run clean",
-    "demo": "pnpm --filter demo-app run dev",
     "demo:browser": "vite serve apps/demo-browser --port 3000",
     "install-deps": "pnpm install"
   },
