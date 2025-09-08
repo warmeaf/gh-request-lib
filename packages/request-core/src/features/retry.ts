@@ -1,5 +1,4 @@
 import { Requestor, RequestConfig, RequestError } from '../interface'
-import { LogFormatter } from '../utils/error-handler'
 
 /**
  * @description 重试配置

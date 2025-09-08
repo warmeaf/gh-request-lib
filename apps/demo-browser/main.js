@@ -108,7 +108,7 @@ async function testCache() {
         const time2 = Date.now() - start2
         
         appendLog('cache-result', `缓存请求完成，耗时：${time2}ms，用户数：${users2.length}`, 'success')
-        appendLog('cache-result', `缓存效果：速度提升 ${Math.round((time1 / time2) * 100) / 100}x`, 'success')
+        appendLog('cache-result', `缓存效果：速度提升 ${time1 - time2}ms`, 'success')
         
     } catch (error) {
         log('cache-result', `缓存测试失败：${error.message}`, 'error')
@@ -116,7 +116,7 @@ async function testCache() {
 }
 
 function clearCache() {
-    requestBus.clearAllCache()
+    requestBus.clearCache()
     log('cache-result', '缓存已清除', 'success')
 }
 

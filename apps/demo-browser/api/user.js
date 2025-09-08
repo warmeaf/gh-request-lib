@@ -17,7 +17,12 @@ class UserApi {
     console.log(`[UserApi] 获取用户信息: ${userId}`)
 
     // 使用带重试的请求
-    const userInfo = await this.requestCore.getWithRetry(url, 2)
+    const userInfo = await this.requestCore.getWithRetry(url, {
+      retries: 3,
+      shouldRetry: () => {
+        return true
+      },
+    })
 
     // 业务层数据转换
     return {
