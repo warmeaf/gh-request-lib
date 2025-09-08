@@ -302,15 +302,6 @@ export class RequestCore implements ConvenienceExecutor {
   getConcurrentStats() {
     return this.featureManager.getConcurrentStats()
   }
-  
-  
-  // ==================== 内存管理方法 ====================
-
-
-
-
-
-
 
   /**
    * 销毁请求核心实例，清理资源

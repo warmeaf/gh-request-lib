@@ -26,25 +26,51 @@ export class FetchRequestor implements Requestor {
       requestUrl = urlObj.toString()
     }
 
+    // 大小写无关的请求头工具
+    const hasHeaderIgnoreCase = (h: Record<string, string>, key: string): boolean => {
+      const lower = key.toLowerCase()
+      return Object.keys(h).some(k => k.toLowerCase() === lower)
+    }
+    const setHeaderIfAbsentCI = (h: Record<string, string>, key: string, value: string) => {
+      if (!hasHeaderIgnoreCase(h, key)) {
+        h[key] = value
+      }
+    }
+
+    const requestHeaders: Record<string, string> = { ...(headers || {}) }
+
     const fetchOptions: RequestInit = {
-      method,
-      headers: {
-        ...headers,
-      },
+      method: (method || 'GET').toUpperCase(),
+      headers: requestHeaders,
+      // 显式对齐默认行为，确保跨实现一致
+      credentials: 'same-origin',
+      redirect: 'follow',
+      referrerPolicy: 'strict-origin-when-cross-origin',
     }
 
     // 处理请求体
-    if (data && ['POST', 'PUT', 'PATCH'].includes(method)) {
+    if (data && ['POST', 'PUT', 'PATCH'].includes((method || 'GET').toUpperCase())) {
       const isFormLike = typeof FormData !== 'undefined' && data instanceof FormData
       const isBlob = typeof Blob !== 'undefined' && data instanceof Blob
       const isArrayBuffer = typeof ArrayBuffer !== 'undefined' && (data instanceof ArrayBuffer)
+      const isURLSearchParams = typeof URLSearchParams !== 'undefined' && data instanceof URLSearchParams
+      const isReadableStream = typeof ReadableStream !== 'undefined' && data instanceof ReadableStream
       if (!isFormLike && !isBlob && !isArrayBuffer) {
         if (!fetchOptions.headers) fetchOptions.headers = {}
         const headersRecord = fetchOptions.headers as Record<string, string>
-        if (!headersRecord['Content-Type']) {
-          headersRecord['Content-Type'] = 'application/json'
+        // 仅在非原生体时设置 JSON Content-Type，大小写无关检测
+        if (!isURLSearchParams && !isReadableStream) {
+          setHeaderIfAbsentCI(headersRecord, 'Content-Type', 'application/json')
         }
-        fetchOptions.body = typeof data === 'string' ? data : JSON.stringify(data)
+        if (isURLSearchParams) {
+          fetchOptions.body = data as unknown as BodyInit
+        } else if (typeof data === 'string') {
+          fetchOptions.body = data
+        } else if (isReadableStream) {
+          fetchOptions.body = data as unknown as BodyInit
+        } else {
+          fetchOptions.body = JSON.stringify(data)
+        }
       } else {
         fetchOptions.body = data as BodyInit
       }
@@ -53,25 +79,29 @@ export class FetchRequestor implements Requestor {
     const startTime = Date.now()
     console.log(LogFormatter.formatRequestStart('FetchRequestor', method, url))
 
+    // 统一超时与外部取消信号
+    let controller: AbortController | null = null
+    let timeoutId: ReturnType<typeof setTimeout> | null = null
+    let timedOut = false
+
     try {
-      // 创建带超时的 Promise
-      const controller = new AbortController()
-      const timeoutId = setTimeout(() => controller.abort(), timeout)
+      // 创建带超时的 Promise，并合并外部 signal
+      controller = new AbortController()
+      timeoutId = setTimeout(() => { timedOut = true; controller!.abort() }, timeout)
 
       // 合并外部 signal
       if (signal) {
         if (signal.aborted) controller.abort()
-        else signal.addEventListener('abort', () => controller.abort())
+        else signal.addEventListener('abort', () => controller && controller.abort())
       }
       fetchOptions.signal = controller.signal
 
       const response = await fetch(requestUrl, fetchOptions)
-      clearTimeout(timeoutId)
 
       if (!response.ok) {
         throw ErrorHandler.createHttpError(
           response.status,
-          `HTTP error! status: ${response.status}`,
+          `HTTP ${response.status}${response.statusText ? ': ' + response.statusText : ''}`,
           {
             url: config.url,
             method: config.method
@@ -144,6 +174,10 @@ export class FetchRequestor implements Requestor {
         url: config.url,
         method: config.method
       })
+    } finally {
+      if (timeoutId) {
+        clearTimeout(timeoutId)
+      }
     }
   }
 }
