@@ -23,19 +23,33 @@ export class AxiosRequestor implements Requestor {
       }, {} as Record<string, string | number | boolean>)
     }
 
+    // 通过 AbortController 统一处理超时与取消，避免与 CancelToken 混用
+    const timeout = config.timeout || 10000
+    let controller: AbortController | null = null
+    let timeoutId: ReturnType<typeof setTimeout> | null = null
+    let timedOut = false
+
+    controller = new AbortController()
+    timeoutId = setTimeout(() => { timedOut = true; controller!.abort() }, timeout)
+
+    // 合并外部 signal
+    if (config.signal) {
+      if (config.signal.aborted) controller.abort()
+      else config.signal.addEventListener('abort', () => controller && controller.abort())
+    }
+
     const axiosConfig: AxiosRequestConfig = {
       url: config.url,
       method: config.method,
       data: config.data,
       params: filteredParams,
       headers: config.headers,
-      timeout: config.timeout || 10000, // 默认 10 秒超时
+      // 使用统一的 AbortSignal 控制超时与取消，不使用 axios 的 timeout 通道
+      signal: controller.signal,
       responseType: config.responseType || 'json',
-    }
-    // 取消信号
-    if (config.signal) {
-      // Axios版本1及以上支持signal  
-      Object.assign(axiosConfig, { signal: config.signal })
+      // 与 fetch 默认策略对齐：仅同源发送凭据，跨域不携带
+      withCredentials: false,
+      // 不主动提供 transform，避免顺序与 Core 重叠；保留 axios 默认行为
     }
 
     const startTime = Date.now()
@@ -58,22 +72,29 @@ export class AxiosRequestor implements Requestor {
       // 处理 Axios 特定错误
       if (axios.isAxiosError(error)) {
         const axiosError = error as AxiosError
-        
-        if (axiosError.response) {
-          // HTTP 错误响应
-          throw ErrorHandler.createHttpError(
-            axiosError.response.status,
-            `HTTP ${axiosError.response.status}: ${axiosError.message}`,
+
+        // 取消/超时错误：统一映射为超时错误（与 fetch 实现保持一致语义）
+        // - 超时: 我们通过 AbortController 实现，最终表现为 CanceledError（ERR_CANCELED）
+        // - 手动取消: 同上，但 timedOut 为 false
+        if ((axiosError as any).code === 'ECONNABORTED' || (axiosError as any).code === 'ERR_CANCELED' || axiosError.name === 'CanceledError') {
+          throw ErrorHandler.createTimeoutError(
+            timedOut ? `Request timeout after ${timeout}ms` : 'Request aborted',
             {
               url: config.url,
               method: config.method,
+              timeout,
               originalError: axiosError
             }
           )
-        } else {
-          // 网络错误或其他错误
-          throw ErrorHandler.createNetworkError(
-            axiosError.message,
+        }
+        
+        if (axiosError.response) {
+          // HTTP 错误响应
+          const status = axiosError.response.status
+          const statusText = (axiosError.response as any).statusText || axiosError.message
+          throw ErrorHandler.createHttpError(
+            status,
+            `HTTP ${status}${statusText ? ': ' + statusText : ''}`,
             {
               url: config.url,
               method: config.method,
@@ -81,6 +102,16 @@ export class AxiosRequestor implements Requestor {
             }
           )
         }
+
+        // 网络错误或其他错误
+        throw ErrorHandler.createNetworkError(
+          axiosError.message,
+          {
+            url: config.url,
+            method: config.method,
+            originalError: axiosError
+          }
+        )
       }
       
       // 使用通用错误处理器
@@ -88,6 +119,10 @@ export class AxiosRequestor implements Requestor {
         url: config.url,
         method: config.method
       })
+    } finally {
+      if (timeoutId) {
+        clearTimeout(timeoutId)
+      }
     }
   }
 }
