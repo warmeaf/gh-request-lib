@@ -23,7 +23,6 @@ import { ConfigManager } from './managers/config-manager'
 import { RequestExecutor } from './managers/request-executor'
 import { ConvenienceMethods, ConvenienceExecutor } from './managers/convenience-methods'
 import { FeatureManager } from './managers/feature-manager'
-import { MemoryManager, MemoryStats } from './memory/memory-manager'
 
 /**
  * @description 重构后的请求核心层 - 作为协调者组合各个管理器
@@ -37,7 +36,6 @@ export class RequestCore implements ConvenienceExecutor {
   private requestExecutor: RequestExecutor
   private convenienceMethods: ConvenienceMethods
   private featureManager: FeatureManager
-  private memoryManager: MemoryManager
 
   /**
    * 通过依赖注入接收一个实现了 Requestor 接口的实例。
@@ -49,37 +47,16 @@ export class RequestCore implements ConvenienceExecutor {
     private requestor: Requestor, 
     globalConfig?: GlobalConfig,
     options?: {
-      enableMemoryManagement?: boolean
-      memoryConfig?: {
-        maxMemoryMB?: number
-        gcIntervalMs?: number
-        enableLeakDetection?: boolean
-      }
       performanceConfig?: {
         maxRecords?: number
         sampleRate?: number
-        enableMemoryManagement?: boolean
       }
     }
   ) {
-    // 初始化内存管理器（优先初始化，其他管理器可能需要使用）
-    this.memoryManager = new MemoryManager({
-      maxMemoryMB: options?.memoryConfig?.maxMemoryMB ?? 50,
-      gcIntervalMs: options?.memoryConfig?.gcIntervalMs ?? 5 * 60 * 1000,
-      enableLeakDetection: options?.memoryConfig?.enableLeakDetection ?? true,
-      enableDebug: false,
-      warningThresholdPercent: 80
-    })
-
-    // 初始化性能监控器（启用内存管理）
+    // 初始化性能监控器
     this.performanceMonitor = new PerformanceMonitor({
       maxRecords: options?.performanceConfig?.maxRecords ?? 1000,
-      sampleRate: options?.performanceConfig?.sampleRate ?? 10,
-      enableMemoryManagement: options?.enableMemoryManagement ?? true,
-      memoryConfig: {
-        maxMemoryMB: 10,
-        gcIntervalMs: 5 * 60 * 1000
-      }
+      sampleRate: options?.performanceConfig?.sampleRate ?? 10
     })
 
     // 初始化其他管理器
@@ -363,92 +340,11 @@ export class RequestCore implements ConvenienceExecutor {
   
   // ==================== 内存管理方法 ====================
 
-  /**
-   * 获取内存统计信息
-   */
-  getMemoryStats(): MemoryStats {
-    return this.memoryManager.getStats()
-  }
 
-  /**
-   * 强制执行垃圾回收
-   */
-  forceGarbageCollection(): any {
-    return this.memoryManager.forceGarbageCollection()
-  }
 
-  /**
-   * 获取内存使用报告
-   */
-  getMemoryReport(): string {
-    const performanceReport = this.performanceMonitor.getMemoryReport()
-    const memoryReport = this.memoryManager.getMemoryReport()
-    
-    return [
-      '=== Request Core Memory Report ===',
-      '',
-      '--- Overall Memory Usage ---',
-      memoryReport,
-      '',
-      '--- Performance Monitor ---',
-      performanceReport
-    ].join('\n')
-  }
 
-  /**
-   * 清理内存资源
-   */
-  cleanupMemory(category?: string): number {
-    if (category) {
-      return this.memoryManager.clearCategory(category)
-    } else {
-      // 清理性能监控器的记录
-      const performanceCleaned = this.performanceMonitor.cleanup()
-      
-      // 执行垃圾回收
-      const gcResult = this.memoryManager.forceGarbageCollection()
-      
-      console.log(`[RequestCore] Memory cleanup completed: ${performanceCleaned} performance records, ${gcResult.itemsCollected} memory items`)
-      
-      return performanceCleaned + gcResult.itemsCollected
-    }
-  }
 
-  /**
-   * 设置内存限制
-   */
-  setMemoryLimit(maxMemoryMB: number): void {
-    // 创建新的内存管理器配置
-    const currentStats = this.memoryManager.getStats()
-    
-    // 销毁当前内存管理器
-    this.memoryManager.destroy()
-    
-    // 创建新的内存管理器
-    this.memoryManager = new MemoryManager({
-      maxMemoryMB,
-      gcIntervalMs: 5 * 60 * 1000,
-      enableLeakDetection: true,
-      enableDebug: false,
-      warningThresholdPercent: 80
-    })
 
-    console.log(`[RequestCore] Memory limit updated to ${maxMemoryMB}MB`)
-  }
-
-  /**
-   * 启用/禁用内存管理
-   */
-  setMemoryManagement(enabled: boolean): void {
-    if (enabled) {
-      this.performanceMonitor.enableMemoryManagement({
-        maxMemoryMB: 10,
-        gcIntervalMs: 5 * 60 * 1000
-      })
-    } else {
-      this.performanceMonitor.disableMemoryManagement()
-    }
-  }
 
   /**
    * 销毁请求核心实例，清理资源
@@ -459,8 +355,6 @@ export class RequestCore implements ConvenienceExecutor {
     this.configManager.reset()
     this.resetPerformanceStats()
     
-    // 销毁内存管理器
-    this.memoryManager.destroy()
     
     console.log('[RequestCore] All resources have been cleaned up')
   }
@@ -474,15 +368,13 @@ export class RequestCore implements ConvenienceExecutor {
     concurrent: any
     interceptors: any
     config: any
-    memory: MemoryStats
   } {
     return {
       performance: this.getPerformanceStats(),
       cache: this.getCacheStats(),
       concurrent: this.getConcurrentStats(),
       interceptors: this.interceptorManager.getStats(),
-      config: this.configManager.getStats(),
-      memory: this.getMemoryStats()
+      config: this.configManager.getStats()
     }
   }
 }
