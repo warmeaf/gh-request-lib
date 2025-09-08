@@ -17,7 +17,6 @@ import { CacheConfig } from './features/cache'
 import { ConcurrentConfig, ConcurrentResult } from './features/concurrent'
 
 // 导入管理器
-import { PerformanceMonitor, PerformanceStats } from './managers/performance-monitor'
 import { InterceptorManager } from './managers/interceptor-manager'
 import { ConfigManager } from './managers/config-manager'
 import { RequestExecutor } from './managers/request-executor'
@@ -30,7 +29,6 @@ import { FeatureManager } from './managers/feature-manager'
 
 export class RequestCore implements ConvenienceExecutor {
   // 管理器组合
-  private performanceMonitor: PerformanceMonitor
   private interceptorManager: InterceptorManager
   private configManager: ConfigManager
   private requestExecutor: RequestExecutor
@@ -45,21 +43,9 @@ export class RequestCore implements ConvenienceExecutor {
    */
   constructor(
     private requestor: Requestor, 
-    globalConfig?: GlobalConfig,
-    options?: {
-      performanceConfig?: {
-        maxRecords?: number
-        sampleRate?: number
-      }
-    }
+    globalConfig?: GlobalConfig
   ) {
-    // 初始化性能监控器
-    this.performanceMonitor = new PerformanceMonitor({
-      maxRecords: options?.performanceConfig?.maxRecords ?? 1000,
-      sampleRate: options?.performanceConfig?.sampleRate ?? 10
-    })
-
-    // 初始化其他管理器
+    // 初始化管理器
     this.interceptorManager = new InterceptorManager()
     this.configManager = new ConfigManager()
     this.requestExecutor = new RequestExecutor(requestor)
@@ -112,8 +98,6 @@ export class RequestCore implements ConvenienceExecutor {
     this.configManager.validateRequestConfig(config)
     const mergedConfig = this.configManager.mergeConfigs(config)
     
-    // 记录请求开始
-    this.performanceMonitor.recordRequestStart(mergedConfig)
     const startTime = Date.now()
     
     try {
@@ -123,17 +107,12 @@ export class RequestCore implements ConvenienceExecutor {
         (processedConfig) => this.requestExecutor.execute<T>(processedConfig)
       )
       
-      // 记录请求成功
-      this.performanceMonitor.recordRequestEnd(mergedConfig, startTime, true)
-      
       return result
     } catch (error) {
       // 记录请求失败
       const requestError = error instanceof RequestError ? error : new RequestError(
         error instanceof Error ? error.message : 'Unknown error'
       )
-      
-      this.performanceMonitor.recordRequestEnd(mergedConfig, startTime, false, requestError)
       
       throw error
     }
@@ -324,19 +303,6 @@ export class RequestCore implements ConvenienceExecutor {
     return this.featureManager.getConcurrentStats()
   }
   
-  /**
-   * 获取性能统计信息
-   */
-  getPerformanceStats(): PerformanceStats {
-    return this.performanceMonitor.getStats()
-  }
-  
-  /**
-   * 重置性能统计
-   */
-  resetPerformanceStats(): void {
-    this.performanceMonitor.reset()
-  }
   
   // ==================== 内存管理方法 ====================
 
@@ -353,8 +319,6 @@ export class RequestCore implements ConvenienceExecutor {
     this.featureManager.destroy()
     this.clearInterceptors()
     this.configManager.reset()
-    this.resetPerformanceStats()
-    
     
     console.log('[RequestCore] All resources have been cleaned up')
   }
@@ -363,14 +327,12 @@ export class RequestCore implements ConvenienceExecutor {
    * 获取所有管理器的统计信息
    */
   getAllStats(): {
-    performance: PerformanceStats
     cache: any
     concurrent: any
     interceptors: any
     config: any
   } {
     return {
-      performance: this.getPerformanceStats(),
       cache: this.getCacheStats(),
       concurrent: this.getConcurrentStats(),
       interceptors: this.interceptorManager.getStats(),
