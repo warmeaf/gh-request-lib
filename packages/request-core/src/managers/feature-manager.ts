@@ -253,9 +253,9 @@ export class FeatureManager {
   /**
    * 获取所有功能的统计信息
    */
-  getAllStats() {
+  async getAllStats() {
     return {
-      cache: this.getCacheStats(),
+      cache: await this.getCacheStats(),
       concurrent: this.getConcurrentStats()
     }
   }
@@ -281,14 +281,14 @@ export class FeatureManager {
   /**
    * 获取功能状态
    */
-  getFeatureStatus(): {
+  async getFeatureStatus(): Promise<{
     hasRetry: boolean
     hasCache: boolean
     hasConcurrent: boolean
     cacheSize: number
     maxConcurrency?: number
-  } {
-    const cacheStats = this.getCacheStats()
+  }> {
+    const cacheStats = await this.getCacheStats()
     const concurrentStats = this.getConcurrentStats()
 
     return {

@@ -40,6 +40,22 @@ export {
 export type { ConvenienceExecutor } from './managers'
 
 
-// 导出缓存键生成器
-export { CacheKeyGenerator } from './cache'
-export type { CacheKeyConfig } from './cache'
+// 导出缓存相关功能
+export { 
+  StorageType,
+  CacheInvalidationStrategy,
+  UrlPathKeyStrategy,
+  FullUrlKeyStrategy,
+  ParameterizedKeyStrategy,
+  CustomKeyStrategy,
+  LRUInvalidationPolicy,
+  FIFOInvalidationPolicy,
+  TimeBasedInvalidationPolicy,
+  CustomInvalidationPolicy
+} from './cache'
+export type { 
+  CacheKeyGenerator,
+  CacheKeyStrategy,
+  CacheInvalidationPolicy,
+  CacheKeyConfig
+} from './cache'
