@@ -84,7 +84,7 @@ export class CacheKeyGenerator {
     this.context.stats.totalGenerations++
 
     // 使用自定义键
-    if (customKey) {
+    if (customKey !== undefined) {
       return this.validateAndNormalizeKey(customKey)
     }
 
@@ -502,10 +502,22 @@ export class CacheKeyGenerator {
    * 验证和标准化自定义键
    */
   private validateAndNormalizeKey(key: string): string {
-    if (typeof key !== 'string' || key.length === 0) {
+    // 检查null、undefined等无效值
+    if (key === null || key === undefined) {
       throw new Error('Custom cache key must be a non-empty string')
     }
     
+    // 检查非字符串类型
+    if (typeof key !== 'string') {
+      throw new Error('Custom cache key must be a non-empty string')
+    }
+    
+    // 检查空字符串
+    if (key.length === 0) {
+      throw new Error('Custom cache key must be a non-empty string')
+    }
+    
+    // 检查过长键
     if (key.length > this.config.maxKeyLength) {
       return this.quickHash(key)
     }

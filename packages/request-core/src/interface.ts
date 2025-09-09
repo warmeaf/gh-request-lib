@@ -16,6 +16,8 @@ export type RequestData =
   | ReadableStream
   | null
   | undefined
+  | number
+  | boolean
 
 /**
  * @description 文件上传类型
