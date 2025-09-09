@@ -98,8 +98,6 @@ export class RequestCore implements ConvenienceExecutor {
     this.configManager.validateRequestConfig(config)
     const mergedConfig = this.configManager.mergeConfigs(config)
     
-    const startTime = Date.now()
-    
     try {
       // 执行拦截器链和实际请求
       const result = await this.interceptorManager.executeChain(
@@ -114,7 +112,7 @@ export class RequestCore implements ConvenienceExecutor {
         error instanceof Error ? error.message : 'Unknown error'
       )
       
-      throw error
+      throw requestError
     }
   }
 
