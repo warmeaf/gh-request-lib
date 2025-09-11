@@ -35,7 +35,14 @@ export class AxiosRequestor implements Requestor {
     // 合并外部 signal
     if (config.signal) {
       if (config.signal.aborted) controller.abort()
-      else config.signal.addEventListener('abort', () => controller && controller.abort())
+      else {
+        try {
+          config.signal.addEventListener('abort', () => controller && controller.abort())
+        } catch (error) {
+          // 如果无法添加监听器，忽略错误继续执行请求
+          console.warn('[AxiosRequestor] Failed to add abort listener:', error)
+        }
+      }
     }
 
     const axiosConfig: AxiosRequestConfig = {
@@ -73,10 +80,22 @@ export class AxiosRequestor implements Requestor {
       if (axios.isAxiosError(error)) {
         const axiosError = error as AxiosError
 
-        // 取消/超时错误：统一映射为超时错误（与 fetch 实现保持一致语义）
-        // - 超时: 我们通过 AbortController 实现，最终表现为 CanceledError（ERR_CANCELED）
-        // - 手动取消: 同上，但 timedOut 为 false
-        if ((axiosError as any).code === 'ECONNABORTED' || (axiosError as any).code === 'ERR_CANCELED' || axiosError.name === 'CanceledError') {
+        // 取消/超时错误处理：
+        // - ECONNABORTED: axios 原生超时错误，应视为超时
+        // - ERR_CANCELED/CanceledError: 可能是超时(timedOut=true)或手动取消(timedOut=false)
+        if ((axiosError as any).code === 'ECONNABORTED') {
+          // axios 原生超时错误，始终视为超时
+          throw ErrorHandler.createTimeoutError(
+            `Request timeout after ${timeout}ms`,
+            {
+              url: config.url,
+              method: config.method,
+              timeout,
+              originalError: axiosError
+            }
+          )
+        } else if ((axiosError as any).code === 'ERR_CANCELED' || axiosError.name === 'CanceledError') {
+          // AbortController 取消：根据 timedOut 区分超时还是手动取消
           throw ErrorHandler.createTimeoutError(
             timedOut ? `Request timeout after ${timeout}ms` : 'Request aborted',
             {
@@ -103,9 +122,10 @@ export class AxiosRequestor implements Requestor {
           )
         }
 
-        // 网络错误或其他错误
+        // 网络错误或其他错误 (包括请求设置错误，如循环引用)
+        const errorMessage = axiosError.message || 'Network Error';
         throw ErrorHandler.createNetworkError(
-          axiosError.message,
+          errorMessage,
           {
             url: config.url,
             method: config.method,
