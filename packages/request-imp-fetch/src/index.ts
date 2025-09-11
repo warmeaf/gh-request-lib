@@ -37,45 +37,6 @@ export class FetchRequestor implements Requestor {
       }
     }
 
-    const requestHeaders: Record<string, string> = { ...(headers || {}) }
-
-    const fetchOptions: RequestInit = {
-      method: (method || 'GET').toUpperCase(),
-      headers: requestHeaders,
-      // 显式对齐默认行为，确保跨实现一致
-      credentials: 'same-origin',
-      redirect: 'follow',
-      referrerPolicy: 'strict-origin-when-cross-origin',
-    }
-
-    // 处理请求体
-    if (data && ['POST', 'PUT', 'PATCH'].includes((method || 'GET').toUpperCase())) {
-      const isFormLike = typeof FormData !== 'undefined' && data instanceof FormData
-      const isBlob = typeof Blob !== 'undefined' && data instanceof Blob
-      const isArrayBuffer = typeof ArrayBuffer !== 'undefined' && (data instanceof ArrayBuffer)
-      const isURLSearchParams = typeof URLSearchParams !== 'undefined' && data instanceof URLSearchParams
-      const isReadableStream = typeof ReadableStream !== 'undefined' && data instanceof ReadableStream
-      if (!isFormLike && !isBlob && !isArrayBuffer) {
-        if (!fetchOptions.headers) fetchOptions.headers = {}
-        const headersRecord = fetchOptions.headers as Record<string, string>
-        // 仅在非原生体时设置 JSON Content-Type，大小写无关检测
-        if (!isURLSearchParams && !isReadableStream) {
-          setHeaderIfAbsentCI(headersRecord, 'Content-Type', 'application/json')
-        }
-        if (isURLSearchParams) {
-          fetchOptions.body = data as unknown as BodyInit
-        } else if (typeof data === 'string') {
-          fetchOptions.body = data
-        } else if (isReadableStream) {
-          fetchOptions.body = data as unknown as BodyInit
-        } else {
-          fetchOptions.body = JSON.stringify(data)
-        }
-      } else {
-        fetchOptions.body = data as BodyInit
-      }
-    }
-
     const startTime = Date.now()
     console.log(LogFormatter.formatRequestStart('FetchRequestor', method, url))
 
@@ -85,6 +46,44 @@ export class FetchRequestor implements Requestor {
     let timedOut = false
 
     try {
+      const requestHeaders: Record<string, string> = { ...(headers || {}) }
+
+      const fetchOptions: RequestInit = {
+        method: (method || 'GET').toUpperCase(),
+        headers: requestHeaders,
+        // 显式对齐默认行为，确保跨实现一致
+        credentials: 'same-origin',
+        redirect: 'follow',
+        referrerPolicy: 'strict-origin-when-cross-origin',
+      }
+
+      // 处理请求体
+      if (data && ['POST', 'PUT', 'PATCH'].includes((method || 'GET').toUpperCase())) {
+        const isFormLike = typeof FormData !== 'undefined' && data instanceof FormData
+        const isBlob = typeof Blob !== 'undefined' && data instanceof Blob
+        const isArrayBuffer = typeof ArrayBuffer !== 'undefined' && (data instanceof ArrayBuffer)
+        const isURLSearchParams = typeof URLSearchParams !== 'undefined' && data instanceof URLSearchParams
+        const isReadableStream = typeof ReadableStream !== 'undefined' && data instanceof ReadableStream
+        if (!isFormLike && !isBlob && !isArrayBuffer) {
+          if (!fetchOptions.headers) fetchOptions.headers = {}
+          const headersRecord = fetchOptions.headers as Record<string, string>
+          // 仅在非原生体时设置 JSON Content-Type，大小写无关检测
+          if (!isURLSearchParams && !isReadableStream) {
+            setHeaderIfAbsentCI(headersRecord, 'Content-Type', 'application/json')
+          }
+          if (isURLSearchParams) {
+            fetchOptions.body = data as unknown as BodyInit
+          } else if (typeof data === 'string') {
+            fetchOptions.body = data
+          } else if (isReadableStream) {
+            fetchOptions.body = data as unknown as BodyInit
+          } else {
+            fetchOptions.body = JSON.stringify(data)
+          }
+        } else {
+          fetchOptions.body = data as BodyInit
+        }
+      }
       // 创建带超时的 Promise，并合并外部 signal
       controller = new AbortController()
       timeoutId = setTimeout(() => { timedOut = true; controller!.abort() }, timeout)
@@ -92,7 +91,14 @@ export class FetchRequestor implements Requestor {
       // 合并外部 signal
       if (signal) {
         if (signal.aborted) controller.abort()
-        else signal.addEventListener('abort', () => controller && controller.abort())
+        else {
+          try {
+            signal.addEventListener('abort', () => controller && controller.abort())
+          } catch (error) {
+            // 如果无法添加监听器，忽略错误继续执行请求
+            console.warn('[FetchRequestor] Failed to add abort listener:', error)
+          }
+        }
       }
       fetchOptions.signal = controller.signal
 
