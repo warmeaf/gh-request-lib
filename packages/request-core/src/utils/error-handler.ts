@@ -138,17 +138,17 @@ export class ErrorHandler {
   private static inferErrorType(error: Error): RequestErrorType {
     const message = error.message.toLowerCase()
     
-    // 超时错误
-    if (message.includes('timeout') || error.name === 'AbortError') {
-      return RequestErrorType.TIMEOUT_ERROR
-    }
-    
-    // 网络错误
+    // 网络相关错误优先级高于通用超时错误（connection timeout 应该归类为网络错误）
     if (message.includes('network') || 
         message.includes('fetch') || 
         message.includes('connection') ||
         message.includes('cors')) {
       return RequestErrorType.NETWORK_ERROR
+    }
+    
+    // 超时错误
+    if (message.includes('timeout') || error.name === 'AbortError') {
+      return RequestErrorType.TIMEOUT_ERROR
     }
     
     return RequestErrorType.UNKNOWN_ERROR

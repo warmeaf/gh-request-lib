@@ -147,15 +147,16 @@ export class RequestExecutor {
     if (error instanceof Error) {
       const message = error.message.toLowerCase()
       
-      if (message.includes('timeout') || error.name === 'AbortError') {
-        return RequestErrorType.TIMEOUT_ERROR
-      }
-      
+      // 网络相关错误优先级高于通用超时错误（connection timeout 应该归类为网络错误）
       if (message.includes('network') || 
           message.includes('fetch') || 
           message.includes('connection') ||
           message.includes('cors')) {
         return RequestErrorType.NETWORK_ERROR
+      }
+      
+      if (message.includes('timeout') || error.name === 'AbortError') {
+        return RequestErrorType.TIMEOUT_ERROR
       }
       
       if (message.includes('abort')) {

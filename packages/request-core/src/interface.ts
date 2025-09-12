@@ -150,7 +150,7 @@ export class RequestError extends Error {
     // 构建上下文信息
     this.context = {
       timestamp: Date.now(),
-      userAgent: typeof navigator !== 'undefined' ? navigator.userAgent : 'Node.js',
+      userAgent: typeof navigator !== 'undefined' && navigator ? navigator.userAgent : 'Node.js',
       ...options.context
     } as RequestErrorContext
     
@@ -167,17 +167,22 @@ export class RequestError extends Error {
    * 推断错误类型
    */
   private inferErrorType(status?: number, isHttpError?: boolean, originalError?: unknown): RequestErrorType {
-    if (status) {
+    // HTTP状态码优先推断
+    if (status !== undefined) {
       if (status >= 400 && status < 500) return RequestErrorType.HTTP_ERROR
       if (status >= 500) return RequestErrorType.HTTP_ERROR
     }
     
     if (originalError instanceof Error) {
       const message = originalError.message.toLowerCase()
-      if (message.includes('timeout')) return RequestErrorType.TIMEOUT_ERROR
+      
+      // 网络相关错误优先级高于通用超时错误（connection timeout 应该归类为网络错误）
       if (message.includes('network') || message.includes('fetch') || message.includes('connection')) {
         return RequestErrorType.NETWORK_ERROR
       }
+      
+      // 纯超时错误
+      if (message.includes('timeout')) return RequestErrorType.TIMEOUT_ERROR
     }
     
     if (isHttpError) return RequestErrorType.HTTP_ERROR
