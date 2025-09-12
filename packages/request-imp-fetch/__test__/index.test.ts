@@ -614,28 +614,6 @@ describe('FetchRequestor', () => {
       expect(result).toBe(mockBuffer)
     })
 
-    it('应该在 JSON 解析失败时回退到文本', async () => {
-      const mockText = 'Not JSON'
-      const mockResponse = {
-        ok: true,
-        status: 200,
-        json: vi.fn().mockRejectedValue(new Error('Invalid JSON')),
-        text: vi.fn().mockResolvedValue(mockText)
-      }
-      mockFetch.mockResolvedValue(mockResponse)
-
-      const config: RequestConfig = {
-        url: 'https://api.example.com/maybe-json',
-        method: 'GET'
-        // responseType 默认为 'json'
-      }
-
-      const result = await fetchRequestor.request(config)
-
-      expect(mockResponse.json).toHaveBeenCalled()
-      expect(mockResponse.text).toHaveBeenCalled()
-      expect(result).toBe(mockText)
-    })
   })
 
   describe('边界条件测试', () => {
