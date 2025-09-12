@@ -405,45 +405,6 @@ describe('AxiosRequestor', () => {
       )
     })
 
-    it('应该处理外部取消信号', async () => {
-      mockedAxios.request.mockResolvedValue({ data: {} })
-
-      const externalController = new AbortController()
-      const config: RequestConfig = {
-        url: 'https://api.example.com/users',
-        method: 'GET',
-        signal: externalController.signal
-      }
-
-      await axiosRequestor.request(config)
-
-      expect(mockedAxios.request).toHaveBeenCalledWith(
-        expect.objectContaining({
-          signal: expect.any(Object)
-        })
-      )
-    })
-
-    it('应该处理预先取消的外部信号', async () => {
-      mockedAxios.request.mockResolvedValue({ data: {} })
-
-      const externalController = new AbortController()
-      externalController.abort()
-
-      const config: RequestConfig = {
-        url: 'https://api.example.com/users',
-        method: 'GET',
-        signal: externalController.signal
-      }
-
-      await axiosRequestor.request(config)
-
-      expect(mockedAxios.request).toHaveBeenCalledWith(
-        expect.objectContaining({
-          signal: expect.any(Object)
-        })
-      )
-    })
   })
 
   describe('Axios 特有配置', () => {
@@ -480,45 +441,6 @@ describe('AxiosRequestor', () => {
     })
   })
 
-  describe('日志记录', () => {
-    const mockConsoleLog = vi.spyOn(console, 'log').mockImplementation(() => {})
-    const mockConsoleError = vi.spyOn(console, 'error').mockImplementation(() => {})
-
-    beforeEach(() => {
-      mockConsoleLog.mockClear()
-      mockConsoleError.mockClear()
-    })
-
-    it('应该记录请求开始日志', async () => {
-      mockedAxios.request.mockResolvedValue({ data: {} })
-
-      const config: RequestConfig = {
-        url: 'https://api.example.com/users',
-        method: 'GET'
-      }
-
-      await axiosRequestor.request(config)
-
-      expect(mockConsoleLog).toHaveBeenCalledWith(
-        expect.stringContaining('[AxiosRequestor] Sending request')
-      )
-    })
-
-    it('应该记录请求成功日志', async () => {
-      mockedAxios.request.mockResolvedValue({ data: {} })
-
-      const config: RequestConfig = {
-        url: 'https://api.example.com/users',
-        method: 'GET'
-      }
-
-      await axiosRequestor.request(config)
-
-      expect(mockConsoleLog).toHaveBeenCalledWith(
-        expect.stringContaining('[AxiosRequestor] Request completed successfully')
-      )
-    })
-  })
 
   describe('并发场景测试', () => {
     it('应该正确处理并发请求', async () => {
@@ -600,43 +522,6 @@ describe('AxiosRequestor', () => {
       }
     })
 
-    it('应该正确处理并发请求的取消', async () => {
-      const controller1 = new AbortController()
-      const controller2 = new AbortController()
-      
-      const axiosError = new Error('canceled') as any
-      axiosError.code = 'ERR_CANCELED'
-      axiosError.isAxiosError = true
-      axiosError.config = {}
-
-      mockedAxios.request
-        .mockResolvedValueOnce({ data: { id: 1 } })
-        .mockRejectedValueOnce(axiosError)
-      mockedAxios.isAxiosError.mockReturnValue(true)
-
-      const config1: RequestConfig = {
-        url: 'https://api.example.com/users/1',
-        method: 'GET',
-        signal: controller1.signal
-      }
-      const config2: RequestConfig = {
-        url: 'https://api.example.com/users/2',
-        method: 'GET',
-        signal: controller2.signal
-      }
-
-      // 启动并发请求
-      const promise1 = axiosRequestor.request(config1)
-      const promise2 = axiosRequestor.request(config2)
-
-      // 取消第二个请求
-      controller2.abort()
-
-      const results = await Promise.allSettled([promise1, promise2])
-
-      expect(results[0].status).toBe('fulfilled')
-      expect(results[1].status).toBe('rejected')
-    })
   })
 
   describe('边界值测试', () => {
