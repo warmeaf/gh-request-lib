@@ -93,10 +93,20 @@ describe('FetchRequestor - Error Handling', () => {
     })
 
     it('应该正确处理超时错误', async () => {
-      // 模拟 AbortError
-      const abortError = new Error('The operation was aborted.')
-      abortError.name = 'AbortError'
-      mockFetch.mockRejectedValue(abortError)
+      // 模拟一个会响应 abort 信号的 fetch
+      mockFetch.mockImplementation((url: string, options: RequestInit) => {
+        return new Promise((resolve, reject) => {
+          // 如果有 signal，监听 abort 事件
+          if (options.signal) {
+            options.signal.addEventListener('abort', () => {
+              const abortError = new Error('The operation was aborted.')
+              abortError.name = 'AbortError'
+              reject(abortError)
+            })
+          }
+          // 不主动 resolve，让超时机制触发
+        })
+      })
 
       const config: RequestConfig = {
         url: 'https://api.example.com/slow',
@@ -112,6 +122,29 @@ describe('FetchRequestor - Error Handling', () => {
         expect(error).toBeInstanceOf(RequestError)
         expect((error as RequestError).type).toBe(RequestErrorType.TIMEOUT_ERROR)
         expect((error as RequestError).message).toContain('timeout')
+      }
+    })
+
+    it('应该正确处理手动取消请求', async () => {
+      // 模拟一个 AbortError，但不是由超时引起的
+      const abortError = new Error('The operation was aborted.')
+      abortError.name = 'AbortError'
+      mockFetch.mockRejectedValue(abortError)
+
+      const config: RequestConfig = {
+        url: 'https://api.example.com/slow',
+        method: 'GET',
+        timeout: 5000  // 设置较长的超时时间，确保不是由超时引起
+      }
+
+      await expect(fetchRequestor.request(config)).rejects.toThrow(RequestError)
+      
+      try {
+        await fetchRequestor.request(config)
+      } catch (error) {
+        expect(error).toBeInstanceOf(RequestError)
+        expect((error as RequestError).type).toBe(RequestErrorType.TIMEOUT_ERROR)
+        expect((error as RequestError).message).toBe('Request aborted')
       }
     })
 

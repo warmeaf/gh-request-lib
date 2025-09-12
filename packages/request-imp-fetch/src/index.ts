@@ -51,8 +51,8 @@ export class FetchRequestor implements Requestor {
       const fetchOptions: RequestInit = {
         method: (method || 'GET').toUpperCase(),
         headers: requestHeaders,
-        // 显式对齐默认行为，确保跨实现一致
-        credentials: 'same-origin',
+        // 为与 AxiosRequestor 对齐，默认不发送凭据
+        credentials: 'omit',
         redirect: 'follow',
         referrerPolicy: 'strict-origin-when-cross-origin',
       }
@@ -151,10 +151,10 @@ export class FetchRequestor implements Requestor {
       
       // 处理 Fetch 特定错误
       if (error instanceof Error) {
-        // 超时错误
+        // 超时或取消错误
         if (error.name === 'AbortError') {
           throw ErrorHandler.createTimeoutError(
-            `Request timeout after ${timeout}ms`,
+            timedOut ? `Request timeout after ${timeout}ms` : 'Request aborted',
             {
               url: config.url,
               method: config.method,

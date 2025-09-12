@@ -42,7 +42,7 @@ describe('FetchRequestor', () => {
         'https://api.example.com/users',
         expect.objectContaining({
           method: 'GET',
-          credentials: 'same-origin',
+          credentials: 'omit',
           redirect: 'follow',
           referrerPolicy: 'strict-origin-when-cross-origin'
         })

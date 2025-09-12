@@ -54,7 +54,7 @@ export class AxiosRequestor implements Requestor {
       // 使用统一的 AbortSignal 控制超时与取消，不使用 axios 的 timeout 通道
       signal: controller.signal,
       responseType: config.responseType || 'json',
-      // 与 fetch 默认策略对齐：仅同源发送凭据，跨域不携带
+      // 默认不发送凭据，与 FetchRequestor 的 'omit' 策略对齐
       withCredentials: false,
       // 不主动提供 transform，避免顺序与 Core 重叠；保留 axios 默认行为
     }
