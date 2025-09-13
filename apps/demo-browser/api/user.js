@@ -1,6 +1,3 @@
-import { requestBus } from 'request-bus'
-console.log('requestBus', requestBus)
-
 class UserApi {
   constructor(requestCore) {
     this.requestCore = requestCore
@@ -57,6 +54,4 @@ class UserApi {
   }
 }
 
-const userApi = requestBus.register('user', UserApi)
-
-export default userApi
+export default UserApi

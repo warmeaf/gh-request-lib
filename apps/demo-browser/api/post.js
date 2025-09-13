@@ -1,5 +1,3 @@
-import { requestBus } from 'request-bus'
-
 class PostApi {
   constructor(requestCore) {
     this.requestCore = requestCore
@@ -47,6 +45,4 @@ class PostApi {
   }
 }
 
-const postApi = requestBus.register('post', PostApi)
-
-export default postApi
+export default PostApi

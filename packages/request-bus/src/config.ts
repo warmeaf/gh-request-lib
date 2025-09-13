@@ -8,55 +8,29 @@ import { FetchRequestor } from 'request-imp-fetch'
 export type RequestImplementation = 'axios' | 'fetch'
 
 /**
- * @description 配置类，负责选择并注入具体的实现
+ * @description 请求核心工厂类，负责创建独立的 RequestCore 实例
  */
-export class RequestConfig {
-  private static instance: RequestCore | null = null
-  
+export class RequestCoreFactory {
   /**
-   * 创建请求核心实例
+   * 创建独立的请求核心实例 - 每次调用都返回新实例
    * @param implementation 选择的实现方式
    */
-  static createRequestCore(implementation: RequestImplementation = 'axios'): RequestCore {
-    if (!this.instance) {
-      let requestor
-      
-      switch (implementation) {
-        case 'axios':
-          console.log('[Config] Using Axios implementation')
-          requestor = new AxiosRequestor()
-          break
-        case 'fetch':
-          console.log('[Config] Using Fetch implementation')
-          requestor = new FetchRequestor()
-          break
-        default:
-          throw new Error(`Unsupported implementation: ${implementation}`)
-      }
-      
-      this.instance = new RequestCore(requestor)
+  static create(implementation: RequestImplementation = 'axios'): RequestCore {
+    let requestor
+    
+    switch (implementation) {
+      case 'axios':
+        console.log('[RequestCoreFactory] Creating Axios implementation')
+        requestor = new AxiosRequestor()
+        break
+      case 'fetch':
+        console.log('[RequestCoreFactory] Creating Fetch implementation')
+        requestor = new FetchRequestor()
+        break
+      default:
+        throw new Error(`Unsupported implementation: ${implementation}`)
     }
     
-    return this.instance
-  }
-
-  /**
-   * 获取当前实例
-   */
-  static getInstance(): RequestCore {
-    if (!this.instance) {
-      return this.createRequestCore()
-    }
-    return this.instance
-  }
-
-  /**
-   * 重置实例（用于切换实现）
-   */
-  static reset(): void {
-    if (this.instance) {
-      this.instance.destroy()
-    }
-    this.instance = null
+    return new RequestCore(requestor)
   }
 }

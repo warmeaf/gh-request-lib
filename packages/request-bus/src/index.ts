@@ -1,4 +1,4 @@
-import { RequestConfig, RequestImplementation } from './config'
+import { RequestCoreFactory, RequestImplementation } from './config'
 import { 
   RequestCore, 
   RequestError, 
@@ -27,9 +27,13 @@ interface ApiInstance {
  */
 class RequestBus {
   private apiMap: Map<string, ApiInstance> = new Map()
-  private globalInterceptors: RequestInterceptor[] = []
+  private requestCore: RequestCore
   private debugMode: boolean = false
   private version: string = '1.0.0'
+
+  constructor(requestCore: RequestCore) {
+    this.requestCore = requestCore
+  }
 
   /**
    * 注册API实例 - 增强版本
@@ -64,14 +68,7 @@ class RequestBus {
     }
 
     try {
-      const requestCore = RequestConfig.getInstance()
-      
-      // 添加全局拦截器
-      this.globalInterceptors.forEach(interceptor => {
-        requestCore.addInterceptor(interceptor)
-      })
-      
-      const apiInstance = new apiClass(requestCore)
+      const apiInstance = new apiClass(this.requestCore)
       
       // 添加元数据
       if (options?.tags || options?.description) {
@@ -175,7 +172,7 @@ class RequestBus {
   }
 
   /**
-   * 切换请求实现 - 增强版本
+   * 切换请求实现 - 创建新的 RequestCore 并更新所有 API
    */
   switchImplementation(implementation: RequestImplementation, options?: { 
     clearCache?: boolean
@@ -189,8 +186,8 @@ class RequestBus {
     }
     
     // 保存当前状态
-    const currentGlobalConfig = opts.preserveGlobalConfig ? RequestConfig.getInstance().getGlobalConfig() : {}
-    const currentInterceptors = opts.preserveInterceptors ? [...this.globalInterceptors] : []
+    const currentGlobalConfig = opts.preserveGlobalConfig ? this.requestCore.getGlobalConfig() : {}
+    const currentInterceptors = opts.preserveInterceptors ? this.requestCore.getInterceptors?.() || [] : []
     
     if (this.debugMode) {
       console.log(`🔄 [RequestBus] Switching to ${implementation} implementation`, opts)
@@ -199,7 +196,7 @@ class RequestBus {
     // 清除缓存
     if (opts.clearCache) {
       try { 
-        RequestConfig.getInstance().clearCache() 
+        this.requestCore.clearCache() 
         if (this.debugMode) {
           console.log('🗑️ [RequestBus] Cache cleared during implementation switch')
         }
@@ -209,27 +206,25 @@ class RequestBus {
     }
 
     try {
-      // 重置和创建新实例
-      RequestConfig.reset()
-      RequestConfig.createRequestCore(implementation)
-      
-      const newRequestCore = RequestConfig.getInstance()
+      // 销毁当前实例并创建新实例
+      this.requestCore.destroy()
+      this.requestCore = RequestCoreFactory.create(implementation)
       
       // 恢复全局配置
       if (opts.preserveGlobalConfig) {
-        newRequestCore.setGlobalConfig(currentGlobalConfig)
+        this.requestCore.setGlobalConfig(currentGlobalConfig)
       }
       
       // 恢复拦截器
       if (opts.preserveInterceptors) {
         currentInterceptors.forEach(interceptor => {
-          newRequestCore.addInterceptor(interceptor)
+          this.requestCore.addInterceptor(interceptor)
         })
       }
 
       // 更新所有API实例
       this.apiMap.forEach((api, name) => {
-        api.requestCore = newRequestCore
+        api.requestCore = this.requestCore
         
         if (this.debugMode) {
           console.log(`🔄 [RequestBus] Updated API '${name}' with new implementation`)
@@ -257,7 +252,7 @@ class RequestBus {
    */
   clearCache(key?: string): void {
     try {
-      RequestConfig.getInstance().clearCache(key)
+      this.requestCore.clearCache(key)
       
       if (this.debugMode) {
         console.log(`🗑️ [RequestBus] Cache cleared${key ? `: ${key}` : ' (all)'}`)
@@ -272,7 +267,7 @@ class RequestBus {
    */
   getCacheStats() {
     try {
-      return RequestConfig.getInstance().getCacheStats()
+      return this.requestCore.getCacheStats()
     } catch (error) {
       console.error('[RequestBus] Failed to get cache stats:', error)
       return { size: 0, maxEntries: 0 }
@@ -282,34 +277,24 @@ class RequestBus {
   // ==================== 全局配置和拦截器 ====================
   
   /**
-   * 添加全局拦截器
+   * 添加拦截器
    */
-  addGlobalInterceptor(interceptor: RequestInterceptor): void {
-    this.globalInterceptors.push(interceptor)
-    
-    // 应用到所有已注册API
-    this.apiMap.forEach(api => {
-      api.requestCore.addInterceptor(interceptor)
-    })
+  addInterceptor(interceptor: RequestInterceptor): void {
+    this.requestCore.addInterceptor(interceptor)
     
     if (this.debugMode) {
-      console.log('🔌 [RequestBus] Added global interceptor')
+      console.log('🔌 [RequestBus] Added interceptor')
     }
   }
   
   /**
-   * 清除所有全局拦截器
+   * 清除所有拦截器
    */
-  clearGlobalInterceptors(): void {
-    this.globalInterceptors = []
-    
-    // 清除所有API的拦截器
-    this.apiMap.forEach(api => {
-      api.requestCore.clearInterceptors()
-    })
+  clearInterceptors(): void {
+    this.requestCore.clearInterceptors()
     
     if (this.debugMode) {
-      console.log('🗋 [RequestBus] Cleared all global interceptors')
+      console.log('🗋 [RequestBus] Cleared all interceptors')
     }
   }
   
@@ -318,7 +303,7 @@ class RequestBus {
    */
   setGlobalConfig(config: GlobalConfig): void {
     try {
-      RequestConfig.getInstance().setGlobalConfig(config)
+      this.requestCore.setGlobalConfig(config)
       
       if (config.debug !== undefined) {
         this.debugMode = config.debug
@@ -388,16 +373,21 @@ class RequestBus {
   } {
     const cacheStats = this.getCacheStats()
     let concurrentStats = undefined
+    let interceptorsCount = 0
     
     try {
-      concurrentStats = RequestConfig.getInstance().getConcurrentStats()
+      concurrentStats = this.requestCore.getConcurrentStats()
+    } catch {}
+    
+    try {
+      interceptorsCount = this.requestCore.getInterceptors?.()?.length || 0
     } catch {}
     
     return {
       version: this.version,
       apiCount: this.apiMap.size,
       debugMode: this.debugMode,
-      interceptorsCount: this.globalInterceptors.length,
+      interceptorsCount,
       cacheStats,
       concurrentStats
     }
@@ -411,7 +401,7 @@ class RequestBus {
     
     // 更新全局配置
     try {
-      RequestConfig.getInstance().setGlobalConfig({ debug: enabled })
+      this.requestCore.setGlobalConfig({ debug: enabled })
     } catch {}
     
     console.log(`🐛 [RequestBus] Debug mode ${enabled ? 'enabled' : 'disabled'}`)
@@ -437,19 +427,18 @@ class RequestBus {
   }
   
   /**
-   * 销毁所有资源 - 增强版本
+   * 销毁所有资源
    */
   destroy(): void {
     const apiCount = this.apiMap.size
     
     try {
-      RequestConfig.getInstance().destroy()
+      this.requestCore.destroy()
     } catch (error) {
-      console.error('[RequestBus] Failed to destroy request config:', error)
+      console.error('[RequestBus] Failed to destroy request core:', error)
     }
     
     this.deleteAllApi()
-    this.clearGlobalInterceptors()
     
     if (this.debugMode) {
       console.log(`🗋 [RequestBus] Destroyed: ${apiCount} APIs, all interceptors and cache`)
@@ -457,16 +446,45 @@ class RequestBus {
   }
 }
 
-// 创建并导出增强的单例
-export const requestBus = new RequestBus()
+// ==================== 工厂类 ====================
+
+/**
+ * @description RequestBus 工厂类
+ */
+export class RequestBusFactory {
+  /**
+   * 创建 RequestBus 实例
+   */
+  static create(
+    implementation: RequestImplementation = 'axios',
+    options?: {
+      globalConfig?: GlobalConfig
+      interceptors?: RequestInterceptor[]
+    }
+  ): RequestBus {
+    const requestCore = RequestCoreFactory.create(implementation)
+    
+    if (options?.globalConfig) {
+      requestCore.setGlobalConfig(options.globalConfig)
+    }
+    
+    if (options?.interceptors?.length) {
+      options.interceptors.forEach(interceptor => {
+        requestCore.addInterceptor(interceptor)
+      })
+    }
+    
+    return new RequestBus(requestCore)
+  }
+}
 
 // 导出类型和接口
 export type { RequestImplementation } from './config'
 export type { ApiClass, ApiInstance }
-export { RequestBus }
+export { RequestBus, RequestCoreFactory }
 
 /**
- * @description 工厂方法：创建 RequestCore 实例，并可选注入全局配置与拦截器
+ * @description 工厂方法：创建独立的 RequestCore 实例
  */
 export function createRequestCore(
   implementation: RequestImplementation = 'axios',
@@ -475,7 +493,7 @@ export function createRequestCore(
     interceptors?: RequestInterceptor[]
   }
 ): RequestCore {
-  const core = RequestConfig.createRequestCore(implementation)
+  const core = RequestCoreFactory.create(implementation)
   if (options?.globalConfig) {
     core.setGlobalConfig(options.globalConfig)
   }
@@ -486,7 +504,20 @@ export function createRequestCore(
 }
 
 /**
- * @description 工厂方法：创建 API 客户端对象，避免与单例配置耦合，便于树摇
+ * @description 工厂方法：创建 RequestBus 实例
+ */
+export function createRequestBus(
+  implementation: RequestImplementation = 'axios',
+  options?: {
+    globalConfig?: GlobalConfig
+    interceptors?: RequestInterceptor[]
+  }
+): RequestBus {
+  return RequestBusFactory.create(implementation, options)
+}
+
+/**
+ * @description 工厂方法：创建 API 客户端对象，便于树摇
  */
 export function createApiClient<T extends Record<string, ApiClass<any>>>(
   apis: T,
@@ -501,10 +532,12 @@ export function createApiClient<T extends Record<string, ApiClass<any>>>(
     globalConfig: options?.globalConfig,
     interceptors: options?.interceptors
   })
+  
   const entries = Object.entries(apis).map(([name, ApiCtor]) => {
     const instance = new ApiCtor(core) as InstanceType<typeof ApiCtor>
     return [name, instance]
   }) as Array<[keyof T, InstanceType<T[keyof T]>]>
+  
   return Object.fromEntries(entries) as { [K in keyof T]: InstanceType<T[K]> }
 }
 
@@ -519,27 +552,7 @@ export function attachFeatures(core: RequestCore, configure: (core: RequestCore)
 // 稳定重导出常用类型，便于上层只依赖 request-bus
 export type { PaginatedResponse, RestfulOptions } from 'request-core'
 
-// 导出核心便利函数（生产环境推荐）
-export const {
-  register,
-  getApi,
-  requireApi,
-  deleteApi,
-  switchImplementation,
-  setGlobalConfig,
-  addGlobalInterceptor,
-  clearCache
-} = requestBus
+// 主要工厂方法在上方已经定义并导出
 
-// 开发者工具和调试功能（单独导出，避免生产包体积）
-export const devTools = {
-  listApiNames: requestBus.listApiNames.bind(requestBus),
-  setDebugMode: requestBus.setDebugMode.bind(requestBus),
-  getAllStats: requestBus.getAllStats.bind(requestBus),
-  help: requestBus.help.bind(requestBus),
-  getApiInfo: requestBus.getApiInfo.bind(requestBus),
-  getCacheStats: requestBus.getCacheStats.bind(requestBus)
-}
-
-// 导出错误类型
+// 导出错误类型和核心类型
 export { RequestError, RequestErrorType } from 'request-core'

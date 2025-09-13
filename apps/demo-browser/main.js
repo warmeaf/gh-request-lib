@@ -1,7 +1,19 @@
 // 浏览器演示主文件
-import { requestBus } from 'request-bus'
-import userApi from './api/user'
-import postApi from './api/post'
+import { createRequestBus } from 'request-bus'
+import UserApi from './api/user'
+import PostApi from './api/post'
+
+// 创建 RequestBus 实例（使用新的工厂模式）
+const requestBus = createRequestBus('axios', {
+  globalConfig: {
+    debug: true,
+    timeout: 10000
+  }
+})
+
+// 注册 API
+const userApi = requestBus.register('user', UserApi)
+const postApi = requestBus.register('post', PostApi)
 
 // 全局变量，供 HTML 中的函数使用
 window.requestBus = requestBus
@@ -16,14 +28,49 @@ window.testPost = testPost
 window.testError = testError
 window.testPerformance = testPerformance
 
+// 当前的 RequestBus 和 API 实例（用于切换实现）
+let currentRequestBus = requestBus
+let currentUserApi = userApi
+let currentPostApi = postApi
+
+// 切换实现的函数
+function switchImplementation(implementation) {
+    console.log(`正在切换到 ${implementation} 实现...`)
+    
+    try {
+        // 销毁当前实例
+        currentRequestBus.destroy()
+        
+        // 创建新的 RequestBus 实例
+        currentRequestBus = createRequestBus(implementation, {
+            globalConfig: {
+                debug: true,
+                timeout: 10000
+            }
+        })
+        
+        // 重新注册 API
+        currentUserApi = currentRequestBus.register('user', UserApi)
+        currentPostApi = currentRequestBus.register('post', PostApi)
+        
+        // 更新全局引用
+        window.requestBus = currentRequestBus
+        window.userApi = currentUserApi
+        window.postApi = currentPostApi
+        
+        log('basic-result', `✅ 已成功切换到 ${implementation} 实现`, 'success')
+    } catch (error) {
+        log('basic-result', `❌ 切换实现失败: ${error.message}`, 'error')
+    }
+}
+
 // 监听实现切换
 document.addEventListener('DOMContentLoaded', () => {
     const radios = document.querySelectorAll('input[name="implementation"]')
     radios.forEach(radio => {
         radio.addEventListener('change', (e) => {
             if (e.target.checked) {
-                requestBus.switchImplementation(e.target.value)
-                log('basic-result', `已切换到 ${e.target.value} 实现`, 'success')
+                switchImplementation(e.target.value)
             }
         })
     })
@@ -59,7 +106,7 @@ async function testBasicRequest() {
     log('basic-result', '正在获取用户信息...', 'loading')
     
     try {
-        const user = await userApi.getUserInfo('1')
+        const user = await currentUserApi.getUserInfo('1')
         log('basic-result', `获取用户信息成功：\n${JSON.stringify(user, null, 2)}`, 'success')
     } catch (error) {
         log('basic-result', `获取用户信息失败：${error.message}`, 'error')
@@ -70,7 +117,7 @@ async function testUserList() {
     log('basic-result', '正在获取用户列表...', 'loading')
     
     try {
-        const users = await userApi.getUserList()
+        const users = await currentUserApi.getUserList()
         log('basic-result', `获取用户列表成功，共 ${users.length} 个用户：\n${JSON.stringify(users.slice(0, 3), null, 2)}...`, 'success')
     } catch (error) {
         log('basic-result', `获取用户列表失败：${error.message}`, 'error')
@@ -83,7 +130,7 @@ async function testRetry() {
     
     try {
         // 尝试获取不存在的用户，会触发重试
-        const user = await userApi.getUserInfo('999999')
+        const user = await currentUserApi.getUserInfo('999999')
         log('retry-result', `意外成功：\n${JSON.stringify(user, null, 2)}`, 'success')
     } catch (error) {
         log('retry-result', `重试后最终失败（这是预期的）：${error.message}`, 'error')
@@ -97,14 +144,14 @@ async function testCache() {
     try {
         appendLog('cache-result', '首次请求用户列表（应该发起网络请求）...', 'loading')
         const start1 = Date.now()
-        const users1 = await userApi.getUserList()
+        const users1 = await currentUserApi.getUserList()
         const time1 = Date.now() - start1
         
         appendLog('cache-result', `首次请求完成，耗时：${time1}ms，用户数：${users1.length}`, 'success')
         
         appendLog('cache-result', '再次请求用户列表（应该命中缓存）...', 'loading')
         const start2 = Date.now()
-        const users2 = await userApi.getUserList()
+        const users2 = await currentUserApi.getUserList()
         const time2 = Date.now() - start2
         
         appendLog('cache-result', `缓存请求完成，耗时：${time2}ms，用户数：${users2.length}`, 'success')
@@ -116,7 +163,7 @@ async function testCache() {
 }
 
 function clearCache() {
-    requestBus.clearCache()
+    currentRequestBus.clearCache()
     log('cache-result', '缓存已清除', 'success')
 }
 
@@ -125,7 +172,7 @@ async function testPost() {
     log('post-result', '正在创建新文章...', 'loading')
     
     try {
-        const newPost = await postApi.createPost({
+        const newPost = await currentPostApi.createPost({
             userId: 1,
             title: '浏览器演示文章',
             body: '这是在浏览器中创建的测试文章，用于演示 POST 请求功能。'
@@ -143,7 +190,7 @@ async function testError() {
     
     try {
         // 尝试访问不存在的端点
-        await postApi.getPost(99999)
+        await currentPostApi.getPost(99999)
         log('error-result', '意外成功（这不应该发生）', 'error')
     } catch (error) {
         log('error-result', `成功捕获错误（这是预期的）：\n错误类型：${error.constructor.name}\n错误信息：${error.message}`, 'success')
@@ -163,7 +210,7 @@ async function testPerformance() {
         // 创建多个并发请求
         for (let i = 1; i <= concurrency; i++) {
             requests.push(
-                userApi.getUserInfo(i.toString()).then(user => ({
+                currentUserApi.getUserInfo(i.toString()).then(user => ({
                     success: true,
                     userId: i,
                     data: user
@@ -205,6 +252,8 @@ async function testPerformance() {
 
 // 页面加载完成后的初始化
 document.addEventListener('DOMContentLoaded', () => {
-    console.log('🚀 请求库浏览器演示已加载')
-    console.log('requestBus:', requestBus)
+    console.log('🚀 请求库浏览器演示已加载（工厂模式）')
+    console.log('requestBus:', currentRequestBus)
+    console.log('userApi:', currentUserApi)
+    console.log('postApi:', currentPostApi)
 })
