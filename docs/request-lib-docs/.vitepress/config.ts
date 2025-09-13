@@ -49,8 +49,7 @@ export default defineConfig({
           items: [
             { text: '核心层API', link: '/api/request-core' },
             { text: '业务层API', link: '/api/request-bus' },
-            { text: '实现层API', link: '/api/implementations' },
-            { text: '类型定义', link: '/api/types' }
+            { text: '实现层API', link: '/api/implementations' }
           ]
         }
       ],
