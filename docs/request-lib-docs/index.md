@@ -29,7 +29,7 @@ features:
 ---
 
 
-# 为什么选择这个请求库？
+# 为什么选择这个请求库？ {.main-title}
 
 ## 🎯 解决的问题
 
@@ -242,7 +242,7 @@ apiClient.switchImplementation('fetch')
   padding: 1.5rem;
   border: 1px solid var(--vp-c-divider);
   border-radius: 12px;
-  text-decoration: none;
+  text-decoration: none !important;
   transition: all 0.3s ease;
   background: var(--vp-c-bg-soft);
 }
@@ -275,35 +275,42 @@ apiClient.switchImplementation('fetch')
 .footer-cta {
   text-align: center;
   padding: 2rem;
-  background: linear-gradient(135deg, var(--vp-c-brand) 0%, var(--vp-c-brand-dark) 100%);
+  background: var(--vp-c-brand-soft);
+  border: 2px solid var(--vp-c-brand);
   border-radius: 16px;
   margin: 3rem 0;
-  color: white;
 }
 
 .footer-cta h2 {
   margin: 0 0 1rem 0;
-  color: white;
+  color: var(--vp-c-text-1);
 }
 
 .footer-cta p {
   margin: 0 0 1.5rem 0;
-  opacity: 0.9;
+  color: var(--vp-c-text-2);
 }
 
 .cta-button {
   display: inline-block;
   padding: 0.75rem 2rem;
-  background: white;
-  color: var(--vp-c-brand);
+  color: var(--vp-c-bg);
   text-decoration: none;
   border-radius: 8px;
   font-weight: 600;
-  transition: transform 0.2s ease;
+  transition: all 0.2s ease;
+  border: 2px solid var(--vp-c-brand);
 }
 
 .cta-button:hover {
+  background: var(--vp-c-brand-dark);
+  border-color: var(--vp-c-brand-dark);
   transform: scale(1.05);
+  box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+}
+
+.main-title {
+  margin-top: 4rem !important;
 }
 
 @media (max-width: 768px) {
@@ -314,6 +321,10 @@ apiClient.switchImplementation('fetch')
   
   .nav-card {
     padding: 1rem;
+  }
+  
+  .main-title {
+    margin-top: 2rem !important;
   }
 }
 </style>
