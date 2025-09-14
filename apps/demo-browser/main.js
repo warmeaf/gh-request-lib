@@ -1,17 +1,17 @@
 // 浏览器演示主文件
-import { requestBus, switchImplementation, userApi, postApi } from './api'
+import { apiClient, switchImplementation, userApi, postApi, getCurrentApiClient, clearCache } from './api'
 
 window.testBasicRequest = testBasicRequest
 window.testUserList = testUserList
 window.testRetry = testRetry
 window.testCache = testCache
-window.clearCache = clearCache
+window.clearCache = clearCacheHandler
 window.testPost = testPost
 window.testError = testError
 window.testPerformance = testPerformance
 
-// 当前的 RequestBus 和 API 实例（用于切换实现）
-let currentRequestBus = requestBus
+// 当前的 API 客户端和 API 实例（用于切换实现）
+let currentApiClient = apiClient
 let currentUserApi = userApi
 let currentPostApi = postApi
 
@@ -40,12 +40,12 @@ async function handleImplementationSwitch(implementation) {
     
     // 更新全局引用
     if (result) {
-      currentRequestBus = result.requestBus
+      currentApiClient = result.apiClient
       currentUserApi = result.userApi
       currentPostApi = result.postApi
       
       // 更新 window 对象引用
-      window.currentRequestBus = currentRequestBus
+      window.currentApiClient = currentApiClient
       window.currentUserApi = currentUserApi
       window.currentPostApi = currentPostApi
     }
@@ -191,8 +191,8 @@ async function testCache() {
   }
 }
 
-function clearCache() {
-  currentRequestBus.clearCache()
+function clearCacheHandler() {
+  clearCache()
   log('cache-result', '缓存已清除', 'success')
 }
 
@@ -311,25 +311,25 @@ async function testPerformance() {
 
 // 页面加载完成后的初始化
 document.addEventListener('DOMContentLoaded', () => {
-  console.log('🚀 请求库浏览器演示已加载（工厂模式）')
-  console.log('requestBus:', currentRequestBus)
+  console.log('🚀 Request library browser demo loaded (createApiClient pattern)')
+  console.log('apiClient:', currentApiClient)
   console.log('userApi:', currentUserApi)
   console.log('postApi:', currentPostApi)
   
   // 初始化 window 对象引用，方便调试
-  window.currentRequestBus = currentRequestBus
+  window.currentApiClient = currentApiClient
   window.currentUserApi = currentUserApi
   window.currentPostApi = currentPostApi
-  window.requestBus = requestBus
+  window.apiClient = apiClient
   window.userApi = userApi
   window.postApi = postApi
   
   // 添加全局测试函数引用
   window.handleImplementationSwitch = handleImplementationSwitch
   
-  console.log('🎯 全局对象已设置，可在控制台中使用：')
-  console.log('  - window.currentRequestBus (当前请求总线)')
-  console.log('  - window.currentUserApi (当前用户API)')
-  console.log('  - window.currentPostApi (当前文章API)')
-  console.log('  - window.handleImplementationSwitch(implementation) (切换实现)')
+  console.log('🎯 Global objects setup, available in console:')
+  console.log('  - window.currentApiClient (current API client)')
+  console.log('  - window.currentUserApi (current user API)')
+  console.log('  - window.currentPostApi (current post API)')
+  console.log('  - window.handleImplementationSwitch(implementation) (switch implementation)')
 })

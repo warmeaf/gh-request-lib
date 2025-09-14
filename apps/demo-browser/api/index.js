@@ -1,35 +1,50 @@
-import { createRequestBus } from 'request-bus'
+import { createApiClient, createRequestBus } from 'request-bus'
 import UserApi from './user'
 import PostApi from './post'
 
-// 创建 RequestBus 实例（使用新的工厂模式）
-export const requestBus = createRequestBus('axios', {
+// 创建 API 客户端实例（使用 createApiClient 工厂方法）
+export const apiClient = createApiClient({
+  user: UserApi,
+  post: PostApi
+}, {
+  implementation: 'axios',
   globalConfig: {
     debug: true,
     timeout: 10000,
   },
 })
 
+// 导出 API 实例
+export const userApi = apiClient.user
+export const postApi = apiClient.post
+
+// 用于实现切换的变量
+let currentImplementation = 'axios'
+let currentApiClient = apiClient
+
 export function switchImplementation(implementation, logCallback = null) {
-  console.log(`正在切换到 ${implementation} 实现...`)
+  console.log(`Switching to ${implementation} implementation...`)
 
   try {
-    // 使用 RequestBus 内置的 switchImplementation 方法
-    requestBus.switchImplementation(implementation, {
-      clearCache: false, // 保留缓存
-      preserveInterceptors: true, // 保留拦截器
-      preserveGlobalConfig: true // 保留全局配置
+    // 重新创建 API 客户端实例
+    currentApiClient = createApiClient({
+      user: UserApi,
+      post: PostApi
+    }, {
+      implementation: implementation,
+      globalConfig: {
+        debug: true,
+        timeout: 10000,
+      },
     })
 
-    // API 实例会被自动更新，我们需要重新获取引用
-    const updatedUserApi = requestBus.getApi('user')
-    const updatedPostApi = requestBus.getApi('post')
+    currentImplementation = implementation
 
     // 更新全局引用（如果存在window对象）
     if (typeof window !== 'undefined') {
-      window.requestBus = requestBus
-      window.userApi = updatedUserApi
-      window.postApi = updatedPostApi
+      window.currentApiClient = currentApiClient
+      window.userApi = currentApiClient.user
+      window.postApi = currentApiClient.post
     }
 
     const message = `✅ 已成功切换到 ${implementation} 实现`
@@ -41,9 +56,9 @@ export function switchImplementation(implementation, logCallback = null) {
     }
 
     return {
-      requestBus,
-      userApi: updatedUserApi,
-      postApi: updatedPostApi
+      apiClient: currentApiClient,
+      userApi: currentApiClient.user,
+      postApi: currentApiClient.post
     }
   } catch (error) {
     const message = `❌ 切换实现失败: ${error.message}`
@@ -58,6 +73,23 @@ export function switchImplementation(implementation, logCallback = null) {
   }
 }
 
-// 注册 API
-export const userApi = requestBus.register('user', UserApi)
-export const postApi = requestBus.register('post', PostApi)
+// 获取当前 API 客户端
+export function getCurrentApiClient() {
+  return currentApiClient
+}
+
+// 清除缓存功能（需要通过 RequestBus 实现）
+let requestBus = null
+
+export function clearCache() {
+  if (!requestBus) {
+    // 创建一个临时的 RequestBus 实例用于缓存管理
+    requestBus = createRequestBus(currentImplementation, {
+      globalConfig: {
+        debug: true,
+        timeout: 10000,
+      },
+    })
+  }
+  requestBus.clearCache()
+}
