@@ -1,5 +1,5 @@
 // 浏览器演示主文件
-import { apiClient, switchImplementation, userApi, postApi, getCurrentApiClient, clearCache } from './api'
+import { apiClient, switchImplementation, userApi, postApi, clearCache } from './api'
 
 window.testBasicRequest = testBasicRequest
 window.testUserList = testUserList
