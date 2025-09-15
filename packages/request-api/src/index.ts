@@ -1,4 +1,9 @@
-import { RequestCore, GlobalConfig, RequestInterceptor, Requestor } from 'request-core'
+import {
+  RequestCore,
+  GlobalConfig,
+  RequestInterceptor,
+  Requestor,
+} from 'request-core'
 
 /**
  * @description API 类的接口定义
@@ -17,7 +22,7 @@ interface ApiInstance {
 
 // ==================== 工厂方法 ====================
 
-// 导出类型和接口  
+// 导出类型和接口
 export type { ApiClass, ApiInstance }
 
 /**
@@ -72,16 +77,16 @@ export function createApiClient<T extends Record<string, ApiClass<any>>>(
   }
 ): ApiClient<T> {
   // 优先使用传入的 RequestCore，否则用 Requestor 创建新的
-  const core = options.requestCore || 
-    (options.requestor 
+  const core =
+    options.requestCore ||
+    (options.requestor
       ? createRequestCore(options.requestor, {
           globalConfig: options.globalConfig,
           interceptors: options.interceptors,
         })
       : (() => {
           throw new Error('Must provide either requestor or requestCore option')
-        })()
-    )
+        })())
 
   // 创建 API 实例集合
   const apiEntries = Object.entries(apis).map(([name, ApiCtor]) => {
@@ -89,51 +94,56 @@ export function createApiClient<T extends Record<string, ApiClass<any>>>(
     return [name, instance]
   }) as Array<[keyof T, InstanceType<T[keyof T]>]>
 
-  const apiInstances = Object.fromEntries(apiEntries) as { [K in keyof T]: InstanceType<T[K]> }
+  const apiInstances = Object.fromEntries(apiEntries) as {
+    [K in keyof T]: InstanceType<T[K]>
+  }
 
   // 创建增强的客户端对象
   const client = {
     ...apiInstances,
-    
+
     // 缓存管理功能
     clearCache: (key?: string) => {
       core.clearCache(key)
     },
-    
+
     getCacheStats: () => {
       return core.getCacheStats()
     },
-    
+
     // 全局配置管理
     setGlobalConfig: (config: GlobalConfig) => {
       core.setGlobalConfig(config)
     },
-    
+
     // 拦截器管理
     addInterceptor: (interceptor: RequestInterceptor) => {
       core.addInterceptor(interceptor)
     },
-    
+
     clearInterceptors: () => {
       core.clearInterceptors()
     },
-    
+
     // 实用方法
     destroy: () => {
       core.destroy()
     },
-    
+
     getAllStats: () => {
       return core.getAllStats()
-    }
+    },
   } as ApiClient<T>
 
   return client
 }
 
-
 // 稳定重导出常用类型，便于上层只依赖 request-api
-export type { PaginatedResponse, RestfulOptions } from 'request-core'
+export type {
+  RequestCore,
+  PaginatedResponse,
+  RestfulOptions,
+} from 'request-core'
 
 // 主要工厂方法在上方已经定义并导出
 
