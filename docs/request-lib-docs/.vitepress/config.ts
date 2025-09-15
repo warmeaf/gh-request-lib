@@ -52,7 +52,7 @@ export default defineConfig({
           text: 'API参考',
           items: [
             { text: '核心层API', link: '/api/request-core' },
-            { text: '业务层API', link: '/api/request-bus' },
+            { text: 'API层', link: '/api/request-api' },
             { text: '实现层API', link: '/api/implementations' },
           ],
         },
@@ -104,14 +104,12 @@ export default defineConfig({
           ],
         },
         {
-          text: 'request-bus',
+          text: 'request-api',
           collapsed: false,
           items: [
-            { text: '包概述', link: '/packages/request-bus/' },
-            { text: '工厂方法', link: '/packages/request-bus/factory-methods' },
-            { text: '单例模式', link: '/packages/request-bus/singleton-mode' },
-            { text: '开发工具', link: '/packages/request-bus/dev-tools' },
-            { text: 'API参考', link: '/packages/request-bus/api-reference' },
+            { text: '包概述', link: '/packages/request-api/' },
+            { text: '工厂方法', link: '/packages/request-api/factory-methods' },
+            { text: 'API参考', link: '/packages/request-api/api-reference' },
           ],
         },
         {
@@ -166,7 +164,7 @@ export default defineConfig({
 
     footer: {
       message: '基于 ISC 许可发布',
-      copyright: 'Copyright © 2024-present Request Lib',
+      copyright: 'Copyright © 2025-present Request Lib',
     },
 
     search: {

@@ -1,6 +1,6 @@
 # 基础请求示例
 
-本文档演示了 request-bus 库的各种基础请求功能，包括GET、POST、PUT、DELETE请求，以及缓存机制和错误处理。所有示例都使用 [JSONPlaceholder](https://jsonplaceholder.typicode.com/) 作为测试API。
+本文档演示了 request-api 库的各种基础请求功能，包括GET、POST、PUT、DELETE请求，以及缓存机制和错误处理。所有示例都使用 [JSONPlaceholder](https://jsonplaceholder.typicode.com/) 作为测试API。
 
 ## 📊 GET 请求演示
 
@@ -44,7 +44,7 @@ demo-preview=./components/basic-requests/delete.vue
 
 ## 💾 缓存功能演示
 
-展示 request-bus 的智能缓存机制，包括缓存命中率统计和性能对比分析。
+展示 request-api 的智能缓存机制，包括缓存命中率统计和性能对比分析。
 
 :::preview 缓存功能 || 智能缓存管理
 

@@ -6,7 +6,7 @@
 
 ```bash
 # 安装必需的包
-npm install request-core request-bus request-imp-axios
+npm install request-core request-api request-imp-axios
 ```
 
 > 💡 更详细的安装选项和配置请查看 [安装指南](/guide/installation)
@@ -16,19 +16,20 @@ npm install request-core request-bus request-imp-axios
 最简单的使用方式，创建API类并使用：
 
 ```typescript
-import { createApiClient } from 'request-bus'
-import type { RequestCore } from 'request-core'
+import { createApiClient } from 'request-api'
+import type { RequestCore } from 'request-api'
+import { AxiosRequestor } from 'request-imp-axios'
 
 // 1. 定义 API 类
 class UserApi {
-  constructor(private core: RequestCore) {}
+  constructor(private requestCore: RequestCore) {}
   
   async getUser(id: string) {
-    return this.core.get<User>(`/users/${id}`)
+    return this.requestCore.get<User>(`/users/${id}`)
   }
   
   async getUserList() {
-    return this.core.get<User[]>('/users')
+    return this.requestCore.get<User[]>('/users')
   }
 }
 
@@ -36,7 +37,7 @@ class UserApi {
 const apiClient = createApiClient({
   user: UserApi
 }, {
-  implementation: 'axios',  // 或 'fetch'
+  requestor: new AxiosRequestor(), // 使用 Axios 实现
   globalConfig: {
     baseURL: 'https://jsonplaceholder.typicode.com',
     timeout: 5000
@@ -48,6 +49,27 @@ const user = await apiClient.user.getUser('1')
 console.log('User:', user)
 ```
 
+
+## 🔄 使用 Fetch 实现
+
+如果你更倾向于使用现代的 Fetch API，也可以轻松切换：
+
+```typescript
+import { createApiClient } from 'request-api'
+import type { RequestCore } from 'request-api'
+import { FetchRequestor } from 'request-imp-fetch'
+
+// 使用 Fetch 实现创建客户端
+const apiClient = createApiClient({
+  user: UserApi
+}, {
+  requestor: new FetchRequestor(), // 使用 Fetch 实现
+  globalConfig: {
+    baseURL: 'https://jsonplaceholder.typicode.com',
+    timeout: 5000
+  }
+})
+```
 
 ## ⚡ 核心功能
 
@@ -70,4 +92,4 @@ console.log('User:', user)
 - **💡 [最佳实践](/guide/best-practices)** - 学习项目组织和开发规范
 - **🛠️ [故障排除](/guide/troubleshooting)** - 解决常见问题和调试技巧
 
-恭喜！您现在已经掌握了请求库的基本使用方法。如果遇到问题，可以查看 [故障排除指南](/guide/troubleshooting) 或提交 Issue 获取帮助。
+恭喜！您现在已经掌握了请求库的基本使用方法。如果遇到问题，可以查看 [故障排除指南](/guide/troubleshooting)
