@@ -78,17 +78,38 @@ demo-preview=./components/basic-requests/error.vue
 
 ### 🔧 配置选项
 ```javascript
-const requestBus = createRequestBus('fetch', {
-  globalConfig: {
-    timeout: 10000,     // 全局超时时间
-    debug: true,        // 调试模式
-    retries: 3,         // 默认重试次数
-    cache: {
-      ttl: 300000,      // 缓存默认TTL (5分钟)
-      maxSize: 100      // 最大缓存条目数
+import { createApiClient } from 'request-api'
+import { fetchRequestor } from 'request-imp-fetch'
+
+// 定义 API 类
+class UserApi {
+  constructor(requestCore) {
+    this.requestCore = requestCore
+  }
+  
+  async getUsers() {
+    return this.requestCore.get('/users')
+  }
+}
+
+// 创建 API 客户端
+const apiClient = createApiClient(
+  { user: UserApi },
+  {
+    requestor: fetchRequestor,
+    globalConfig: {
+      timeout: 10000,     // 全局超时时间
+      debug: true,        // 调试模式
+      cache: {
+        ttl: 300000,      // 缓存默认TTL (5分钟)
+        maxSize: 100      // 最大缓存条目数
+      }
     }
   }
-})
+)
+
+// 使用 API
+const users = await apiClient.user.getUsers()
 ```
 
 ### 📈 性能优势

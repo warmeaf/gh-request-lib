@@ -72,14 +72,8 @@
 
 <script setup lang="ts">
 import { ref, computed } from 'vue'
-import { createRequestBus } from 'request-bus'
-
-// 创建请求总线实例
-const requestBus = createRequestBus('fetch', {
-  globalConfig: {
-    timeout: 10000,
-  },
-})
+import { createApiClient, type ApiClass } from 'request-api'
+import { fetchRequestor } from 'request-imp-fetch'
 
 // 定义文章API类
 class PostApi {
@@ -95,8 +89,19 @@ class PostApi {
   }
 }
 
-// 注册API
-const postApi = requestBus.register('post', PostApi)
+// 创建 API 客户端实例
+const apiClient = createApiClient(
+  { post: PostApi },
+  {
+    requestor: fetchRequestor,
+    globalConfig: {
+      timeout: 10000,
+    },
+  }
+)
+
+// 获取文章 API 实例
+const postApi = apiClient.post
 
 // 表单数据
 const formData = ref({

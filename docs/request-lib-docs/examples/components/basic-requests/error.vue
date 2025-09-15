@@ -173,14 +173,8 @@
 
 <script setup lang="ts">
 import { ref, computed } from 'vue'
-import { createRequestBus } from 'request-bus'
-
-// 创建请求总线实例
-const requestBus = createRequestBus('fetch', {
-  globalConfig: {
-    timeout: 5000, // 设置较短的超时时间用于演示
-  },
-})
+import { createApiClient, type ApiClass } from 'request-api'
+import { fetchRequestor } from 'request-imp-fetch'
 
 // 定义演示API类
 class DemoApi {
@@ -221,8 +215,19 @@ class DemoApi {
   }
 }
 
-// 注册API
-const demoApi = requestBus.register('demo', DemoApi)
+// 创建 API 客户端实例
+const apiClient = createApiClient(
+  { demo: DemoApi },
+  {
+    requestor: fetchRequestor,
+    globalConfig: {
+      timeout: 5000, // 设置较短的超时时间用于演示
+    },
+  }
+)
+
+// 获取演示 API 实例
+const demoApi = apiClient.demo
 
 // 组件状态
 const loading = ref(false)
@@ -273,7 +278,7 @@ const testScenario = async (scenario) => {
     totalTime: 0,
     errorType: '',
     message: '',
-    retryHistory: []
+    retryHistory: [] as any[]
   }
 
   // 设置加载消息

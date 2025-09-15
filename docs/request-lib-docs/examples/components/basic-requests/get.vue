@@ -54,14 +54,8 @@
 
 <script setup lang="ts">
 import { ref } from 'vue'
-import { createRequestBus } from 'request-bus'
-
-// 创建请求总线实例
-const requestBus = createRequestBus('fetch', {
-  globalConfig: {
-    timeout: 10000,
-  },
-})
+import { createApiClient, type ApiClass } from 'request-api'
+import { fetchRequestor } from 'request-imp-fetch'
 
 // 定义用户API类
 class UserApi {
@@ -77,8 +71,19 @@ class UserApi {
   }
 }
 
-// 注册API
-const userApi = requestBus.register('user', UserApi)
+// 创建 API 客户端实例
+const apiClient = createApiClient(
+  { user: UserApi },
+  {
+    requestor: fetchRequestor,
+    globalConfig: {
+      timeout: 10000,
+    },
+  }
+)
+
+// 获取用户 API 实例
+const userApi = apiClient.user
 
 // 组件状态
 const userId = ref(1)

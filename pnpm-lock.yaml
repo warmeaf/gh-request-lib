@@ -35,6 +35,12 @@ importers:
       request-api:
         specifier: workspace:*
         version: link:../../packages/request-api
+      request-imp-axios:
+        specifier: workspace:*
+        version: link:../../packages/request-imp-axios
+      request-imp-fetch:
+        specifier: workspace:*
+        version: link:../../packages/request-imp-fetch
     devDependencies:
       vitepress:
         specifier: 2.0.0-alpha.1
