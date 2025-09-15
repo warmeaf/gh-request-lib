@@ -12,7 +12,10 @@
     "demo:browser": "vite serve apps/demo-browser --port 3000",
     "install-deps": "pnpm install",
     "test": "vitest",
-    "test:run": "vitest run"
+    "test:run": "vitest run",
+    "docs:dev": "pnpm --filter request-lib-docs run docs:dev",
+    "docs:build": "pnpm --filter request-lib-docs run docs:build",
+    "docs:preview": "pnpm --filter request-lib-docs run docs:preview"
   },
   "devDependencies": {
     "@types/node": "^24.3.0",
