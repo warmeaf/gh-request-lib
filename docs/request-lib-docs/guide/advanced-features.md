@@ -1,959 +1,735 @@
-# 高级功能
+# 进阶功能
 
-本文档介绍请求库的高级功能和深度定制能力。这些功能适合有经验的开发者和需要精细控制的企业级应用场景。
+本文档介绍请求库的高级功能，包括请求缓存、并发控制和重试机制。这些功能可以显著提升应用的性能和可靠性。
 
-## 🚀 高级缓存系统
+## 🚀 快速预览
 
-### 多种存储适配器
+```typescript
+import { createApiClient } from 'request-api'
+import { AxiosRequestor } from 'request-imp-axios'
+import type { RequestCore } from 'request-api'
 
-请求库提供了四种存储适配器，满足不同场景的缓存需求：
+class UserApi {
+  constructor(private requestCore: RequestCore) {}
+
+  // 使用缓存的请求
+  async getUser(id: string) {
+    return this.requestCore.getWithCache<User>(`/users/${id}`, {
+      ttl: 300000 // 5分钟缓存
+    })
+  }
+
+  // 重试请求
+  async getImportantData(id: string) {
+    return this.requestCore.getWithRetry<Data>(`/data/${id}`, {
+      retries: 3,
+      delay: 1000,
+      backoffFactor: 2
+    })
+  }
+
+  // 并发请求
+  async getUsersInParallel(ids: string[]) {
+    const urls = ids.map(id => `/users/${id}`)
+    return this.requestCore.getConcurrent<User>(urls, {
+      maxConcurrency: 5
+    })
+  }
+}
+```
+
+## 💾 请求缓存
+
+请求缓存功能可以避免重复的网络请求，显著提升应用性能和用户体验。
+
+### 基础用法
+
+```typescript
+class UserApi {
+  constructor(private requestCore: RequestCore) {}
+
+  // 基础缓存 - 使用默认5分钟TTL
+  async getUser(id: string) {
+    return this.requestCore.getWithCache<User>(`/users/${id}`)
+  }
+
+  // 自定义缓存时间
+  async getUserWithCustomTTL(id: string) {
+    return this.requestCore.getWithCache<User>(`/users/${id}`, {
+      ttl: 600000 // 10分钟缓存
+    })
+  }
+
+  // 使用自定义缓存键
+  async getUserProfile(id: string, version: string) {
+    return this.requestCore.getWithCache<UserProfile>(`/users/${id}/profile`, {
+      key: `user-profile-${id}-v${version}`,
+      ttl: 300000
+    })
+  }
+}
+```
+
+### 高级缓存配置
 
 ```typescript
 import { StorageType } from 'request-core'
 
-// 1. 内存存储 - 最快，但进程退出后数据丢失
-const memoryCache = createApiClient(
-  { user: UserApi },
-  {
-    implementation: 'axios',
-    globalConfig: {
-      cache: {
-        storageType: StorageType.MEMORY,
-        maxEntries: 1000,
-      },
-    },
-  }
-)
+class DataApi {
+  constructor(private requestCore: RequestCore) {}
 
-// 2. LocalStorage - 持久化，但容量有限
-const localStorageCache = createApiClient(
-  { user: UserApi },
-  {
-    implementation: 'axios',
-    globalConfig: {
-      cache: {
-        storageType: StorageType.LOCAL_STORAGE,
-        maxEntries: 500,
-      },
-    },
-  }
-)
-
-// 3. IndexedDB - 大容量，现代浏览器推荐
-const indexedDBCache = createApiClient(
-  { user: UserApi },
-  {
-    implementation: 'axios',
-    globalConfig: {
-      cache: {
-        storageType: StorageType.INDEXED_DB,
-        maxEntries: 10000,
-      },
-    },
-  }
-)
-
-// 4. WebSQL - 已废弃，仅兼容性需要
-const webSQLCache = createApiClient(
-  { user: UserApi },
-  {
-    implementation: 'axios',
-    globalConfig: {
-      cache: {
-        storageType: StorageType.WEB_SQL,
-        maxEntries: 2000,
-      },
-    },
-  }
-)
-```
-
-### 高级缓存失效策略
-
-```typescript
-import {
-  LRUInvalidationPolicy,
-  FIFOInvalidationPolicy,
-  TimeBasedInvalidationPolicy,
-  CustomInvalidationPolicy,
-} from 'request-core'
-
-class CacheManager {
-  // 1. LRU策略 - 最近最少使用
-  getLRUPolicy() {
-    return new LRUInvalidationPolicy({
-      maxEntries: 1000,
-      maxSize: 50 * 1024 * 1024, // 50MB
+  // 使用 localStorage 存储缓存
+  async getCachedData(endpoint: string) {
+    return this.requestCore.getWithCache<any>(endpoint, {
+      ttl: 1800000, // 30分钟
+      storageType: StorageType.LOCAL_STORAGE,
+      maxEntries: 100 // 最大缓存条目数
     })
   }
 
-  // 2. FIFO策略 - 先进先出
-  getFIFOPolicy() {
-    return new FIFOInvalidationPolicy({
-      maxEntries: 500,
+  // 使用 IndexedDB 存储（适合大数据）
+  async getLargeDataSet() {
+    return this.requestCore.getWithCache<LargeDataSet>('/large-dataset', {
+      ttl: 3600000, // 1小时
+      storageType: StorageType.INDEXED_DB
     })
   }
 
-  // 3. 时间基础策略 - 基于时间和TTL
-  getTimeBasedPolicy() {
-    return new TimeBasedInvalidationPolicy({
-      defaultTTL: 30 * 60 * 1000, // 30分钟
-      maxAge: 24 * 60 * 60 * 1000, // 24小时绝对过期
-    })
-  }
-
-  // 4. 自定义策略 - 复杂业务逻辑
-  getCustomPolicy() {
-    return new CustomInvalidationPolicy((item, context) => {
-      // 自定义失效逻辑
-      const now = Date.now()
-      const itemAge = now - item.timestamp
-      const accessFrequency = item.accessCount / (itemAge / 1000 / 60) // 每分钟访问次数
-
-      // 高频访问的数据保留更久
-      if (accessFrequency > 10) {
-        return itemAge > 60 * 60 * 1000 // 1小时
-      } else if (accessFrequency > 1) {
-        return itemAge > 30 * 60 * 1000 // 30分钟
-      } else {
-        return itemAge > 5 * 60 * 1000 // 5分钟
-      }
+  // 深拷贝缓存数据（防止数据污染）
+  async getMutableData() {
+    return this.requestCore.getWithCache<MutableData>('/mutable-data', {
+      ttl: 300000,
+      clone: 'deep' // 深拷贝返回的数据
     })
   }
 }
 ```
 
-### 缓存预热和批量操作
+### 缓存键策略
 
 ```typescript
-class UserApi {
-  constructor(private core: RequestCore) {}
+import { FullUrlKeyStrategy, ParameterizedKeyStrategy } from 'request-core'
 
-  // 缓存预热 - 提前加载常用数据
-  async warmupCache(userIds: string[]) {
-    const warmupPromises = userIds.map(async (id) => {
-      try {
-        await this.core.get<User>(`/users/${id}`, {
-          cache: {
-            enabled: true,
-            ttl: 60 * 60 * 1000, // 1小时
-            tags: ['user-warmup'],
-          },
-        })
-      } catch (error) {
-        console.warn(`Failed to warmup cache for user ${id}:`, error)
-      }
-    })
+class SearchApi {
+  constructor(private requestCore: RequestCore) {}
 
-    await Promise.allSettled(warmupPromises)
-    console.log(`Warmed up cache for ${userIds.length} users`)
-  }
-
-  // 智能缓存刷新 - 基于访问频率
-  async smartCacheRefresh() {
-    const cacheStats = await this.core.getCacheStats()
-    const hotKeys = cacheStats.entries
-      .filter((entry) => entry.accessCount > 10)
-      .sort((a, b) => b.accessCount - a.accessCount)
-      .slice(0, 50) // 取前50个热点数据
-
-    for (const entry of hotKeys) {
-      if (entry.age > 30 * 60 * 1000) {
-        // 超过30分钟的热点数据
-        try {
-          // 后台刷新缓存
-          this.refreshCacheInBackground(entry.key)
-        } catch (error) {
-          console.warn(`Failed to refresh cache for key ${entry.key}:`, error)
-        }
-      }
-    }
-  }
-
-  private async refreshCacheInBackground(cacheKey: string) {
-    // 解析缓存键获取原始请求信息
-    const requestInfo = this.parseCacheKey(cacheKey)
-    if (requestInfo) {
-      await this.core.get(requestInfo.url, {
-        ...requestInfo.config,
-        cache: {
-          enabled: true,
-          key: cacheKey,
-          ttl: 60 * 60 * 1000, // 刷新后缓存1小时
-        },
-      })
-    }
-  }
-
-  private parseCacheKey(cacheKey: string): { url: string; config: any } | null {
-    // 实现缓存键解析逻辑
-    // 这里需要根据实际的键格式来实现
-    return null
-  }
-}
-```
-
-## 🔧 自定义实现层开发
-
-### 创建自定义请求实现
-
-```typescript
-import { Requestor, RequestConfig } from 'request-core'
-
-// 1. 基于 GraphQL 的自定义实现
-class GraphQLRequestor implements Requestor {
-  constructor(
-    private endpoint: string,
-    private defaultHeaders: Record<string, string> = {}
-  ) {}
-
-  async request<T>(config: RequestConfig): Promise<T> {
-    const { data, headers = {}, ...otherConfig } = config
-
-    // 构建 GraphQL 查询
-    const graphqlQuery = this.buildGraphQLQuery(config)
-
-    const response = await fetch(this.endpoint, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        ...this.defaultHeaders,
-        ...headers,
-      },
-      body: JSON.stringify(graphqlQuery),
-    })
-
-    if (!response.ok) {
-      throw new Error(`GraphQL request failed: ${response.statusText}`)
-    }
-
-    const result = await response.json()
-
-    if (result.errors) {
-      throw new Error(`GraphQL errors: ${JSON.stringify(result.errors)}`)
-    }
-
-    return result.data
-  }
-
-  private buildGraphQLQuery(config: RequestConfig) {
-    // 根据 REST API 配置构建 GraphQL 查询
-    // 这是一个简化的实现
-    const operation = this.mapMethodToOperation(config.method)
-    const variables = config.data || {}
-
-    return {
-      query: `${operation} { ${this.buildFieldSelection(config.url)} }`,
-      variables,
-    }
-  }
-
-  private mapMethodToOperation(method: string): string {
-    switch (method) {
-      case 'GET':
-        return 'query'
-      case 'POST':
-        return 'mutation'
-      case 'PUT':
-        return 'mutation'
-      case 'DELETE':
-        return 'mutation'
-      default:
-        return 'query'
-    }
-  }
-
-  private buildFieldSelection(url: string): string {
-    // 根据 URL 构建字段选择
-    // 简化实现
-    const parts = url.split('/').filter(Boolean)
-    return parts[parts.length - 1] || 'data'
-  }
-}
-
-// 2. WebSocket 实现
-class WebSocketRequestor implements Requestor {
-  private ws: WebSocket | null = null
-  private requestMap = new Map<
-    string,
-    { resolve: Function; reject: Function }
-  >()
-
-  constructor(private wsUrl: string) {
-    this.connect()
-  }
-
-  private connect() {
-    this.ws = new WebSocket(this.wsUrl)
-
-    this.ws.onmessage = (event) => {
-      const response = JSON.parse(event.data)
-      const request = this.requestMap.get(response.id)
-
-      if (request) {
-        if (response.error) {
-          request.reject(new Error(response.error))
-        } else {
-          request.resolve(response.data)
-        }
-        this.requestMap.delete(response.id)
-      }
-    }
-
-    this.ws.onerror = (error) => {
-      console.error('WebSocket error:', error)
-    }
-  }
-
-  async request<T>(config: RequestConfig): Promise<T> {
-    return new Promise((resolve, reject) => {
-      const requestId = this.generateRequestId()
-      this.requestMap.set(requestId, { resolve, reject })
-
-      const message = {
-        id: requestId,
-        method: config.method,
-        url: config.url,
-        data: config.data,
-        headers: config.headers,
-      }
-
-      if (this.ws?.readyState === WebSocket.OPEN) {
-        this.ws.send(JSON.stringify(message))
-      } else {
-        reject(new Error('WebSocket is not connected'))
-      }
-
-      // 设置超时
-      setTimeout(() => {
-        if (this.requestMap.has(requestId)) {
-          this.requestMap.delete(requestId)
-          reject(new Error('Request timeout'))
-        }
-      }, config.timeout || 10000)
+  // 使用完整 URL 作为缓存键
+  async searchUsers(query: string, filters: any) {
+    return this.requestCore.getWithCache<SearchResult>('/search/users', {
+      params: { q: query, ...filters },
+      ttl: 120000, // 2分钟
+      keyStrategy: new FullUrlKeyStrategy()
     })
   }
 
-  private generateRequestId(): string {
-    return `req_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
-  }
-}
-
-// 注册自定义实现
-class CustomRequestCoreFactory {
-  static create(implementation: string): RequestCore {
-    let requestor: Requestor
-
-    switch (implementation) {
-      case 'graphql':
-        requestor = new GraphQLRequestor('https://api.example.com/graphql')
-        break
-      case 'websocket':
-        requestor = new WebSocketRequestor('wss://api.example.com/ws')
-        break
-      default:
-        throw new Error(`Unsupported implementation: ${implementation}`)
-    }
-
-    return new RequestCore(requestor)
-  }
-}
-```
-
-### 实现层扩展和中间件
-
-```typescript
-// 请求实现装饰器模式
-abstract class RequestorDecorator implements Requestor {
-  constructor(protected requestor: Requestor) {}
-
-  abstract request<T>(config: RequestConfig): Promise<T>
-}
-
-// 压缩中间件
-class CompressionDecorator extends RequestorDecorator {
-  async request<T>(config: RequestConfig): Promise<T> {
-    // 添加压缩支持
-    const newConfig = {
-      ...config,
-      headers: {
-        ...config.headers,
-        'Accept-Encoding': 'gzip, deflate, br',
-      },
-    }
-
-    const response = await this.requestor.request<T>(newConfig)
-
-    // 如果响应被压缩，进行解压
-    return this.decompressIfNeeded(response)
-  }
-
-  private decompressIfNeeded<T>(response: T): T {
-    // 解压逻辑
-    return response
-  }
-}
-
-// 加密中间件
-class EncryptionDecorator extends RequestorDecorator {
-  constructor(requestor: Requestor, private encryptionKey: string) {
-    super(requestor)
-  }
-
-  async request<T>(config: RequestConfig): Promise<T> {
-    // 加密请求数据
-    if (config.data) {
-      config.data = await this.encrypt(config.data)
-    }
-
-    const response = await this.requestor.request<T>(config)
-
-    // 解密响应数据
-    return this.decrypt(response)
-  }
-
-  private async encrypt(data: any): Promise<any> {
-    // 实现加密逻辑
-    return data
-  }
-
-  private async decrypt<T>(data: T): Promise<T> {
-    // 实现解密逻辑
-    return data
-  }
-}
-
-// 使用装饰器
-const baseRequestor = new AxiosRequestor()
-const compressedRequestor = new CompressionDecorator(baseRequestor)
-const encryptedRequestor = new EncryptionDecorator(
-  compressedRequestor,
-  'my-secret-key'
-)
-
-const core = new RequestCore(encryptedRequestor)
-```
-
-## 🎭 高级拦截器模式
-
-### 条件拦截器
-
-```typescript
-class ConditionalInterceptor {
-  constructor(
-    private condition: (config: RequestConfig) => boolean,
-    private interceptor: RequestInterceptor
-  ) {}
-
-  install(core: RequestCore): void {
-    core.addInterceptor({
-      request: (config) => {
-        if (this.condition(config) && this.interceptor.request) {
-          return this.interceptor.request(config)
-        }
-        return config
-      },
-
-      response: (response) => {
-        if (this.condition(response.config) && this.interceptor.response) {
-          return this.interceptor.response(response)
-        }
-        return response
-      },
-
-      error: (error) => {
-        if (this.condition(error.config) && this.interceptor.error) {
-          return this.interceptor.error(error)
-        }
-        throw error
-      },
+  // 使用参数化键策略
+  async getFilteredData(category: string, page: number) {
+    return this.requestCore.getWithCache<FilteredData>('/data', {
+      params: { category, page },
+      ttl: 300000,
+      keyStrategy: new ParameterizedKeyStrategy(['category']) // 只基于 category 生成键
     })
   }
 }
-
-// 使用条件拦截器
-const apiClient = createApiClient(
-  { user: UserApi },
-  {
-    implementation: 'axios',
-  }
-)
-
-// 仅对特定API应用认证拦截器
-const authInterceptor = new ConditionalInterceptor(
-  (config) => config.url.includes('/api/secured/'),
-  {
-    request: (config) => {
-      config.headers = {
-        ...config.headers,
-        Authorization: `Bearer ${getToken()}`,
-      }
-      return config
-    },
-  }
-)
-
-authInterceptor.install(apiClient.core)
 ```
 
-### 拦截器链和组合
+### 缓存管理
 
 ```typescript
-class InterceptorChain {
-  private interceptors: RequestInterceptor[] = []
+// 在 API 客户端中
+const apiClient = createApiClient({ user: UserApi }, {
+  requestor: new AxiosRequestor()
+})
 
-  add(interceptor: RequestInterceptor): this {
-    this.interceptors.push(interceptor)
-    return this
-  }
+// 清除所有缓存
+apiClient.clearCache()
 
-  async executeRequest(config: RequestConfig): Promise<RequestConfig> {
-    let result = config
+// 清除特定缓存
+apiClient.clearCache('user-123')
 
-    for (const interceptor of this.interceptors) {
-      if (interceptor.request) {
-        result = await interceptor.request(result)
-      }
-    }
-
-    return result
-  }
-
-  async executeResponse<T>(response: T): Promise<T> {
-    let result = response
-
-    // 响应拦截器逆序执行
-    for (const interceptor of [...this.interceptors].reverse()) {
-      if (interceptor.response) {
-        result = await interceptor.response(result)
-      }
-    }
-
-    return result
-  }
-
-  async executeError(error: any): Promise<any> {
-    for (const interceptor of [...this.interceptors].reverse()) {
-      if (interceptor.error) {
-        try {
-          return await interceptor.error(error)
-        } catch (e) {
-          error = e
-        }
-      }
-    }
-    throw error
-  }
-}
-
-// 使用拦截器链
-const chain = new InterceptorChain()
-  .add({
-    request: (config) => {
-      console.log('第一个拦截器')
-      return config
-    },
-  })
-  .add({
-    request: (config) => {
-      console.log('第二个拦截器')
-      config.headers = { ...config.headers, 'X-Custom': 'value' }
-      return config
-    },
-  })
-  .add({
-    response: (response) => {
-      console.log('响应拦截器')
-      return response
-    },
-  })
+// 获取缓存统计信息
+const cacheStats = apiClient.getCacheStats()
+console.log('缓存命中率:', cacheStats.hitRate)
+console.log('缓存条目数:', cacheStats.totalItems)
 ```
 
-## 🏢 企业级配置管理
-
-### 分层配置系统
+### 链式调用中的缓存
 
 ```typescript
-interface EnvironmentConfig {
-  development: EnvSettings
-  staging: EnvSettings
-  production: EnvSettings
-}
+class ProductApi {
+  constructor(private requestCore: RequestCore) {}
 
-interface EnvSettings {
-  baseURL: string
-  timeout: number
-  retries: number
-  cacheConfig: CacheConfig
-  securityConfig: SecurityConfig
-  monitoringConfig: MonitoringConfig
-}
-
-interface SecurityConfig {
-  enableEncryption: boolean
-  apiKey: string
-  allowedOrigins: string[]
-  rateLimiting: {
-    enabled: boolean
-    maxRequests: number
-    windowMs: number
+  async getPopularProducts() {
+    return this.requestCore
+      .request()
+      .url('/products/popular')
+      .method('GET')
+      .cache(600000) // 10分钟缓存
+      .timeout(8000)
+      .send<Product[]>()
   }
 }
+```
 
-interface MonitoringConfig {
-  enableTracking: boolean
-  sampleRate: number
-  endpoints: {
-    metrics: string
-    errors: string
-  }
-}
+## 🔄 请求重试
 
-class ConfigManager {
-  private config: EnvSettings
-  private watchers: Array<(config: EnvSettings) => void> = []
+重试机制可以提升网络请求的可靠性，自动处理暂时性的网络问题。
 
-  constructor(private environment: string = 'development') {
-    this.loadConfig()
-    this.setupConfigWatcher()
+### 基础重试
+
+```typescript
+class ApiService {
+  constructor(private requestCore: RequestCore) {}
+
+  // 简单重试 - 默认3次
+  async getDataWithRetry() {
+    return this.requestCore.getWithRetry<any>('/api/data')
   }
 
-  private loadConfig(): void {
-    // 从环境变量、配置文件或远程服务加载配置
-    const envConfig = this.getEnvironmentConfig()
-    this.config = {
-      ...this.getDefaultConfig(),
-      ...envConfig[this.environment as keyof EnvironmentConfig],
-    }
+  // 自定义重试次数
+  async getCriticalData() {
+    return this.requestCore.getWithRetry<CriticalData>('/api/critical', {
+      retries: 5,
+      delay: 1000 // 每次重试间隔1秒
+    })
   }
 
-  private getDefaultConfig(): EnvSettings {
-    return {
-      baseURL: 'https://api.example.com',
-      timeout: 10000,
+  // POST 请求重试
+  async submitFormWithRetry(formData: any) {
+    return this.requestCore.postWithRetry<SubmitResult>('/api/submit', formData, {
       retries: 3,
-      cacheConfig: {
-        enabled: true,
-        ttl: 300000,
-        storageType: StorageType.MEMORY,
-      },
-      securityConfig: {
-        enableEncryption: false,
-        apiKey: '',
-        allowedOrigins: ['*'],
-        rateLimiting: {
-          enabled: false,
-          maxRequests: 100,
-          windowMs: 60000,
-        },
-      },
-      monitoringConfig: {
-        enableTracking: true,
-        sampleRate: 1.0,
-        endpoints: {
-          metrics: '/metrics',
-          errors: '/errors',
-        },
-      },
-    }
+      delay: 2000
+    })
+  }
+}
+```
+
+### 高级重试配置
+
+```typescript
+import { RequestError } from 'request-core'
+
+class RobustApi {
+  constructor(private requestCore: RequestCore) {}
+
+  // 指数退避重试
+  async getWithBackoff() {
+    return this.requestCore.getWithRetry<any>('/api/unstable', {
+      retries: 5,
+      delay: 1000,
+      backoffFactor: 2, // 每次重试延迟翻倍
+      jitter: 0.1 // 10% 的随机抖动
+    })
   }
 
-  private getEnvironmentConfig(): EnvironmentConfig {
+  // 自定义重试条件
+  async getWithCustomRetry() {
+    return this.requestCore.requestWithRetry<any>({
+      url: '/api/custom',
+      method: 'GET'
+    }, {
+      retries: 4,
+      delay: 500,
+      shouldRetry: (error: unknown, attempt: number) => {
+        // 只对网络错误和 5xx 错误重试
+        if (error instanceof RequestError) {
+          // 5xx 服务器错误
+          if (error.status && error.status >= 500 && error.status < 600) {
+            return true
+          }
+          // 4xx 客户端错误不重试
+          if (error.status && error.status >= 400 && error.status < 500) {
+            return false
+          }
+          // 网络错误重试
+          return !error.isHttpError
+        }
+        // 其他错误根据消息判断
+        return error instanceof Error && 
+               error.message.toLowerCase().includes('network')
+      }
+    })
+  }
+}
+```
+
+### 链式调用中的重试
+
+```typescript
+class OrderApi {
+  constructor(private requestCore: RequestCore) {}
+
+  async submitOrder(orderData: Order) {
+    return this.requestCore
+      .request()
+      .url('/orders')
+      .method('POST')
+      .data(orderData)
+      .timeout(10000)
+      .retry(3) // 重试3次
+      .headers({ 'Idempotency-Key': orderData.idempotencyKey })
+      .send<OrderResult>()
+  }
+}
+```
+
+## 🚦 并发请求
+
+并发控制功能允许你高效地处理多个请求，同时控制系统资源消耗。
+
+### 基础并发请求
+
+```typescript
+class BatchApi {
+  constructor(private requestCore: RequestCore) {}
+
+  // 并发获取多个用户
+  async getMultipleUsers(userIds: string[]) {
+    const urls = userIds.map(id => `/users/${id}`)
+    
+    const results = await this.requestCore.getConcurrent<User>(urls, {
+      maxConcurrency: 5, // 最大同时5个请求
+      failFast: false // 不快速失败，等待所有请求完成
+    })
+
+    // 提取成功的结果
+    return this.requestCore.getSuccessfulResults(results)
+  }
+
+  // 并发 POST 请求
+  async batchCreateUsers(users: CreateUserRequest[]) {
+    const requests = users.map(userData => ({
+      url: '/users',
+      data: userData
+    }))
+
+    const results = await this.requestCore.postConcurrent<User>(requests, {
+      maxConcurrency: 3,
+      timeout: 30000 // 整体超时30秒
+    })
+
+    return results
+  }
+}
+```
+
+### 高级并发控制
+
+```typescript
+class DataProcessor {
+  constructor(private requestCore: RequestCore) {}
+
+  // 处理大量数据，控制并发数
+  async processLargeDataSet(items: DataItem[]) {
+    const configs = items.map(item => ({
+      url: `/process/${item.id}`,
+      method: 'POST' as const,
+      data: { 
+        payload: item.data,
+        options: item.options 
+      }
+    }))
+
+    const results = await this.requestCore.requestConcurrent<ProcessResult>(configs, {
+      maxConcurrency: 10,
+      failFast: false,
+      retryOnError: true, // 错误时重试
+      timeout: 60000
+    })
+
+    // 分析结果
+    const successful = results.filter(r => r.success)
+    const failed = results.filter(r => !r.success)
+    
+    console.log(`处理完成: 成功 ${successful.length}, 失败 ${failed.length}`)
+    
     return {
-      development: {
-        baseURL: 'http://localhost:3000/api',
-        timeout: 30000,
-        retries: 1,
-        // ... 其他开发环境配置
-      },
-      staging: {
-        baseURL: 'https://staging-api.example.com',
-        timeout: 15000,
-        retries: 2,
-        // ... 其他测试环境配置
-      },
-      production: {
-        baseURL: 'https://api.example.com',
-        timeout: 10000,
-        retries: 3,
-        // ... 其他生产环境配置
-      },
-    } as EnvironmentConfig
-  }
-
-  // 动态配置更新
-  updateConfig(updates: Partial<EnvSettings>): void {
-    this.config = { ...this.config, ...updates }
-    this.notifyWatchers()
-  }
-
-  // 配置监听器
-  onConfigChange(callback: (config: EnvSettings) => void): void {
-    this.watchers.push(callback)
-  }
-
-  private notifyWatchers(): void {
-    this.watchers.forEach((callback) => callback(this.config))
-  }
-
-  private setupConfigWatcher(): void {
-    // 监听远程配置变化
-    if (this.config.monitoringConfig.enableTracking) {
-      setInterval(() => {
-        this.checkRemoteConfig()
-      }, 60000) // 每分钟检查一次
+      successful: successful.map(r => r.data!),
+      failed: failed.map(r => ({
+        config: r.config,
+        error: r.error
+      }))
     }
   }
 
-  private async checkRemoteConfig(): Promise<void> {
-    try {
-      const response = await fetch('/api/config', {
+  // 重复请求（压力测试）
+  async loadTest(endpoint: string, count: number) {
+    const results = await this.requestCore.requestMultiple<any>({
+      url: endpoint,
+      method: 'GET'
+    }, count, {
+      maxConcurrency: 20,
+      timeout: 120000
+    })
+
+    // 性能分析
+    const durations = results
+      .filter(r => r.success && r.duration)
+      .map(r => r.duration!)
+
+    const avgDuration = durations.reduce((a, b) => a + b, 0) / durations.length
+    const maxDuration = Math.max(...durations)
+
+    return {
+      total: results.length,
+      successful: results.filter(r => r.success).length,
+      avgDuration,
+      maxDuration
+    }
+  }
+}
+```
+
+### 批量请求处理
+
+```typescript
+class FileProcessor {
+  constructor(private requestCore: RequestCore) {}
+
+  // 批量文件上传
+  async uploadMultipleFiles(files: File[]) {
+    const requests = files.map(file => {
+      const formData = new FormData()
+      formData.append('file', file)
+      
+      return {
+        url: '/upload',
+        method: 'POST' as const,
+        data: formData,
         headers: {
-          Authorization: `Bearer ${this.config.securityConfig.apiKey}`,
-        },
-      })
-
-      if (response.ok) {
-        const remoteConfig = await response.json()
-        if (this.hasConfigChanged(remoteConfig)) {
-          this.updateConfig(remoteConfig)
-          console.log('Configuration updated from remote')
+          'Content-Type': 'multipart/form-data'
         }
       }
+    })
+
+    const results = await this.requestCore.batchRequests<UploadResult>(requests, {
+      concurrency: 3, // 同时上传3个文件
+      ignoreErrors: true // 忽略错误，继续处理其他文件
+    })
+
+    return results
+  }
+}
+```
+
+## 🔧 功能组合使用
+
+你可以将这些高级功能组合使用，创建更强大的请求处理逻辑。
+
+### 缓存 + 重试
+
+```typescript
+class RobustDataApi {
+  constructor(private requestCore: RequestCore) {}
+
+  // 首先尝试从缓存获取，失败时重试请求
+  async getReliableData(id: string) {
+    try {
+      // 尝试从缓存获取
+      return await this.requestCore.getWithCache<DataResult>(`/data/${id}`, {
+        ttl: 300000
+      })
     } catch (error) {
-      console.warn('Failed to fetch remote config:', error)
+      console.log('缓存未命中，执行重试请求')
+      // 缓存失败时使用重试机制
+      return await this.requestCore.getWithRetry<DataResult>(`/data/${id}`, {
+        retries: 3,
+        delay: 1000,
+        backoffFactor: 1.5
+      })
     }
-  }
-
-  private hasConfigChanged(remoteConfig: Partial<EnvSettings>): boolean {
-    // 比较配置是否有变化
-    return (
-      JSON.stringify(this.config) !==
-      JSON.stringify({ ...this.config, ...remoteConfig })
-    )
-  }
-
-  getConfig(): EnvSettings {
-    return { ...this.config }
   }
 }
 ```
 
-### 配置热更新
+### 并发 + 缓存
 
 ```typescript
-class HotReloadableApiClient {
-  private configManager: ConfigManager
-  private apiClient: any
-  private currentConfig: EnvSettings
+class OptimizedApi {
+  constructor(private requestCore: RequestCore) {}
 
-  constructor(apis: any, environment?: string) {
-    this.configManager = new ConfigManager(environment)
-    this.currentConfig = this.configManager.getConfig()
-    this.apiClient = this.createApiClient(apis, this.currentConfig)
+  // 并发请求 + 智能缓存
+  async loadDashboardData(userId: string) {
+    const requests = [
+      // 用户信息 - 长缓存
+      this.requestCore.getWithCache<User>(`/users/${userId}`, {
+        ttl: 1800000 // 30分钟
+      }),
+      
+      // 通知 - 短缓存
+      this.requestCore.getWithCache<Notification[]>(`/users/${userId}/notifications`, {
+        ttl: 60000 // 1分钟
+      }),
+      
+      // 统计数据 - 中等缓存
+      this.requestCore.getWithCache<Stats>(`/users/${userId}/stats`, {
+        ttl: 300000 // 5分钟
+      })
+    ]
 
-    // 监听配置变化
-    this.configManager.onConfigChange((newConfig) => {
-      this.handleConfigChange(newConfig, apis)
-    })
-  }
-
-  private createApiClient(apis: any, config: EnvSettings) {
-    return createApiClient(apis, {
-      implementation: 'axios',
-      globalConfig: {
-        baseURL: config.baseURL,
-        timeout: config.timeout,
-        // ... 其他配置
-      },
-    })
-  }
-
-  private handleConfigChange(newConfig: EnvSettings, apis: any): void {
-    const significantChanges = this.hasSignificantChanges(
-      this.currentConfig,
-      newConfig
-    )
-
-    if (significantChanges) {
-      console.log('Significant config changes detected, recreating API client')
-
-      // 销毁当前客户端
-      if (this.apiClient.destroy) {
-        this.apiClient.destroy()
-      }
-
-      // 创建新的客户端
-      this.apiClient = this.createApiClient(apis, newConfig)
-      this.currentConfig = newConfig
-    } else {
-      // 仅更新配置，不重新创建客户端
-      this.apiClient.updateGlobalConfig(newConfig)
-      this.currentConfig = newConfig
-    }
-  }
-
-  private hasSignificantChanges(
-    oldConfig: EnvSettings,
-    newConfig: EnvSettings
-  ): boolean {
-    // 检查是否有需要重新创建客户端的重大变化
-    return (
-      oldConfig.baseURL !== newConfig.baseURL ||
-      oldConfig.securityConfig.enableEncryption !==
-        newConfig.securityConfig.enableEncryption
-    )
-  }
-
-  get client() {
-    return this.apiClient
-  }
-
-  updateConfig(updates: Partial<EnvSettings>): void {
-    this.configManager.updateConfig(updates)
-  }
-}
-```
-
-## 🛡️ 安全功能
-
-### 请求签名和验证
-
-```typescript
-class RequestSigner {
-  constructor(
-    private secretKey: string,
-    private algorithm: 'HMAC-SHA256' | 'RSA-SHA256' = 'HMAC-SHA256'
-  ) {}
-
-  async signRequest(config: RequestConfig): Promise<RequestConfig> {
-    const timestamp = Date.now().toString()
-    const nonce = this.generateNonce()
-
-    const signatureData = this.buildSignatureString(config, timestamp, nonce)
-    const signature = await this.calculateSignature(signatureData)
+    // 并发执行所有请求
+    const [user, notifications, stats] = await Promise.all(requests)
 
     return {
-      ...config,
-      headers: {
-        ...config.headers,
-        'X-Timestamp': timestamp,
-        'X-Nonce': nonce,
-        'X-Signature': signature,
-        'X-Signature-Algorithm': this.algorithm,
-      },
+      user,
+      notifications,
+      stats
     }
-  }
-
-  private buildSignatureString(
-    config: RequestConfig,
-    timestamp: string,
-    nonce: string
-  ): string {
-    const method = config.method.toUpperCase()
-    const url = config.url
-    const body = config.data ? JSON.stringify(config.data) : ''
-    const contentType = config.headers?.['content-type'] || 'application/json'
-
-    return `${method}\n${url}\n${body}\n${contentType}\n${timestamp}\n${nonce}`
-  }
-
-  private async calculateSignature(data: string): Promise<string> {
-    if (this.algorithm === 'HMAC-SHA256') {
-      return this.hmacSHA256(data, this.secretKey)
-    } else {
-      return this.rsaSHA256(data, this.secretKey)
-    }
-  }
-
-  private async hmacSHA256(data: string, key: string): Promise<string> {
-    const encoder = new TextEncoder()
-    const keyData = encoder.encode(key)
-    const messageData = encoder.encode(data)
-
-    const cryptoKey = await crypto.subtle.importKey(
-      'raw',
-      keyData,
-      { name: 'HMAC', hash: 'SHA-256' },
-      false,
-      ['sign']
-    )
-
-    const signature = await crypto.subtle.sign('HMAC', cryptoKey, messageData)
-    return Array.from(new Uint8Array(signature))
-      .map((b) => b.toString(16).padStart(2, '0'))
-      .join('')
-  }
-
-  private async rsaSHA256(data: string, privateKey: string): Promise<string> {
-    // RSA签名实现
-    // 这里需要实现RSA私钥签名逻辑
-    return ''
-  }
-
-  private generateNonce(): string {
-    return crypto
-      .getRandomValues(new Uint8Array(16))
-      .reduce((str, byte) => str + byte.toString(16).padStart(2, '0'), '')
   }
 }
+```
 
-// 安全拦截器
-class SecurityInterceptor {
-  constructor(
-    private signer: RequestSigner,
-    private rateLimiter: RateLimiter,
-    private encryptor?: DataEncryptor
-  ) {}
+### 完整的生产级示例
 
-  install(core: RequestCore): void {
-    core.addInterceptor({
-      request: async (config) => {
-        // 1. 速率限制检查
-        await this.rateLimiter.checkLimit(config)
+```typescript
+class ProductionApi {
+  constructor(private requestCore: RequestCore) {}
 
-        // 2. 数据加密
-        if (this.encryptor && config.data) {
-          config.data = await this.encryptor.encrypt(config.data)
+  // 生产级数据获取 - 集成所有功能
+  async getProductionData(params: SearchParams) {
+    // 使用链式调用集成多种功能
+    return this.requestCore
+      .request()
+      .url('/api/production/data')
+      .method('GET')
+      .params(params)
+      .timeout(15000)
+      .retry(3) // 3次重试
+      .cache(180000) // 3分钟缓存
+      .headers({
+        'Accept': 'application/json',
+        'X-Client-Version': '1.0.0'
+      })
+      .tag('production-data') // 标记用于调试
+      .debug(process.env.NODE_ENV === 'development')
+      .send<ProductionDataResult>()
+  }
+
+  // 批量处理业务数据
+  async processBulkBusinessData(items: BusinessItem[]) {
+    // 分批处理，每批10个项目
+    const batchSize = 10
+    const batches = []
+    
+    for (let i = 0; i < items.length; i += batchSize) {
+      batches.push(items.slice(i, i + batchSize))
+    }
+
+    const allResults = []
+
+    // 串行处理批次，并行处理批次内项目
+    for (const batch of batches) {
+      const batchRequests = batch.map(item => ({
+        url: `/business/process/${item.id}`,
+        method: 'POST' as const,
+        data: item.data
+      }))
+
+      const batchResults = await this.requestCore.requestConcurrent<ProcessResult>(
+        batchRequests,
+        {
+          maxConcurrency: 5,
+          retryOnError: true,
+          timeout: 45000
         }
+      )
 
-        // 3. 请求签名
-        return this.signer.signRequest(config)
-      },
+      allResults.push(...batchResults)
+      
+      // 批次间休息100ms，避免过载
+      if (batches.indexOf(batch) < batches.length - 1) {
+        await new Promise(resolve => setTimeout(resolve, 100))
+      }
+    }
 
-      response: async (response) => {
-        // 解密响应数据
-        if (this.encryptor && response.data) {
-          response.data = await this.encryptor.decrypt(response.data)
-        }
-        return response
+    return {
+      total: allResults.length,
+      successful: allResults.filter(r => r.success),
+      failed: allResults.filter(r => !r.success)
+    }
+  }
+}
+```
+
+## 📊 性能监控
+
+```typescript
+class MonitoringService {
+  constructor(private requestCore: RequestCore) {}
+
+  // 获取详细的性能统计
+  getPerformanceStats() {
+    const allStats = this.requestCore.getAllStats()
+    
+    return {
+      cache: {
+        hitRate: allStats.cache.hitRate,
+        totalItems: allStats.cache.totalItems,
+        memoryUsage: allStats.cache.memoryUsage
       },
+      concurrent: {
+        activeRequests: allStats.concurrent.activeRequests,
+        totalCompleted: allStats.concurrent.totalCompleted,
+        averageResponseTime: allStats.concurrent.averageResponseTime
+      },
+      interceptors: allStats.interceptors,
+      config: allStats.config
+    }
+  }
+
+  // 定期清理和优化
+  performMaintenance() {
+    // 清理过期缓存
+    this.requestCore.clearCache()
+    
+    console.log('Performance stats:', this.getPerformanceStats())
+  }
+}
+```
+
+## 🔧 最佳实践
+
+### 1. 缓存策略
+
+```typescript
+// ✅ 推荐：不同数据使用不同的缓存策略
+class DataService {
+  constructor(private requestCore: RequestCore) {}
+
+  // 静态数据 - 长时间缓存
+  async getConfig() {
+    return this.requestCore.getWithCache<Config>('/config', {
+      ttl: 3600000, // 1小时
+      storageType: StorageType.LOCAL_STORAGE
+    })
+  }
+
+  // 动态数据 - 短时间缓存
+  async getNotifications() {
+    return this.requestCore.getWithCache<Notification[]>('/notifications', {
+      ttl: 30000 // 30秒
+    })
+  }
+
+  // 用户相关数据 - 中等缓存 + 自定义键
+  async getUserPreferences(userId: string) {
+    return this.requestCore.getWithCache<UserPrefs>('/user/preferences', {
+      key: `user-prefs-${userId}`,
+      ttl: 300000 // 5分钟
     })
   }
 }
 ```
+
+### 2. 重试策略
+
+```typescript
+// ✅ 推荐：根据操作类型设置重试策略
+class SmartRetryService {
+  constructor(private requestCore: RequestCore) {}
+
+  // 读操作 - 积极重试
+  async getData(id: string) {
+    return this.requestCore.getWithRetry<Data>(`/data/${id}`, {
+      retries: 5,
+      delay: 1000,
+      backoffFactor: 1.5,
+      jitter: 0.2
+    })
+  }
+
+  // 写操作 - 保守重试
+  async updateData(id: string, data: any) {
+    return this.requestCore.putWithRetry<Data>(`/data/${id}`, data, {
+      retries: 2, // 较少重试次数
+      delay: 2000,
+      shouldRetry: (error) => {
+        // 只对网络错误重试，避免重复操作
+        return error instanceof RequestError && !error.isHttpError
+      }
+    })
+  }
+
+  // 幂等操作 - 中等重试
+  async createIdempotent(data: any, idempotencyKey: string) {
+    return this.requestCore.postWithRetry<Result>('/create', data, {
+      retries: 3,
+      delay: 1500,
+      headers: { 'Idempotency-Key': idempotencyKey }
+    })
+  }
+}
+```
+
+### 3. 并发控制
+
+```typescript
+// ✅ 推荐：合理的并发数控制
+class ConcurrencyService {
+  constructor(private requestCore: RequestCore) {}
+
+  // CPU密集型 - 低并发
+  async processCPUIntensive(items: any[]) {
+    return this.requestCore.requestConcurrent(
+      items.map(item => ({ url: '/cpu-intensive', data: item })),
+      { maxConcurrency: 2 }
+    )
+  }
+
+  // I/O密集型 - 高并发
+  async processIOIntensive(items: any[]) {
+    return this.requestCore.requestConcurrent(
+      items.map(item => ({ url: '/io-intensive', data: item })),
+      { maxConcurrency: 10 }
+    )
+  }
+
+  // 外部API - 受限并发（遵守速率限制）
+  async callExternalAPI(items: any[]) {
+    return this.requestCore.requestConcurrent(
+      items.map(item => ({ url: '/external-api', data: item })),
+      { 
+        maxConcurrency: 3, // 较低并发避免触发限流
+        timeout: 30000,
+        retryOnError: true
+      }
+    )
+  }
+}
+```
+
+## 🚨 注意事项
+
+### 缓存注意事项
+
+1. **内存管理**: 合理设置 `maxEntries` 避免内存泄漏
+2. **数据一致性**: 缓存的数据可能不是最新的
+3. **存储选择**: 大数据量使用 IndexedDB，小数据使用内存缓存
+
+### 重试注意事项
+
+1. **幂等性**: 确保重试的操作是幂等的
+2. **退避策略**: 使用指数退避避免服务器过载
+3. **错误分类**: 区分可重试和不可重试的错误
+
+### 并发注意事项
+
+1. **资源限制**: 不要设置过高的并发数
+2. **错误处理**: 合理处理部分成功的情况
+3. **超时设置**: 设置合理的整体超时时间
 
 ---
 
 ## 📚 相关文档
 
-- 🚀 [快速开始](/guide/getting-started) - 快速上手指南
-- 📖 [基础用法](/guide/basic-usage) - 核心功能详解
-- 💡 [使用示例](/examples/basic-requests) - 实际应用案例
-- 📋 [API 参考](/api/request-core) - 完整的 API 文档
-- 🏗️ [架构设计](/concepts/architecture) - 了解设计思想
+- 🚀 [快速开始](/guide/getting-started) - 基础使用方法
+- 📖 [基础用法](/guide/basic-usage) - 详细功能介绍  
+- 💡 [最佳实践](/guide/best-practices) - 项目组织规范
+- 📋 [API 参考](/api/request-core) - 完整 API 文档
 
 ## 🆘 获取帮助
 
 如果在使用高级功能时遇到问题：
 
 1. 查看 [故障排除指南](/guide/troubleshooting)
-2. 浏览 [开发者文档](/development/custom-implementation)
-3. 提交 [GitHub Issue](https://github.com/your-org/request-lib/issues)
-4. 参与 [社区讨论](https://github.com/your-org/request-lib/discussions)
-
-## 💡 高级功能使用建议
-
-1. **缓存策略**: 根据数据特性选择合适的缓存策略和存储方式
-2. **配置管理**: 建立完善的配置管理体系，支持动态更新
-3. **安全防护**: 在敏感环境中启用请求签名和数据加密
+2. 浏览 [使用示例](/examples/basic-requests)

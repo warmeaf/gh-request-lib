@@ -28,7 +28,7 @@ export default defineConfig({
             { text: '快速开始', link: '/guide/getting-started' },
             { text: '安装配置', link: '/guide/installation' },
             { text: '基础用法', link: '/guide/basic-usage' },
-            { text: '高级功能', link: '/guide/advanced-features' },
+            { text: '进阶功能', link: '/guide/advanced-features' },
             { text: '最佳实践', link: '/guide/best-practices' },
             { text: '故障排除', link: '/guide/troubleshooting' },
           ],
