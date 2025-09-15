@@ -29,9 +29,7 @@
     "clean": "rimraf dist"
   },
   "dependencies": {
-    "request-core": "workspace:*",
-    "request-imp-axios": "workspace:*",
-    "request-imp-fetch": "workspace:*"
+    "request-core": "workspace:*"
   },
   "devDependencies": {
     "typescript": "~5.9.2",

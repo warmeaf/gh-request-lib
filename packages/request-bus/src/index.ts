@@ -1,5 +1,4 @@
-import { RequestCoreFactory, RequestImplementation } from './config'
-import { RequestCore, GlobalConfig, RequestInterceptor } from 'request-core'
+import { RequestCore, GlobalConfig, RequestInterceptor, Requestor } from 'request-core'
 
 /**
  * @description API 类的接口定义
@@ -18,22 +17,20 @@ interface ApiInstance {
 
 // ==================== 工厂方法 ====================
 
-// 导出类型和接口
-export type { RequestImplementation } from './config'
+// 导出类型和接口  
 export type { ApiClass, ApiInstance }
-export { RequestCoreFactory }
 
 /**
  * @description 工厂方法：创建独立的 RequestCore 实例
  */
 export function createRequestCore(
-  implementation: RequestImplementation = 'axios',
+  requestor: Requestor,
   options?: {
     globalConfig?: GlobalConfig
     interceptors?: RequestInterceptor[]
   }
 ): RequestCore {
-  const core = RequestCoreFactory.create(implementation)
+  const core = new RequestCore(requestor)
   if (options?.globalConfig) {
     core.setGlobalConfig(options.globalConfig)
   }
@@ -44,42 +41,96 @@ export function createRequestCore(
 }
 
 /**
+ * @description 增强的 API 客户端类型 - 包含 API 实例和缓存管理功能
+ */
+export type ApiClient<T extends Record<string, ApiClass<any>>> = {
+  [K in keyof T]: InstanceType<T[K]>
+} & {
+  // 缓存管理功能
+  clearCache(key?: string): void
+  getCacheStats(): any
+  // 全局配置管理
+  setGlobalConfig(config: GlobalConfig): void
+  // 拦截器管理
+  addInterceptor(interceptor: RequestInterceptor): void
+  clearInterceptors(): void
+  // 实用方法
+  destroy(): void
+  getAllStats(): any
+}
+
+/**
  * @description 工厂方法：创建 API 客户端对象，便于树摇
  */
 export function createApiClient<T extends Record<string, ApiClass<any>>>(
   apis: T,
-  options?: {
-    implementation?: RequestImplementation
+  options: {
+    requestor?: Requestor
+    requestCore?: RequestCore
     globalConfig?: GlobalConfig
     interceptors?: RequestInterceptor[]
-    requestCore?: RequestCore
   }
-): { [K in keyof T]: InstanceType<T[K]> } {
-  const core =
-    options?.requestCore ||
-    createRequestCore(options?.implementation ?? 'axios', {
-      globalConfig: options?.globalConfig,
-      interceptors: options?.interceptors,
-    })
+): ApiClient<T> {
+  // 优先使用传入的 RequestCore，否则用 Requestor 创建新的
+  const core = options.requestCore || 
+    (options.requestor 
+      ? createRequestCore(options.requestor, {
+          globalConfig: options.globalConfig,
+          interceptors: options.interceptors,
+        })
+      : (() => {
+          throw new Error('Must provide either requestor or requestCore option')
+        })()
+    )
 
-  const entries = Object.entries(apis).map(([name, ApiCtor]) => {
+  // 创建 API 实例集合
+  const apiEntries = Object.entries(apis).map(([name, ApiCtor]) => {
     const instance = new ApiCtor(core) as InstanceType<typeof ApiCtor>
     return [name, instance]
   }) as Array<[keyof T, InstanceType<T[keyof T]>]>
 
-  return Object.fromEntries(entries) as { [K in keyof T]: InstanceType<T[K]> }
+  const apiInstances = Object.fromEntries(apiEntries) as { [K in keyof T]: InstanceType<T[K]> }
+
+  // 创建增强的客户端对象
+  const client = {
+    ...apiInstances,
+    
+    // 缓存管理功能
+    clearCache: (key?: string) => {
+      core.clearCache(key)
+    },
+    
+    getCacheStats: () => {
+      return core.getCacheStats()
+    },
+    
+    // 全局配置管理
+    setGlobalConfig: (config: GlobalConfig) => {
+      core.setGlobalConfig(config)
+    },
+    
+    // 拦截器管理
+    addInterceptor: (interceptor: RequestInterceptor) => {
+      core.addInterceptor(interceptor)
+    },
+    
+    clearInterceptors: () => {
+      core.clearInterceptors()
+    },
+    
+    // 实用方法
+    destroy: () => {
+      core.destroy()
+    },
+    
+    getAllStats: () => {
+      return core.getAllStats()
+    }
+  } as ApiClient<T>
+
+  return client
 }
 
-/**
- * @description 附加特性：提供一个安全的挂载点，不暴露内部实现细节
- */
-export function attachFeatures(
-  core: RequestCore,
-  configure: (core: RequestCore) => void
-): RequestCore {
-  configure(core)
-  return core
-}
 
 // 稳定重导出常用类型，便于上层只依赖 request-bus
 export type { PaginatedResponse, RestfulOptions } from 'request-core'
