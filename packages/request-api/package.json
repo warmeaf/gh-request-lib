@@ -1,7 +1,7 @@
 {
-  "name": "request-bus",
+  "name": "request-api",
   "version": "0.0.1",
-  "description": "请求库业务层 - 组装和暴露给应用的最终 API",
+  "description": "请求库API层 - 组装和暴露给应用的最终 API",
   "type": "module",
   "main": "./dist/index.js",
   "module": "./dist/index.js",

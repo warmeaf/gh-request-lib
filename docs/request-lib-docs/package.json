@@ -10,7 +10,7 @@
   "dependencies": {
     "@vitepress-demo-preview/component": "^2.5.1",
     "@vitepress-demo-preview/plugin": "^1.4.0",
-    "request-bus": "workspace:*"
+    "request-api": "workspace:*"
   },
   "devDependencies": {
     "vitepress": "2.0.0-alpha.1"

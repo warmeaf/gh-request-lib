@@ -132,7 +132,7 @@ export function createApiClient<T extends Record<string, ApiClass<any>>>(
 }
 
 
-// 稳定重导出常用类型，便于上层只依赖 request-bus
+// 稳定重导出常用类型，便于上层只依赖 request-api
 export type { PaginatedResponse, RestfulOptions } from 'request-core'
 
 // 主要工厂方法在上方已经定义并导出

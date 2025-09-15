@@ -34,7 +34,7 @@
       "request-core": ["./packages/request-core/src"],
       "request-imp-axios": ["./packages/request-imp-axios/src"],
       "request-imp-fetch": ["./packages/request-imp-fetch/src"],
-      "request-bus": ["./packages/request-bus/src"]
+      "request-api": ["./packages/request-api/src"]
     }
   },
   "include": [],
@@ -42,6 +42,6 @@
     { "path": "./packages/request-core" },
     { "path": "./packages/request-imp-axios" },
     { "path": "./packages/request-imp-fetch" },
-    { "path": "./packages/request-bus" }
+    { "path": "./packages/request-api" }
   ]
 }

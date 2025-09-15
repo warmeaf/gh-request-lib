@@ -4,7 +4,7 @@ import path from 'path'
 export default defineConfig({
   build: {
     lib: {
-      entry: path.resolve('packages/request-bus/src/index.ts'),
+      entry: path.resolve('packages/request-api/src/index.ts'),
       name: 'RequestLib',
       fileName: (format) => `request-lib.${format}.js`,
       formats: ['es', 'umd', 'iife']
@@ -26,7 +26,7 @@ export default defineConfig({
       'request-core': path.resolve('./packages/request-core/src'),
       'request-imp-axios': path.resolve('./packages/request-imp-axios/src'), 
       'request-imp-fetch': path.resolve('./packages/request-imp-fetch/src'),
-      'request-bus': path.resolve('./packages/request-bus/src')
+      'request-api': path.resolve('./packages/request-api/src')
     }
   },
   define: {

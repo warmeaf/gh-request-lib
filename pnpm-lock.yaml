@@ -19,23 +19,10 @@ importers:
         version: 5.9.2
       vite:
         specifier: ^5.0.0
-        version: 5.4.19(@types/node@24.3.0)(terser@5.44.0)
+        version: 5.4.19(@types/node@24.3.0)
       vitest:
         specifier: ^3.2.4
         version: 3.2.4(@types/node@24.3.0)
-
-  apps/demo-browser:
-    dependencies:
-      request-bus:
-        specifier: workspace:*
-        version: link:../../packages/request-bus
-    devDependencies:
-      terser:
-        specifier: ^5.44.0
-        version: 5.44.0
-      vite:
-        specifier: ^5.0.0
-        version: 5.4.19(@types/node@24.3.0)(terser@5.44.0)
 
   docs/request-lib-docs:
     dependencies:
@@ -45,25 +32,19 @@ importers:
       '@vitepress-demo-preview/plugin':
         specifier: ^1.4.0
         version: 1.4.0(markdown-it-container@3.0.0)(vitepress@2.0.0-alpha.1)(vue@3.5.21)
-      request-bus:
+      request-api:
         specifier: workspace:*
-        version: link:../../packages/request-bus
+        version: link:../../packages/request-api
     devDependencies:
       vitepress:
         specifier: 2.0.0-alpha.1
         version: 2.0.0-alpha.1(@algolia/client-search@5.37.0)(@types/node@24.3.0)(postcss@8.5.6)(search-insights@2.17.3)(typescript@5.9.2)
 
-  packages/request-bus:
+  packages/request-api:
     dependencies:
       request-core:
         specifier: workspace:*
         version: link:../request-core
-      request-imp-axios:
-        specifier: workspace:*
-        version: link:../request-imp-axios
-      request-imp-fetch:
-        specifier: workspace:*
-        version: link:../request-imp-fetch
     devDependencies:
       rimraf:
         specifier: ^5.0.0
@@ -1041,6 +1022,7 @@ packages:
     dependencies:
       '@jridgewell/sourcemap-codec': 1.5.5
       '@jridgewell/trace-mapping': 0.3.30
+    dev: false
 
   /@jridgewell/remapping@2.3.5:
     resolution: {integrity: sha512-LI9u/+laYG4Ds1TDKSJW2YPrIlcVYOwi2fUC6xB43lueCjgxV4lffOCZCtYFiH6TNOX+tQKXx97T4IKHbhyHEQ==}
@@ -1052,12 +1034,14 @@ packages:
   /@jridgewell/resolve-uri@3.1.2:
     resolution: {integrity: sha512-bRISgCIjP20/tbWSPWMEi54QVPRZExkuD9lJL+UIxUKtwVJA8wW1Trb1jMs1RFXo1CBTNZ/5hpC9QvmKWdopKw==}
     engines: {node: '>=6.0.0'}
+    dev: false
 
   /@jridgewell/source-map@0.3.11:
     resolution: {integrity: sha512-ZMp1V8ZFcPG5dIWnQLr3NSI1MiCU7UETdS/A0G8V/XWHvJv3ZsFqutJn1Y5RPmAPX6F3BiE397OqveU/9NCuIA==}
     dependencies:
       '@jridgewell/gen-mapping': 0.3.13
       '@jridgewell/trace-mapping': 0.3.30
+    dev: false
 
   /@jridgewell/sourcemap-codec@1.5.5:
     resolution: {integrity: sha512-cYQ9310grqxueWbl+WuIUIaiUaDcj7WOq5fVhEljNVgRfOUhY9fy2zTvfoqWsnebh8Sl70VScFbICvJnLKB0Og==}
@@ -1067,6 +1051,7 @@ packages:
     dependencies:
       '@jridgewell/resolve-uri': 3.1.2
       '@jridgewell/sourcemap-codec': 1.5.5
+    dev: false
 
   /@kwsites/file-exists@1.1.1:
     resolution: {integrity: sha512-m9/5YGR18lIwxSFDwfE3oA7bWuq9kdau6ugN4H2rJeyhFQZcG9AgSHkQtSD15a8WvTgfz9aikZMrKPHvbpqFiw==}
@@ -2728,7 +2713,7 @@ packages:
       '@vitest/spy': 3.2.4
       estree-walker: 3.0.3
       magic-string: 0.30.19
-      vite: 5.4.19(@types/node@24.3.0)(terser@5.44.0)
+      vite: 5.4.19(@types/node@24.3.0)
     dev: true
 
   /@vitest/pretty-format@3.2.4:
@@ -3059,6 +3044,7 @@ packages:
     resolution: {integrity: sha512-NZyJarBfL7nWwIq+FDL6Zp/yHEhePMNnnJ0y3qfieCrmNvYct8uvtiV41UvlSe6apAfk0fY1FbWx+NwfmpvtTg==}
     engines: {node: '>=0.4.0'}
     hasBin: true
+    dev: false
 
   /agent-base@7.1.4:
     resolution: {integrity: sha512-MnA+YT8fwfJPgBx3m60MNqakm30XOkyIoH1y6huTQvC0PwZG7ki8NacLBcrPbNoo8vEZy7Jpuk7+jMO+CUovTQ==}
@@ -3281,6 +3267,7 @@ packages:
 
   /buffer-from@1.1.2:
     resolution: {integrity: sha512-E+XQCRwSbaaiChtv6k6Dwgc+bx+Bs6vuKJHHl5kox/BaKbhiXzqQOwK4cO22yElGp2OCmjwVhT3HmxgyPGnJfQ==}
+    dev: false
 
   /buffer@6.0.3:
     resolution: {integrity: sha512-FTiCpNxtwiZZHEZbcbTIcZjERVICn9yq/pDFkTl95/AxzD1naBctN7YO68riM/gLSDY7sdrMby8hofADYuuqOA==}
@@ -3440,6 +3427,7 @@ packages:
 
   /commander@2.20.3:
     resolution: {integrity: sha512-GpVkmM8vF2vQUkj2LvZmD35JxeJOLCwJ9cUkugyk2nuhbv3+mJvpLYYt+0+USMxE+oj+ey/lJEnhZw75x/OMcQ==}
+    dev: false
 
   /commondir@1.0.1:
     resolution: {integrity: sha512-W9pAhw0ja1Edb5GVdIF1mjZw/ASI0AlShXM83UUGe2DVr5TdAPEA1OA8m/g8zWp9x6On7gqufY+FatDbC3MDQg==}
@@ -6206,10 +6194,12 @@ packages:
     dependencies:
       buffer-from: 1.1.2
       source-map: 0.6.1
+    dev: false
 
   /source-map@0.6.1:
     resolution: {integrity: sha512-UjgapumWlbMhkBgzT7Ykc5YXUT46F0iKu8SGXq0bcwP5dz/h0Plj6enJqjz1Zbq2l5WaqYnrVbwWOWMyF3F47g==}
     engines: {node: '>=0.10.0'}
+    dev: false
 
   /source-map@0.7.6:
     resolution: {integrity: sha512-i5uvt8C3ikiWeNZSVZNWcfZPItFQOsYTUAOkcUPGd8DqDy1uOUikjt5dG+uRlwyvR108Fb9DOd4GvXfT0N2/uQ==}
@@ -6395,6 +6385,7 @@ packages:
       acorn: 8.15.0
       commander: 2.20.3
       source-map-support: 0.5.21
+    dev: false
 
   /text-decoder@1.2.3:
     resolution: {integrity: sha512-3/o9z3X0X0fTupwsYvR03pJ/DjWuqqrfwBgTQzdWDiQSm9KitAyz/9WqsT2JQW7KV2m+bC2ol/zqpW37NHxLaA==}
@@ -6804,7 +6795,7 @@ packages:
       debug: 4.4.1
       es-module-lexer: 1.7.0
       pathe: 2.0.3
-      vite: 5.4.19(@types/node@24.3.0)(terser@5.44.0)
+      vite: 5.4.19(@types/node@24.3.0)
     transitivePeerDependencies:
       - '@types/node'
       - less
@@ -6903,7 +6894,7 @@ packages:
       vue: 3.5.21(typescript@5.9.2)
     dev: false
 
-  /vite@5.4.19(@types/node@24.3.0)(terser@5.44.0):
+  /vite@5.4.19(@types/node@24.3.0):
     resolution: {integrity: sha512-qO3aKv3HoQC8QKiNSTuUM1l9o/XX3+c+VTgLHbJWHZGeTPVAg2XwazI9UWzoxjIJCGCV2zU60uqMzjeLZuULqA==}
     engines: {node: ^18.0.0 || >=20.0.0}
     hasBin: true
@@ -6938,7 +6929,6 @@ packages:
       esbuild: 0.21.5
       postcss: 8.5.6
       rollup: 4.50.0
-      terser: 5.44.0
     optionalDependencies:
       fsevents: 2.3.3
 
@@ -7154,7 +7144,7 @@ packages:
       tinyglobby: 0.2.15
       tinypool: 1.1.1
       tinyrainbow: 2.0.0
-      vite: 5.4.19(@types/node@24.3.0)(terser@5.44.0)
+      vite: 5.4.19(@types/node@24.3.0)
       vite-node: 3.2.4(@types/node@24.3.0)
       why-is-node-running: 2.3.0
     transitivePeerDependencies:

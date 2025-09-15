@@ -10,12 +10,6 @@
   "references": [
     {
       "path": "../request-core"
-    },
-    {
-      "path": "../request-imp-axios"
-    },
-    {
-      "path": "../request-imp-fetch"
     }
   ]
 }
