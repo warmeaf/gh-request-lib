@@ -1,312 +1,251 @@
 # 架构设计
 
-## 📖 概述
+## 1. 简介
 
-本请求库采用**分层架构**和**依赖倒置原则**，构建了一个可扩展、可维护的前端 HTTP 请求解决方案。整个架构围绕**抽象接口**而非具体实现进行设计，实现了底层请求实现的可替换性，同时提供了丰富的高级功能。
+### 背景
 
-## 🎯 设计理念
+虽然前端具有诸多成熟的请求库，但在实际项目开发中发现，它们很难完全契合实际的开发需求。
 
-### 核心原则
+**axios**
 
-1. **依赖倒置原则 (DIP)**
-   - 高层模块不依赖低层模块，两者都依赖抽象
-   - 抽象不依赖于细节，细节依赖于抽象
-   - 通过 `Requestor` 接口实现解耦
+axios 虽然很成熟，但它只是一个基础库，没有提供诸多的上层功能，比如：
 
-2. **分层架构**
-   - 每层有明确的职责边界
-   - 层间通过接口进行通信
-   - 支持功能的渐进式增强
+1. 请求重试
+2. 请求缓存
+3. 请求幂等
+4. 请求串行
+5. 请求并发
+6. ...
 
-3. **组合模式**
-   - 使用管理器组合实现功能分离
-   - 每个管理器专注于特定职责
-   - 通过组合提供完整功能
+**VueRequest / SWR**
 
-4. **工厂模式**
-   - 提供统一的实例创建接口
-   - 支持依赖注入和配置
-   - 简化使用者的创建复杂度
+它们虽然提供的功能很多，但仍然存在诸多问题：
 
-## 🏗️ 三层架构设计
+1. 与上层框架过度绑定导致开发场景受限，也无法提供统一的 API
+2. 成熟度不够，issue 的回复也难以做到及时，存在一定风险
+3. 它们没有聚合基础请求库，仍然需要手动整合
 
-### 架构层次图
+**除此之外更重要的是**
 
-```
-┌─────────────────────────────────────────────┐
-│               业务层 (request-bus)            │  ← 业务API封装、统一管理
-├─────────────────────────────────────────────┤
-│               核心层 (request-core)           │  ← 抽象接口、高级功能
-├─────────────────────────────────────────────┤
-│            实现层 (request-imp-*)            │  ← 具体HTTP实现
-└─────────────────────────────────────────────┘
-```
+公共库不包含公司内部制定的协议规范，即便使用公共库，也必须针对它们做二次封装。
 
-### 1. 实现层 (request-imp-*)
+**综上，需要自行封装一套适配公司业务的前端请求库**
 
-**职责**：提供具体的 HTTP 请求发送能力
+## 2. 技术栈与环境
 
-**特征**：
-- 实现统一的 `Requestor` 接口
-- 封装底层HTTP库的差异性
-- 提供标准化的错误处理
-- 支持多种实现方式
+- **包管理器:** pnpm (利用其 workspace 功能管理多包项目)
+- **语言:** TypeScript (提供类型安全和接口定义能力)
+- **核心依赖 (可选):**
+  - `axios` 或 `fetch` (作为底层请求实现)
+  - `spark-md5` (用于请求哈希，实现幂等性)
+- **开发环境:** Node.js (LTS 版本), pnpm
 
-**主要组件**：
+## 3. 库结构的宏观设计（架构设计）
 
-```typescript
-// 核心抽象接口
-interface Requestor {
-  request<T = unknown>(config: RequestConfig): Promise<T>
-}
+### 初始设计
 
-// Axios 实现
-class AxiosRequestor implements Requestor {
-  async request<T>(config: RequestConfig): Promise<T> {
-    // 基于 axios 的具体实现
-  }
-}
+![初始设计](./assets/design01.png)
 
-// Fetch 实现  
-class FetchRequestor implements Requestor {
-  async request<T>(config: RequestConfig): Promise<T> {
-    // 基于 fetch API 的具体实现
-  }
-}
-```
+整个库结构包含三层，从下往上依次是：
 
-**设计亮点**：
-- 统一的错误处理和日志格式化
-- 支持超时控制和请求取消
-- 自动处理请求头和参数序列化
-- 与上层完全解耦
+- `请求实现层（request-imp）`： 提供请求基本功能
+- `request-core`： 提供网络上层控制，比如请求串行、请求并行、请求重试、请求防重等功能
+- `request-api`： 为请求绑定业务功能，该层接入公司内部协议规范和接口文档，向外提供业务接口 API
 
-### 2. 核心层 (request-core)
+> 层是一种对代码结构的逻辑划分，在具体实现上可以有多种方式：
+>
+> - 每个层一个 monorepo 子包
+> - 每个层一个子文件夹
+> - ...
 
-**职责**：定义抽象接口，提供与具体实现无关的高级功能
+### **<font style="color:rgb(0, 0, 0);">优化设计</font>**
 
-**特征**：
-- 定义 `Requestor` 抽象接口
-- 基于接口实现高级功能
-- 采用管理器模式组织代码
-- 提供完整的类型定义
+在三层中，请求实现层的实现有多种方式：
 
-**核心类架构**：
+- 基于`fetch`原生
+- 基于`axios`等第三方库
+- ...
+
+<font style="color:rgb(51, 51, 51);">这种实现的多样性可能导致这一次层的不稳定，而</font>`<font style="color:rgb(0, 0, 0);background-color:rgb(240, 240, 240);">request-imp</font>`<font style="color:rgb(51, 51, 51);">是基础层，它的不稳性会传导到上一层。</font>
+
+<font style="color:rgb(51, 51, 51);">所</font><font style="color:rgb(51, 51, 51);">以必须寻求一种方案来隔离这种不稳定性。</font>
+
+<font style="color:rgb(51, 51, 51);">我们可以基于 DIP（Dependence Inversion Principle，依赖倒置原则），彻底将</font>`<font style="color:rgb(0, 0, 0);background-color:rgb(240, 240, 240);">request-core</font>`<font style="color:rgb(51, 51, 51);">和请求的实现解耦，而</font>`<font style="color:rgb(0, 0, 0);background-color:rgb(240, 240, 240);">typescript</font>`<font style="color:rgb(51, 51, 51);">的类型系统让这一切的落地成为了可能。</font>
+
+<font style="color:rgb(51, 51, 51);">于是结构演变为：</font>
+
+![优化设计](./assets/design02.png)
+
+### **<font style="color:rgb(26, 28, 30);">使用示例 (main.ts)</font>**
+
+<font style="color:rgb(26, 28, 30);">最后，应用程序只需要调用 request-api 暴露的业务 API 即可，完全不需要关心底层的实现细节</font>
 
 ```typescript
-class RequestCore implements ConvenienceExecutor {
-  // 管理器组合 - 职责分离
-  private interceptorManager: InterceptorManager     // 拦截器管理
-  private configManager: ConfigManager               // 配置管理  
-  private requestExecutor: RequestExecutor           // 请求执行
-  private convenienceMethods: ConvenienceMethods     // 便利方法
-  private featureManager: FeatureManager             // 功能管理
+import { createApiClient } from 'request-api'
+import type { RequestCore } from 'request-api'
+import { AxiosRequestor } from 'request-imp-axios'
 
-  constructor(private requestor: Requestor) {
-    // 依赖注入，接收抽象接口实例
+// 1. 定义 API 类
+class UserApi {
+  constructor(private requestCore: RequestCore) {}
+
+  async getUser(id: string) {
+    return this.requestCore.get<User>(`/users/${id}`)
+  }
+
+  async getUserList() {
+    return this.requestCore.get<User[]>('/users')
   }
 }
-```
 
-**管理器职责分工**：
-
-| 管理器 | 职责 | 核心功能 |
-|--------|------|----------|
-| `InterceptorManager` | 拦截器管理 | 请求前后的钩子处理 |
-| `ConfigManager` | 配置管理 | 全局配置的存储和合并 |
-| `RequestExecutor` | 请求执行 | 实际请求的执行和协调 |
-| `ConvenienceMethods` | 便利方法 | GET、POST 等快捷方法 |
-| `FeatureManager` | 功能管理 | 缓存、重试、并发等高级功能 |
-
-**高级功能特性**：
-- **请求缓存**：内存级缓存，支持 TTL 和自定义缓存键
-- **请求重试**：可配置重试次数和延迟策略
-- **并发控制**：支持请求串行和并行控制
-- **拦截器**：请求/响应/错误拦截处理
-- **链式调用**：RequestBuilder 模式支持
-
-### 3. 业务层 (request-bus)
-
-**职责**：集成核心层和实现层，提供业务相关的 API 管理
-
-**特征**：
-- 整合核心功能和业务逻辑
-- 提供 API 注册和管理机制
-- 支持运行时实现切换
-- 集成公司内部协议规范
-
-**核心类设计**：
-
-```typescript
-class RequestBus {
-  private apiMap: Map<string, ApiInstance> = new Map()
-  private requestCore: RequestCore
-  
-  constructor(requestCore: RequestCore) {
-    this.requestCore = requestCore
+// 2. 创建 API 客户端
+const apiClient = createApiClient(
+  {
+    user: UserApi,
+  },
+  {
+    requestor: new AxiosRequestor(), // 使用 Axios 实现
+    globalConfig: {
+      baseURL: 'https://jsonplaceholder.typicode.com',
+      timeout: 5000,
+    },
   }
-  
-  // API 管理
-  register<T>(name: string, apiClass: ApiClass<T>): T
-  getApi<T>(name: string): T | undefined
-  requireApi<T>(name: string): T
-  
-  // 实现切换
-  switchImplementation(implementation: RequestImplementation): void
-  
-  // 全局管理
-  setGlobalConfig(config: GlobalConfig): void
-  addInterceptor(interceptor: RequestInterceptor): void
-}
+)
+
+// 3. 使用 API
+const user = await apiClient.user.getUser('1')
+console.log('User:', user)
 ```
 
-**主要功能**：
-- **API 注册机制**：统一管理业务 API 类
-- **实现动态切换**：运行时切换 axios/fetch 实现
-- **全局配置管理**：统一的配置和拦截器管理
-- **开发者工具**：调试模式、统计信息、帮助信息
-- **工厂方法**：支持树摇优化的实例创建
-
-## 🔗 依赖倒置原则的应用
-
-### 传统依赖关系（不推荐）
-
-```
-RequestCore ──依赖──> AxiosRequestor
-     ↑                     ↑
-   难以测试              具体实现
-```
-
-### 依赖倒置后的关系（当前架构）
-
-```
-RequestCore ──依赖──> Requestor（抽象接口）
-     ↑                     ↑
-   易于测试                 ↑
-                    实现此接口
-                    AxiosRequestor
-                    FetchRequestor
-```
-
-### 关键优势
-
-1. **可扩展性**：新增实现只需实现 `Requestor` 接口
-2. **可测试性**：可以轻松 mock `Requestor` 接口进行单元测试
-3. **可维护性**：核心逻辑与具体实现解耦
-4. **可替换性**：运行时可以无缝切换不同实现
-
-## ⚙️ 组件交互流程
-
-### 请求执行流程
+### **架构图**
 
 ```mermaid
-sequenceDiagram
-    participant User as 用户代码
-    participant Bus as RequestBus
-    participant Core as RequestCore
-    participant Manager as FeatureManager
-    participant Impl as Requestor实现
-    
-    User->>Bus: busApi.user.getUser()
-    Bus->>Core: core.get()
-    Core->>Manager: 应用缓存/重试等功能
-    Manager->>Impl: requestor.request()
-    Impl->>Manager: 返回响应数据
-    Manager->>Core: 返回处理后数据
-    Core->>Bus: 返回最终数据
-    Bus->>User: 返回业务数据
+graph TD
+    %% 用户层
+    subgraph UserLayer[🧑‍💻 用户层]
+        User[用户代码<br/>业务逻辑]
+    end
+
+    %% API抽象层
+    subgraph ApiLayer[📦 API层 - request-api]
+        ApiFactory[工厂方法]
+        ApiClient[API客户端]
+        ApiFactory --> ApiClient
+    end
+
+    %% 核心业务层
+    subgraph CoreLayer[🏗️ 核心层 - request-core]
+        RequestCore[RequestCore<br/>核心协调器]
+
+        %% 核心抽象接口
+        subgraph CoreAbstractions[核心抽象]
+            Requestor{{Requestor接口<br/>📋 请求器契约}}
+            RequestConfig[RequestConfig<br/>请求配置]
+            Features[高级功能<br/>重试 缓存 并发]
+        end
+
+        RequestCore -.->|依赖| Requestor
+        RequestCore --> Features
+    end
+
+    %% 实现层
+    subgraph ImplLayer[⚡ 实现层 - request-imp-*]
+        AxiosImpl[AxiosRequestor<br/>🔧 Axios实现]
+        FetchImpl[FetchRequestor<br/>🔧 Fetch实现]
+        CustomImpl[CustomRequestor<br/>🔧 自定义实现]
+    end
+
+    %% 依赖关系流向
+    User -->|使用| ApiClient
+    ApiClient -->|委托| RequestCore
+
+    %% 依赖倒置核心体现
+    Requestor -.->|实现| AxiosImpl
+    Requestor -.->|实现| FetchImpl
+    Requestor -.->|实现| CustomImpl
+
+    %% 依赖注入
+    RequestCore -.->|注入| AxiosImpl
+    RequestCore -.->|注入| FetchImpl
+    RequestCore -.->|注入| CustomImpl
+
+    %% 样式定义
+    classDef userStyle fill:#e3f2fd,stroke:#1976d2,stroke-width:2px
+    classDef apiStyle fill:#f3e5f5,stroke:#7b1fa2,stroke-width:2px
+    classDef coreStyle fill:#e8f5e8,stroke:#388e3c,stroke-width:2px
+    classDef implStyle fill:#fff3e0,stroke:#f57c00,stroke-width:2px
+    classDef abstractStyle fill:#fce4ec,stroke:#c2185b,stroke-width:3px,stroke-dasharray: 5 5
+
+    class UserLayer userStyle
+    class ApiLayer apiStyle
+    class CoreLayer coreStyle
+    class ImplLayer implStyle
+    class Requestor abstractStyle
 ```
 
-### 配置和拦截器传递
+### **核心理念**
 
-```mermaid
-flowchart TD
-    A[全局配置] --> B[RequestBus]
-    B --> C[RequestCore]
-    C --> D[ConfigManager]
-    
-    E[拦截器] --> B
-    B --> C
-    C --> F[InterceptorManager]
-    
-    G[请求执行] --> C
-    C --> H[RequestExecutor]
-    H --> I[应用配置和拦截器]
-    I --> J[调用Requestor实现]
+1. **分层**
+   - `request-imp-*`: 提供具体的 HTTP 请求发送能力 (如 `request-axios-imp`, `request-fetch-imp`)。它们实现统一的 `Requestor` 接口
+   - `request-core`: 核心层，定义 `Requestor` 接口，并基于此接口提供缓存、重试、幂等、并发/串行控制等与具体实现无关的高级功能。通过依赖注入接收 `request-imp` 的具体实现
+   - `request-api`: api 层，负责注入 `request-imp` 实现到 `request-core`，调用 `request-core` 提供的功能，集成公司特定业务逻辑和协议规范，并暴露最终给应用使用的 API 函数
+2. **依赖倒置 (DIP)**
+   - `request-core` 不直接依赖具体的实现 (axios/fetch)，而是依赖抽象的 `Requestor` 接口。具体实现 (`request-imp-*`) 反过来依赖（实现）这个接口。这使得底层实现可以轻松替换，而不影响核心层和业务层。
+
+## 4. **项目结构图**
+
+```plain
+packages/                           # 📁 包管理目录 - monorepo 架构的核心模块集合
+├── request-core/                   # 🏗️ 核心层 - 请求库的核心抽象层，定义接口和通用功能
+│   ├── src/                        # 📄 源代码目录 - 核心层的 TypeScript 源码
+│   │   ├── cache/                  # 🗄️ 缓存系统 - 请求结果缓存的完整实现
+│   │   │   ├── adapters/           # 存储适配器 - 支持多种存储方案
+│   │   │   │   ├── indexeddb-adapter.ts    # IndexedDB 存储适配器
+│   │   │   │   ├── local-storage-adapter.ts # LocalStorage 存储适配器
+│   │   │   │   ├── memory-adapter.ts       # 内存存储适配器
+│   │   │   │   └── websql-adapter.ts       # WebSQL 存储适配器
+│   │   │   ├── cache-key-generator.ts      # 缓存键生成器 - 生成唯一缓存标识
+│   │   │   ├── index.ts            # 缓存模块导出文件
+│   │   │   ├── README.md           # 缓存系统说明文档
+│   │   │   ├── storage-adapter.ts  # 存储适配器抽象接口
+│   │   │   └── strategies.ts       # 缓存策略定义 - TTL、LRU 等策略
+│   │   ├── features/               # 🎯 高级功能模块 - 扩展功能实现
+│   │   │   ├── cache.ts            # 缓存功能集成
+│   │   │   ├── concurrent.ts       # 并发请求控制 - 防抖、节流、并发限制
+│   │   │   └── retry.ts            # 重试机制 - 自动重试失败的请求
+│   │   ├── managers/               # 🎛️ 管理器模块 - 核心功能的管理和协调
+│   │   │   ├── config-manager.ts   # 配置管理器 - 全局和局部配置管理
+│   │   │   ├── convenience-methods.ts # 便捷方法管理器 - GET、POST 等快捷方法
+│   │   │   ├── feature-manager.ts  # 功能管理器 - 插件化功能的启用和管理
+│   │   │   ├── index.ts            # 管理器模块导出
+│   │   │   ├── interceptor-manager.ts # 拦截器管理器 - 请求/响应拦截器管理
+│   │   │   └── request-executor.ts # 请求执行器 - 请求的核心执行逻辑
+│   │   ├── utils/                  # 🛠️ 工具函数 - 通用工具和辅助函数
+│   │   │   └── error-handler.ts    # 错误处理器 - 统一错误处理和转换
+│   │   ├── core.ts                 # 🎯 核心主类 - RequestCore 的主要实现
+│   │   ├── index.ts                # 📋 模块导出入口 - 对外暴露的 API
+│   │   └── interface.ts            # 📝 接口定义 - TypeScript 类型和接口定义
+│   ├── package.json                # 📋 包配置文件 - 核心层依赖和脚本定义
+│   └── tsconfig.json               # TypeScript 配置文件
+│
+├── request-api/                    # 🎪 API层 - 业务API的组装和暴露层
+│   ├── src/                        # 📄 源代码目录 - API层的业务逻辑实现
+│   │   └── index.ts                # 🏭 工厂方法实现 - 创建 API 客户端的工厂函数
+│   ├── package.json                # 📋 包配置 - 依赖 request-core，提供最终 API
+│   ├── README.md                   # 📖 使用说明文档
+│   └── tsconfig.json               # TypeScript 配置
+│
+├── request-imp-axios/              # 🌐 Axios 实现层 - 基于 Axios 的具体实现
+│   ├── src/                        # 📄 源代码目录 - Axios 适配器实现
+│   │   └── index.ts                # 🔌 Axios 适配器 - 实现 Requestor 接口
+│   ├── package.json                # 📋 包配置 - 依赖 axios 和 request-core
+│   ├── README.md                   # 📖 Axios 实现说明
+│   └── tsconfig.json               # TypeScript 配置
+│
+└── request-imp-fetch/              # 🌍 Fetch 实现层 - 基于原生 Fetch API 的实现
+    ├── src/                        # 📄 源代码目录 - Fetch 适配器实现
+    │   └── index.ts                # 🔌 Fetch 适配器 - 原生 Fetch 的 Requestor 实现
+    ├── package.json                # 📋 包配置 - 仅依赖 request-core，无外部 HTTP 库
+    ├── README.md                   # 📖 Fetch 实现说明
+    └── tsconfig.json               # TypeScript 配置
 ```
-
-## 🔧 扩展和定制
-
-### 添加新的实现层
-
-```typescript
-// 1. 实现 Requestor 接口
-class CustomRequestor implements Requestor {
-  async request<T>(config: RequestConfig): Promise<T> {
-    // 自定义实现逻辑
-    return customHttpLib.request(config) as Promise<T>
-  }
-}
-
-// 2. 注册到工厂
-RequestCoreFactory.register('custom', () => new CustomRequestor())
-
-// 3. 使用新实现
-const bus = createRequestBus('custom')
-```
-
-### 扩展功能管理器
-
-```typescript
-// 1. 创建新的功能管理器
-class SecurityManager {
-  constructor(private requestor: Requestor) {}
-  
-  async requestWithSecurity<T>(config: RequestConfig): Promise<T> {
-    // 添加安全相关逻辑
-    const secureConfig = this.addSecurityHeaders(config)
-    return this.requestor.request<T>(secureConfig)
-  }
-}
-
-// 2. 集成到 RequestCore
-class RequestCore {
-  private securityManager: SecurityManager
-  
-  constructor(requestor: Requestor) {
-    this.securityManager = new SecurityManager(requestor)
-  }
-}
-```
-
-## 📊 架构优势总结
-
-### 技术优势
-
-1. **高内聚低耦合**：每个层次和组件都有明确职责
-2. **易于测试**：接口抽象使得 Mock 测试变得简单
-3. **可扩展**：新功能可以通过新管理器或新实现层添加
-4. **可维护**：清晰的架构边界降低维护成本
-
-### 业务优势
-
-1. **统一API**：为不同HTTP库提供统一的使用体验
-2. **渐进增强**：可以根据需要选择功能层次
-3. **运行时切换**：支持A/B测试和灾难恢复
-4. **企业定制**：业务层可以集成公司特定规范
-
-### 开发体验
-
-1. **类型安全**：完整的 TypeScript 类型定义
-2. **智能提示**：良好的 IDE 支持
-3. **调试友好**：统一的日志格式和错误处理
-4. **文档完善**：每层都有详细的文档说明
-
-## 🔮 未来演进方向
-
-1. **微服务支持**：支持服务发现和负载均衡
-2. **插件系统**：更灵活的功能扩展机制
-3. **性能监控**：集成请求性能监控和分析
-4. **离线支持**：支持离线缓存和同步机制
-
-这种架构设计确保了请求库既能满足当前需求，又具备良好的扩展性和可维护性，为长期的技术演进奠定了坚实基础。
