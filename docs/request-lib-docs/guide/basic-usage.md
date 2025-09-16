@@ -10,7 +10,7 @@
 
 - **核心层 (RequestCore)**: 提供基础请求能力和高级功能
 - **实现层 (request-imp-\*)**: 基于具体请求库的实现
-- **API层 (request-api)**: API 客户端创建和管理
+- **API 层 (request-api)**: API 客户端创建和管理
 
 ### 基本工作流程
 
@@ -378,11 +378,15 @@ class FileApi {
 
   // 单文件上传
   async uploadAvatar(file: File) {
-    return this.requestCore.uploadFile<{ url: string }>('/upload/avatar', file, {
-      onProgress: (progress) => {
-        console.log(`Upload progress: ${progress}%`)
-      },
-    })
+    return this.requestCore.uploadFile<{ url: string }>(
+      '/upload/avatar',
+      file,
+      {
+        onProgress: (progress) => {
+          console.log(`Upload progress: ${progress}%`)
+        },
+      }
+    )
   }
 
   // 多文件上传
@@ -549,7 +553,7 @@ export const handleApiError = (error: any) => {
 ## 📚 相关文档
 
 - 🚀 [快速开始](/guide/getting-started) - 快速上手指南
-- 🔧 [高级功能](/guide/advanced-features) - 探索更多高级特性
+- 🔧 [进阶功能](/guide/advanced-features) - 探索更多高级特性
 - 💡 [使用示例](/examples/basic-requests) - 实际使用案例
 - 📋 [API 参考](/api/request-core) - 完整的 API 文档
 

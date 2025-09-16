@@ -15,7 +15,7 @@ class UserApi {
   // 使用缓存的请求
   async getUser(id: string) {
     return this.requestCore.getWithCache<User>(`/users/${id}`, {
-      ttl: 300000 // 5分钟缓存
+      ttl: 300000, // 5分钟缓存
     })
   }
 
@@ -24,15 +24,15 @@ class UserApi {
     return this.requestCore.getWithRetry<Data>(`/data/${id}`, {
       retries: 3,
       delay: 1000,
-      backoffFactor: 2
+      backoffFactor: 2,
     })
   }
 
   // 并发请求
   async getUsersInParallel(ids: string[]) {
-    const urls = ids.map(id => `/users/${id}`)
+    const urls = ids.map((id) => `/users/${id}`)
     return this.requestCore.getConcurrent<User>(urls, {
-      maxConcurrency: 5
+      maxConcurrency: 5,
     })
   }
 }
@@ -56,7 +56,7 @@ class UserApi {
   // 自定义缓存时间
   async getUserWithCustomTTL(id: string) {
     return this.requestCore.getWithCache<User>(`/users/${id}`, {
-      ttl: 600000 // 10分钟缓存
+      ttl: 600000, // 10分钟缓存
     })
   }
 
@@ -64,7 +64,7 @@ class UserApi {
   async getUserProfile(id: string, version: string) {
     return this.requestCore.getWithCache<UserProfile>(`/users/${id}/profile`, {
       key: `user-profile-${id}-v${version}`,
-      ttl: 300000
+      ttl: 300000,
     })
   }
 }
@@ -83,7 +83,7 @@ class DataApi {
     return this.requestCore.getWithCache<any>(endpoint, {
       ttl: 1800000, // 30分钟
       storageType: StorageType.LOCAL_STORAGE,
-      maxEntries: 100 // 最大缓存条目数
+      maxEntries: 100, // 最大缓存条目数
     })
   }
 
@@ -91,7 +91,7 @@ class DataApi {
   async getLargeDataSet() {
     return this.requestCore.getWithCache<LargeDataSet>('/large-dataset', {
       ttl: 3600000, // 1小时
-      storageType: StorageType.INDEXED_DB
+      storageType: StorageType.INDEXED_DB,
     })
   }
 
@@ -99,7 +99,7 @@ class DataApi {
   async getMutableData() {
     return this.requestCore.getWithCache<MutableData>('/mutable-data', {
       ttl: 300000,
-      clone: 'deep' // 深拷贝返回的数据
+      clone: 'deep', // 深拷贝返回的数据
     })
   }
 }
@@ -118,7 +118,7 @@ class SearchApi {
     return this.requestCore.getWithCache<SearchResult>('/search/users', {
       params: { q: query, ...filters },
       ttl: 120000, // 2分钟
-      keyStrategy: new FullUrlKeyStrategy()
+      keyStrategy: new FullUrlKeyStrategy(),
     })
   }
 
@@ -127,7 +127,7 @@ class SearchApi {
     return this.requestCore.getWithCache<FilteredData>('/data', {
       params: { category, page },
       ttl: 300000,
-      keyStrategy: new ParameterizedKeyStrategy(['category']) // 只基于 category 生成键
+      keyStrategy: new ParameterizedKeyStrategy(['category']), // 只基于 category 生成键
     })
   }
 }
@@ -137,9 +137,12 @@ class SearchApi {
 
 ```typescript
 // 在 API 客户端中
-const apiClient = createApiClient({ user: UserApi }, {
-  requestor: new AxiosRequestor()
-})
+const apiClient = createApiClient(
+  { user: UserApi },
+  {
+    requestor: new AxiosRequestor(),
+  }
+)
 
 // 清除所有缓存
 apiClient.clearCache()
@@ -190,16 +193,20 @@ class ApiService {
   async getCriticalData() {
     return this.requestCore.getWithRetry<CriticalData>('/api/critical', {
       retries: 5,
-      delay: 1000 // 每次重试间隔1秒
+      delay: 1000, // 每次重试间隔1秒
     })
   }
 
   // POST 请求重试
   async submitFormWithRetry(formData: any) {
-    return this.requestCore.postWithRetry<SubmitResult>('/api/submit', formData, {
-      retries: 3,
-      delay: 2000
-    })
+    return this.requestCore.postWithRetry<SubmitResult>(
+      '/api/submit',
+      formData,
+      {
+        retries: 3,
+        delay: 2000,
+      }
+    )
   }
 }
 ```
@@ -218,37 +225,42 @@ class RobustApi {
       retries: 5,
       delay: 1000,
       backoffFactor: 2, // 每次重试延迟翻倍
-      jitter: 0.1 // 10% 的随机抖动
+      jitter: 0.1, // 10% 的随机抖动
     })
   }
 
   // 自定义重试条件
   async getWithCustomRetry() {
-    return this.requestCore.requestWithRetry<any>({
-      url: '/api/custom',
-      method: 'GET'
-    }, {
-      retries: 4,
-      delay: 500,
-      shouldRetry: (error: unknown, attempt: number) => {
-        // 只对网络错误和 5xx 错误重试
-        if (error instanceof RequestError) {
-          // 5xx 服务器错误
-          if (error.status && error.status >= 500 && error.status < 600) {
-            return true
+    return this.requestCore.requestWithRetry<any>(
+      {
+        url: '/api/custom',
+        method: 'GET',
+      },
+      {
+        retries: 4,
+        delay: 500,
+        shouldRetry: (error: unknown, attempt: number) => {
+          // 只对网络错误和 5xx 错误重试
+          if (error instanceof RequestError) {
+            // 5xx 服务器错误
+            if (error.status && error.status >= 500 && error.status < 600) {
+              return true
+            }
+            // 4xx 客户端错误不重试
+            if (error.status && error.status >= 400 && error.status < 500) {
+              return false
+            }
+            // 网络错误重试
+            return !error.isHttpError
           }
-          // 4xx 客户端错误不重试
-          if (error.status && error.status >= 400 && error.status < 500) {
-            return false
-          }
-          // 网络错误重试
-          return !error.isHttpError
-        }
-        // 其他错误根据消息判断
-        return error instanceof Error && 
-               error.message.toLowerCase().includes('network')
+          // 其他错误根据消息判断
+          return (
+            error instanceof Error &&
+            error.message.toLowerCase().includes('network')
+          )
+        },
       }
-    })
+    )
   }
 }
 ```
@@ -285,11 +297,11 @@ class BatchApi {
 
   // 并发获取多个用户
   async getMultipleUsers(userIds: string[]) {
-    const urls = userIds.map(id => `/users/${id}`)
-    
+    const urls = userIds.map((id) => `/users/${id}`)
+
     const results = await this.requestCore.getConcurrent<User>(urls, {
       maxConcurrency: 5, // 最大同时5个请求
-      failFast: false // 不快速失败，等待所有请求完成
+      failFast: false, // 不快速失败，等待所有请求完成
     })
 
     // 提取成功的结果
@@ -298,14 +310,14 @@ class BatchApi {
 
   // 并发 POST 请求
   async batchCreateUsers(users: CreateUserRequest[]) {
-    const requests = users.map(userData => ({
+    const requests = users.map((userData) => ({
       url: '/users',
-      data: userData
+      data: userData,
     }))
 
     const results = await this.requestCore.postConcurrent<User>(requests, {
       maxConcurrency: 3,
-      timeout: 30000 // 整体超时30秒
+      timeout: 30000, // 整体超时30秒
     })
 
     return results
@@ -321,60 +333,67 @@ class DataProcessor {
 
   // 处理大量数据，控制并发数
   async processLargeDataSet(items: DataItem[]) {
-    const configs = items.map(item => ({
+    const configs = items.map((item) => ({
       url: `/process/${item.id}`,
       method: 'POST' as const,
-      data: { 
+      data: {
         payload: item.data,
-        options: item.options 
-      }
+        options: item.options,
+      },
     }))
 
-    const results = await this.requestCore.requestConcurrent<ProcessResult>(configs, {
-      maxConcurrency: 10,
-      failFast: false,
-      retryOnError: true, // 错误时重试
-      timeout: 60000
-    })
+    const results = await this.requestCore.requestConcurrent<ProcessResult>(
+      configs,
+      {
+        maxConcurrency: 10,
+        failFast: false,
+        retryOnError: true, // 错误时重试
+        timeout: 60000,
+      }
+    )
 
     // 分析结果
-    const successful = results.filter(r => r.success)
-    const failed = results.filter(r => !r.success)
-    
+    const successful = results.filter((r) => r.success)
+    const failed = results.filter((r) => !r.success)
+
     console.log(`处理完成: 成功 ${successful.length}, 失败 ${failed.length}`)
-    
+
     return {
-      successful: successful.map(r => r.data!),
-      failed: failed.map(r => ({
+      successful: successful.map((r) => r.data!),
+      failed: failed.map((r) => ({
         config: r.config,
-        error: r.error
-      }))
+        error: r.error,
+      })),
     }
   }
 
   // 重复请求（压力测试）
   async loadTest(endpoint: string, count: number) {
-    const results = await this.requestCore.requestMultiple<any>({
-      url: endpoint,
-      method: 'GET'
-    }, count, {
-      maxConcurrency: 20,
-      timeout: 120000
-    })
+    const results = await this.requestCore.requestMultiple<any>(
+      {
+        url: endpoint,
+        method: 'GET',
+      },
+      count,
+      {
+        maxConcurrency: 20,
+        timeout: 120000,
+      }
+    )
 
     // 性能分析
     const durations = results
-      .filter(r => r.success && r.duration)
-      .map(r => r.duration!)
+      .filter((r) => r.success && r.duration)
+      .map((r) => r.duration!)
 
     const avgDuration = durations.reduce((a, b) => a + b, 0) / durations.length
     const maxDuration = Math.max(...durations)
 
     return {
       total: results.length,
-      successful: results.filter(r => r.success).length,
+      successful: results.filter((r) => r.success).length,
       avgDuration,
-      maxDuration
+      maxDuration,
     }
   }
 }
@@ -388,24 +407,27 @@ class FileProcessor {
 
   // 批量文件上传
   async uploadMultipleFiles(files: File[]) {
-    const requests = files.map(file => {
+    const requests = files.map((file) => {
       const formData = new FormData()
       formData.append('file', file)
-      
+
       return {
         url: '/upload',
         method: 'POST' as const,
         data: formData,
         headers: {
-          'Content-Type': 'multipart/form-data'
-        }
+          'Content-Type': 'multipart/form-data',
+        },
       }
     })
 
-    const results = await this.requestCore.batchRequests<UploadResult>(requests, {
-      concurrency: 3, // 同时上传3个文件
-      ignoreErrors: true // 忽略错误，继续处理其他文件
-    })
+    const results = await this.requestCore.batchRequests<UploadResult>(
+      requests,
+      {
+        concurrency: 3, // 同时上传3个文件
+        ignoreErrors: true, // 忽略错误，继续处理其他文件
+      }
+    )
 
     return results
   }
@@ -427,7 +449,7 @@ class RobustDataApi {
     try {
       // 尝试从缓存获取
       return await this.requestCore.getWithCache<DataResult>(`/data/${id}`, {
-        ttl: 300000
+        ttl: 300000,
       })
     } catch (error) {
       console.log('缓存未命中，执行重试请求')
@@ -435,7 +457,7 @@ class RobustDataApi {
       return await this.requestCore.getWithRetry<DataResult>(`/data/${id}`, {
         retries: 3,
         delay: 1000,
-        backoffFactor: 1.5
+        backoffFactor: 1.5,
       })
     }
   }
@@ -453,18 +475,21 @@ class OptimizedApi {
     const requests = [
       // 用户信息 - 长缓存
       this.requestCore.getWithCache<User>(`/users/${userId}`, {
-        ttl: 1800000 // 30分钟
+        ttl: 1800000, // 30分钟
       }),
-      
+
       // 通知 - 短缓存
-      this.requestCore.getWithCache<Notification[]>(`/users/${userId}/notifications`, {
-        ttl: 60000 // 1分钟
-      }),
-      
+      this.requestCore.getWithCache<Notification[]>(
+        `/users/${userId}/notifications`,
+        {
+          ttl: 60000, // 1分钟
+        }
+      ),
+
       // 统计数据 - 中等缓存
       this.requestCore.getWithCache<Stats>(`/users/${userId}/stats`, {
-        ttl: 300000 // 5分钟
-      })
+        ttl: 300000, // 5分钟
+      }),
     ]
 
     // 并发执行所有请求
@@ -473,7 +498,7 @@ class OptimizedApi {
     return {
       user,
       notifications,
-      stats
+      stats,
     }
   }
 }
@@ -497,8 +522,8 @@ class ProductionApi {
       .retry(3) // 3次重试
       .cache(180000) // 3分钟缓存
       .headers({
-        'Accept': 'application/json',
-        'X-Client-Version': '1.0.0'
+        Accept: 'application/json',
+        'X-Client-Version': '1.0.0',
       })
       .tag('production-data') // 标记用于调试
       .debug(process.env.NODE_ENV === 'development')
@@ -510,7 +535,7 @@ class ProductionApi {
     // 分批处理，每批10个项目
     const batchSize = 10
     const batches = []
-    
+
     for (let i = 0; i < items.length; i += batchSize) {
       batches.push(items.slice(i, i + batchSize))
     }
@@ -519,33 +544,31 @@ class ProductionApi {
 
     // 串行处理批次，并行处理批次内项目
     for (const batch of batches) {
-      const batchRequests = batch.map(item => ({
+      const batchRequests = batch.map((item) => ({
         url: `/business/process/${item.id}`,
         method: 'POST' as const,
-        data: item.data
+        data: item.data,
       }))
 
-      const batchResults = await this.requestCore.requestConcurrent<ProcessResult>(
-        batchRequests,
-        {
+      const batchResults =
+        await this.requestCore.requestConcurrent<ProcessResult>(batchRequests, {
           maxConcurrency: 5,
           retryOnError: true,
-          timeout: 45000
-        }
-      )
+          timeout: 45000,
+        })
 
       allResults.push(...batchResults)
-      
+
       // 批次间休息100ms，避免过载
       if (batches.indexOf(batch) < batches.length - 1) {
-        await new Promise(resolve => setTimeout(resolve, 100))
+        await new Promise((resolve) => setTimeout(resolve, 100))
       }
     }
 
     return {
       total: allResults.length,
-      successful: allResults.filter(r => r.success),
-      failed: allResults.filter(r => !r.success)
+      successful: allResults.filter((r) => r.success),
+      failed: allResults.filter((r) => !r.success),
     }
   }
 }
@@ -560,20 +583,20 @@ class MonitoringService {
   // 获取详细的性能统计
   getPerformanceStats() {
     const allStats = this.requestCore.getAllStats()
-    
+
     return {
       cache: {
         hitRate: allStats.cache.hitRate,
         totalItems: allStats.cache.totalItems,
-        memoryUsage: allStats.cache.memoryUsage
+        memoryUsage: allStats.cache.memoryUsage,
       },
       concurrent: {
         activeRequests: allStats.concurrent.activeRequests,
         totalCompleted: allStats.concurrent.totalCompleted,
-        averageResponseTime: allStats.concurrent.averageResponseTime
+        averageResponseTime: allStats.concurrent.averageResponseTime,
       },
       interceptors: allStats.interceptors,
-      config: allStats.config
+      config: allStats.config,
     }
   }
 
@@ -581,7 +604,7 @@ class MonitoringService {
   performMaintenance() {
     // 清理过期缓存
     this.requestCore.clearCache()
-    
+
     console.log('Performance stats:', this.getPerformanceStats())
   }
 }
@@ -600,14 +623,14 @@ class DataService {
   async getConfig() {
     return this.requestCore.getWithCache<Config>('/config', {
       ttl: 3600000, // 1小时
-      storageType: StorageType.LOCAL_STORAGE
+      storageType: StorageType.LOCAL_STORAGE,
     })
   }
 
   // 动态数据 - 短时间缓存
   async getNotifications() {
     return this.requestCore.getWithCache<Notification[]>('/notifications', {
-      ttl: 30000 // 30秒
+      ttl: 30000, // 30秒
     })
   }
 
@@ -615,7 +638,7 @@ class DataService {
   async getUserPreferences(userId: string) {
     return this.requestCore.getWithCache<UserPrefs>('/user/preferences', {
       key: `user-prefs-${userId}`,
-      ttl: 300000 // 5分钟
+      ttl: 300000, // 5分钟
     })
   }
 }
@@ -634,7 +657,7 @@ class SmartRetryService {
       retries: 5,
       delay: 1000,
       backoffFactor: 1.5,
-      jitter: 0.2
+      jitter: 0.2,
     })
   }
 
@@ -646,7 +669,7 @@ class SmartRetryService {
       shouldRetry: (error) => {
         // 只对网络错误重试，避免重复操作
         return error instanceof RequestError && !error.isHttpError
-      }
+      },
     })
   }
 
@@ -655,7 +678,7 @@ class SmartRetryService {
     return this.requestCore.postWithRetry<Result>('/create', data, {
       retries: 3,
       delay: 1500,
-      headers: { 'Idempotency-Key': idempotencyKey }
+      headers: { 'Idempotency-Key': idempotencyKey },
     })
   }
 }
@@ -671,7 +694,7 @@ class ConcurrencyService {
   // CPU密集型 - 低并发
   async processCPUIntensive(items: any[]) {
     return this.requestCore.requestConcurrent(
-      items.map(item => ({ url: '/cpu-intensive', data: item })),
+      items.map((item) => ({ url: '/cpu-intensive', data: item })),
       { maxConcurrency: 2 }
     )
   }
@@ -679,7 +702,7 @@ class ConcurrencyService {
   // I/O密集型 - 高并发
   async processIOIntensive(items: any[]) {
     return this.requestCore.requestConcurrent(
-      items.map(item => ({ url: '/io-intensive', data: item })),
+      items.map((item) => ({ url: '/io-intensive', data: item })),
       { maxConcurrency: 10 }
     )
   }
@@ -687,11 +710,11 @@ class ConcurrencyService {
   // 外部API - 受限并发（遵守速率限制）
   async callExternalAPI(items: any[]) {
     return this.requestCore.requestConcurrent(
-      items.map(item => ({ url: '/external-api', data: item })),
-      { 
+      items.map((item) => ({ url: '/external-api', data: item })),
+      {
         maxConcurrency: 3, // 较低并发避免触发限流
         timeout: 30000,
-        retryOnError: true
+        retryOnError: true,
       }
     )
   }
@@ -723,8 +746,7 @@ class ConcurrencyService {
 ## 📚 相关文档
 
 - 🚀 [快速开始](/guide/getting-started) - 基础使用方法
-- 📖 [基础用法](/guide/basic-usage) - 详细功能介绍  
-- 💡 [最佳实践](/guide/best-practices) - 项目组织规范
+- 📖 [基础用法](/guide/basic-usage) - 详细功能介绍
 - 📋 [API 参考](/api/request-core) - 完整 API 文档
 
 ## 🆘 获取帮助
