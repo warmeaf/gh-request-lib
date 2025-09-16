@@ -6,7 +6,6 @@ const themeConfig: DefaultTheme.Config = {
     { text: '概念', link: '/concepts/architecture' },
     { text: 'API', link: '/api/request-core' },
     { text: '示例', link: '/examples/basic-requests' },
-    { text: '包文档', link: '/packages/request-core/' },
   ],
 
   sidebar: {
@@ -56,56 +55,6 @@ const themeConfig: DefaultTheme.Config = {
           { text: '并发请求示例', link: '/examples/concurrent-requests' },
           { text: '自定义API示例', link: '/examples/custom-apis' },
           { text: '框架集成示例', link: '/examples/integration' },
-        ],
-      },
-    ],
-
-    '/packages/': [
-      {
-        text: 'request-core',
-        collapsed: false,
-        items: [
-          { text: '包概述', link: '/packages/request-core/' },
-          {
-            text: '功能模块',
-            collapsed: true,
-            items: [
-              {
-                text: '缓存功能',
-                link: '/packages/request-core/features/cache',
-              },
-              {
-                text: '重试功能',
-                link: '/packages/request-core/features/retry',
-              },
-              {
-                text: '并发控制',
-                link: '/packages/request-core/features/concurrent',
-              },
-              {
-                text: '拦截器',
-                link: '/packages/request-core/features/interceptors',
-              },
-            ],
-          },
-          { text: 'API参考', link: '/packages/request-core/api-reference' },
-        ],
-      },
-      {
-        text: 'request-api',
-        collapsed: false,
-        items: [
-          { text: '包概述', link: '/packages/request-api/' },
-          { text: '工厂方法', link: '/packages/request-api/factory-methods' },
-          { text: 'API参考', link: '/packages/request-api/api-reference' },
-        ],
-      },
-      {
-        text: '实现层',
-        collapsed: true,
-        items: [
-          { text: 'Axios实现', link: '/packages/request-imp-axios/' },
-          { text: 'Fetch实现', link: '/packages/request-imp-fetch/' },
         ],
       },
     ],
