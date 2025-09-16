@@ -145,60 +145,15 @@ const authInterceptor: RequestInterceptor = {
 
 **执行位置**：`FeatureManager` 各功能模块
 
-#### 缓存检查
+#### 特性功能处理
 
-```typescript
-async requestWithCache<T>(config: RequestConfig, cacheConfig?: CacheConfig): Promise<T> {
-  // 1. 生成缓存键
-  const cacheKey = this.generateCacheKey(config, cacheConfig?.key)
-  
-  // 2. 检查缓存
-  const cached = this.getCachedItem<T>(cacheKey)
-  if (cached && !this.isExpired(cached)) {
-    return this.cloneData(cached.data, cacheConfig?.clone)
-  }
-  
-  // 3. 缓存未命中，执行请求
-  const result = await this.requestor.request<T>(config)
-  
-  // 4. 存储缓存
-  this.setCachedItem(cacheKey, result, cacheConfig?.ttl)
-  return result
-}
-```
+**缓存功能**：
+- 生成缓存键 → 检查缓存 → 命中返回/未命中请求 → 存储缓存
+- 支持TTL过期、LRU清理策略
 
-**缓存策略**：
-- **键生成**：基于URL、方法、参数生成唯一键
-- **TTL检查**：时间戳验证缓存是否过期
-- **LRU清理**：最近最少使用策略清理旧缓存
-
-#### 重试逻辑
-
-```typescript
-async requestWithRetry<T>(config: RequestConfig, retryConfig?: RetryConfig): Promise<T> {
-  const maxRetries = retryConfig?.retries || 3
-  
-  for (let attempt = 0; attempt <= maxRetries; attempt++) {
-    try {
-      return await this.requestor.request<T>(config)
-    } catch (error) {
-      // 最后一次尝试或不应重试
-      if (attempt === maxRetries || !this.shouldRetry(error, attempt)) {
-        throw error
-      }
-      
-      // 计算退避延迟
-      const delay = this.calculateDelay(attempt, retryConfig)
-      await this.sleep(delay)
-    }
-  }
-}
-```
-
-**重试策略**：
-- **指数退避**：延迟时间递增（1s、2s、4s...）
-- **随机抖动**：避免惊群效应
-- **条件重试**：只对网络错误和5xx错误重试
+**重试功能**：
+- 指数退避策略，条件重试（网络错误、5xx错误）
+- 支持最大重试次数和延迟配置
 
 ### 阶段4：实际请求执行
 
@@ -206,43 +161,13 @@ async requestWithRetry<T>(config: RequestConfig, retryConfig?: RetryConfig): Pro
 
 **执行位置**：`RequestExecutor.execute()`
 
-```typescript
-async execute<T>(config: RequestConfig): Promise<T> {
-  const context = this.createExecutionContext(config)
-  
-  try {
-    // 1. 记录开始时间和执行开始回调
-    this.logRequestStart(context)
-    this.executeOnStartCallback(context)
-    
-    // 2. 调用底层实现执行请求
-    const result = await this.requestor.request<T>(config)
-    const duration = this.getDuration(context)
-    
-    // 3. 记录成功和执行结束回调
-    this.logRequestSuccess(context, duration)
-    this.executeOnEndCallback(context, duration)
-    
-    return result
-    
-  } catch (error) {
-    // 4. 错误处理和增强
-    const duration = this.getDuration(context)
-    const enhancedError = this.enhanceError(error, context, duration)
-    
-    this.logRequestError(context, enhancedError, duration)
-    this.executeOnErrorCallback(context, enhancedError, duration)
-    
-    throw enhancedError
-  }
-}
-```
+**核心流程**：
+1. 创建执行上下文，记录开始时间
+2. 调用底层实现发送HTTP请求
+3. 记录性能指标和执行回调
+4. 错误时增强错误信息和上下文
 
-**性能监控**：
-- **开始时间**：记录请求开始的精确时间戳
-- **持续时间**：计算请求总耗时
-- **回调执行**：执行用户定义的性能监控回调
-- **日志记录**：统一格式的请求日志
+**性能监控**：记录请求耗时、执行回调、统一日志记录
 
 ### 阶段5：响应处理
 
@@ -257,17 +182,15 @@ private async executeResponseInterceptors<T>(
 ): Promise<T> {
   let processedResponse = response
   
-  // 响应拦截器逆序执行
-  for (let i = this.interceptors.length - 1; i >= 0; i--) {
-    const interceptor = this.interceptors[i]
+  // 响应拦截器按注册顺序执行
+  for (const interceptor of this.interceptors) {
     if (interceptor.onResponse) {
       try {
         processedResponse = await interceptor.onResponse(processedResponse, config)
       } catch (error) {
-        // 响应拦截器出错会转为错误处理
         throw new RequestError('Response interceptor failed', {
           originalError: error,
-          context: { url: config.url, method: config.method, timestamp: Date.now() }
+          context: { url: config.url, method: config.method }
         })
       }
     }
@@ -278,7 +201,7 @@ private async executeResponseInterceptors<T>(
 ```
 
 **执行特点**：
-- **逆序执行**：后注册的拦截器先执行（类似栈结构）
+- **按注册顺序执行**：先注册的拦截器先执行
 - **链式处理**：每个拦截器处理上一个的结果
 - **数据转换**：可以修改响应数据的格式和内容
 
@@ -299,66 +222,19 @@ private async executeResponseInterceptors<T>(
 - **HTTP错误**：4xx、5xx状态码
 - **业务错误**：响应拦截器抛出的错误
 
-#### 错误拦截器执行
+#### 错误处理机制
 
-```typescript
-private async executeErrorInterceptors(
-  error: RequestError, 
-  config: RequestConfig
-): Promise<RequestError> {
-  let processedError = error
-  
-  // 按注册顺序执行错误拦截器
-  for (const interceptor of this.interceptors) {
-    if (interceptor.onError) {
-      try {
-        processedError = await interceptor.onError(processedError, config)
-      } catch (interceptorError) {
-        // 错误拦截器本身出错，使用原始错误
-        console.warn('Error interceptor failed:', interceptorError)
-      }
-    }
-  }
-  
-  return processedError
-}
-```
+**错误来源**：配置验证、拦截器、网络连接、HTTP状态码、业务逻辑
 
-**错误类型分类**：
-```typescript
-enum RequestErrorType {
-  NETWORK_ERROR = 'NETWORK_ERROR',       // 网络连接错误
-  HTTP_ERROR = 'HTTP_ERROR',             // HTTP状态码错误  
-  TIMEOUT_ERROR = 'TIMEOUT_ERROR',       // 请求超时
-  VALIDATION_ERROR = 'VALIDATION_ERROR', // 配置验证错误
-  CACHE_ERROR = 'CACHE_ERROR',           // 缓存操作错误
-  RETRY_ERROR = 'RETRY_ERROR',           // 重试逻辑错误
-  UNKNOWN_ERROR = 'UNKNOWN_ERROR'        // 未知错误
-}
-```
+**错误类型**：NETWORK_ERROR、HTTP_ERROR、TIMEOUT_ERROR、VALIDATION_ERROR、CACHE_ERROR等
+
+**处理流程**：错误拦截器按注册顺序执行，可修改错误信息或执行恢复逻辑
 
 ### 阶段7：清理阶段
 
 **职责**：执行资源清理和最终回调
 
-```typescript
-finally {
-  // 清理超时定时器
-  if (timeoutId) {
-    clearTimeout(timeoutId)
-  }
-  
-  // 执行清理回调
-  if (config.onEnd) {
-    const duration = Date.now() - startTime
-    try {
-      config.onEnd(config, duration)
-    } catch (error) {
-      console.warn('onEnd callback failed:', error)
-    }
-  }
-}
-```
+清理超时定时器、执行onEnd回调、释放相关资源
 
 ## 🔧 拦截器深入
 
@@ -398,147 +274,27 @@ sequenceDiagram
 
 ### 拦截器最佳实践
 
-#### 认证拦截器
+#### 常见拦截器类型
 
-```typescript
-const createAuthInterceptor = (tokenProvider: () => string): RequestInterceptor => ({
-  onRequest: (config) => {
-    const token = tokenProvider()
-    if (token) {
-      config.headers = {
-        ...config.headers,
-        'Authorization': `Bearer ${token}`
-      }
-    }
-    return config
-  },
-  
-  onError: async (error, config) => {
-    // 401错误自动刷新token重试
-    if (error.status === 401) {
-      try {
-        await refreshToken()
-        throw new RequestError('Token refreshed, please retry', {
-          code: 'TOKEN_REFRESHED'
-        })
-      } catch (refreshError) {
-        redirectToLogin()
-        throw error
-      }
-    }
-    throw error
-  }
-})
-```
+**认证拦截器**：
+- `onRequest`: 添加Authorization header
+- `onError`: 处理401错误，自动刷新token
 
-#### 日志拦截器
-
-```typescript
-const createLoggingInterceptor = (logger: Logger): RequestInterceptor => ({
-  onRequest: (config) => {
-    logger.info('Request started', {
-      url: config.url,
-      method: config.method,
-      timestamp: new Date().toISOString()
-    })
-    return config
-  },
-  
-  onResponse: (response, config) => {
-    logger.info('Request completed', {
-      url: config.url,
-      method: config.method,
-      status: 'success'
-    })
-    return response
-  },
-  
-  onError: (error, config) => {
-    logger.error('Request failed', {
-      url: config.url,
-      method: config.method,
-      error: error.message,
-      type: error.type
-    })
-    throw error
-  }
-})
-```
+**日志拦截器**：
+- `onRequest`: 记录请求开始信息
+- `onResponse`: 记录请求成功
+- `onError`: 记录请求错误详情
 
 ## 📊 监控和调试
 
 ### 性能监控
+- 通过拦截器收集请求耗时、成功率等指标
+- 支持自定义性能数据收集器
 
-```typescript
-// 性能监控拦截器
-const createMetricsInterceptor = (collector: MetricsCollector): RequestInterceptor => {
-  const startTimes = new WeakMap()
-  
-  return {
-    onRequest: (config) => {
-      startTimes.set(config, performance.now())
-      return config
-    },
-    
-    onResponse: (response, config) => {
-      const startTime = startTimes.get(config)
-      if (startTime) {
-        const duration = performance.now() - startTime
-        collector.recordSuccess({
-          url: config.url,
-          method: config.method,
-          duration
-        })
-      }
-      return response
-    },
-    
-    onError: (error, config) => {
-      const startTime = startTimes.get(config)
-      if (startTime) {
-        const duration = performance.now() - startTime
-        collector.recordError({
-          url: config.url,
-          method: config.method,
-          error: error.type,
-          duration
-        })
-      }
-      throw error
-    }
-  }
-}
-```
-
-### 调试工具
-
-```typescript
-// 开启详细调试日志
-const debugInterceptor: RequestInterceptor = {
-  onRequest: (config) => {
-    console.group(`🚀 [${config.method}] ${config.url}`)
-    console.log('Request config:', config)
-    console.groupEnd()
-    return config
-  },
-  
-  onResponse: (response, config) => {
-    console.group(`✅ [${config.method}] ${config.url}`)
-    console.log('Response:', response)
-    console.groupEnd()
-    return response
-  },
-  
-  onError: (error, config) => {
-    console.group(`❌ [${config.method}] ${config.url}`)
-    console.error('Error:', error)
-    console.log('Error context:', error.context)
-    console.log('Suggestion:', error.suggestion)
-    console.groupEnd()
-    throw error
-  }
-}
-```
+### 调试功能
+- `debug: true` 配置开启详细日志
+- 显示请求配置、响应数据、错误信息
+- 提供错误建议和上下文信息
 
 ## 🔍 总结
 
