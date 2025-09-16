@@ -12,7 +12,8 @@
     "@vitepress-demo-preview/plugin": "^1.4.0",
     "request-api": "workspace:*",
     "request-imp-axios": "workspace:*",
-    "request-imp-fetch": "workspace:*"
+    "request-imp-fetch": "workspace:*",
+    "vitepress-mermaid-renderer": "^1.0.15"
   },
   "devDependencies": {
     "vitepress": "2.0.0-alpha.1"
