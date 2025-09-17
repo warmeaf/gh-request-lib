@@ -1,129 +1,34 @@
 <template>
   <div class="demo-container">
-    <h3>🔒 POST幂等请求演示 - 防重复提交</h3>
-    <div class="demo-content">
-      <div class="info-section">
-        <div class="info-card">
-          <h4>💡 演示说明</h4>
-          <p>快速多次点击提交按钮测试新的请求去重机制：</p>
-          <ul class="demo-features">
-            <li><strong>缓存命中</strong>：已完成的请求直接返回缓存结果</li>
-            <li><strong>请求去重</strong>：正在进行的请求会等待完成，避免重复网络请求</li>
-            <li><strong>统计详细</strong>：区分缓存命中、请求复用、实际网络请求</li>
-          </ul>
-          <div class="protection-info">
-            <span class="protection-badge">保护期: {{ ttl / 1000 }}秒</span>
-            <span class="key-info">幂等键: 基于表单内容自动生成</span>
-          </div>
-        </div>
+    <!-- 表单区域 -->
+    <div class="form-section">
+      <div class="form-row">
+        <label>标题:</label>
+        <input v-model="formData.title" placeholder="文章标题" class="form-input" />
       </div>
-
-      <div class="form-section">
-        <div class="form-group">
-          <label>用户ID:</label>
-          <select v-model="formData.userId" class="form-control">
-            <option value="1">用户 1</option>
-            <option value="2">用户 2</option>
-            <option value="3">用户 3</option>
-          </select>
-        </div>
-        
-        <div class="form-group">
-          <label>文章标题:</label>
-          <input 
-            v-model="formData.title" 
-            type="text" 
-            placeholder="请输入文章标题" 
-            class="form-control"
-          />
-        </div>
-        
-        <div class="form-group">
-          <label>文章内容:</label>
-          <textarea 
-            v-model="formData.body" 
-            placeholder="请输入文章内容..."
-            rows="4"
-            class="form-control textarea"
-          ></textarea>
-        </div>
-        
-        <div class="button-group">
-          <button 
-            @click="submitForm" 
-            :disabled="!isFormValid"
-            class="submit-btn normal"
-          >
-            🚀 普通提交
-          </button>
-          <button 
-            @click="submitIdempotent" 
-            :disabled="!isFormValid"
-            class="submit-btn idempotent"
-          >
-            🔒 幂等提交 (推荐快速点击测试)
-          </button>
-        </div>
+      <div class="form-row">
+        <label>内容:</label>
+        <textarea v-model="formData.content" placeholder="文章内容" rows="3" class="form-input"></textarea>
       </div>
-
-      <!-- 请求日志 -->
-      <div class="logs-section">
-        <h4>📋 请求日志 <button @click="clearLogs" class="clear-btn">清空</button></h4>
-        <div class="logs-container">
-          <div 
-            v-for="log in logs" 
-            :key="log.id"
-            :class="['log-item', log.type]"
-          >
-            <div class="log-header">
-              <span class="log-time">{{ log.time }}</span>
-              <span :class="['log-status', log.status]">{{ log.status }}</span>
-              <span class="log-type">{{ log.requestType }}</span>
-            </div>
-            <div class="log-content">{{ log.message }}</div>
-            <div v-if="log.duration" class="log-meta">
-              响应时间: {{ log.duration }}ms
-            </div>
-          </div>
-        </div>
+      <div class="button-group">
+        <button @click="submitNormal" :disabled="!isFormValid" class="btn btn-normal">
+          普通提交
+        </button>
+        <button @click="submitIdempotent" :disabled="!isFormValid" class="btn btn-idempotent">
+          🔒 幂等提交
+        </button>
       </div>
+    </div>
 
-      <!-- 统计信息 -->
-      <div class="stats-section">
-        <h4>📊 详细统计信息</h4>
-        <div class="stats-grid">
-          <div class="stat-card total">
-            <div class="stat-value">{{ stats.totalRequests }}</div>
-            <div class="stat-label">总请求数</div>
-          </div>
-          <div class="stat-card network">
-            <div class="stat-value">{{ stats.actualNetworkRequests }}</div>
-            <div class="stat-label">实际网络请求</div>
-          </div>
-          <div class="stat-card cache">
-            <div class="stat-value">{{ stats.cacheHits }}</div>
-            <div class="stat-label">缓存命中</div>
-          </div>
-          <div class="stat-card pending">
-            <div class="stat-value">{{ stats.pendingRequestsReused }}</div>
-            <div class="stat-label">请求复用</div>
-          </div>
-          <div class="stat-card blocked">
-            <div class="stat-value">{{ stats.duplicatesBlocked }}</div>
-            <div class="stat-label">重复拦截</div>
-          </div>
-          <div class="stat-card rate">
-            <div class="stat-value">{{ stats.duplicateRate.toFixed(1) }}%</div>
-            <div class="stat-label">拦截率</div>
-          </div>
-          <div class="stat-card time">
-            <div class="stat-value">{{ stats.avgResponseTime.toFixed(0) }}ms</div>
-            <div class="stat-label">平均响应时间</div>
-          </div>
-          <div class="stat-card keytime">
-            <div class="stat-value">{{ stats.keyGenerationTime.toFixed(1) }}ms</div>
-            <div class="stat-label">键生成时间</div>
-          </div>
+    <!-- 请求日志 -->
+    <div class="logs-section">
+      <h4>📋 请求日志 <button @click="logs = []" class="clear-btn">清空</button></h4>
+      <div class="logs-container">
+        <div v-for="log in logs.slice(0, 10)" :key="log.id" class="log-item">
+          <span class="log-time">{{ log.time }}</span>
+          <span :class="['log-status', log.type]">{{ log.status }}</span>
+          <span class="log-message">{{ log.message }}</span>
+          <span class="log-duration">{{ log.duration }}ms</span>
         </div>
       </div>
     </div>
@@ -132,10 +37,9 @@
 
 <script setup lang="ts">
 import { ref, computed } from 'vue'
-import { createApiClient, type ApiClass } from 'request-api'
+import { createApiClient } from 'request-api'
 import { fetchRequestor } from 'request-imp-fetch'
 
-// 定义文章API类 - 支持幂等请求
 class PostApi {
   requestCore: any
   
@@ -143,310 +47,216 @@ class PostApi {
     this.requestCore = requestCore
   }
 
-  // 普通 POST 请求
-  async createPost(postData: any) {
-    const url = 'https://jsonplaceholder.typicode.com/posts'
-    return this.requestCore.post(url, postData)
+  async createPost(data: any) {
+    return this.requestCore.post('https://jsonplaceholder.typicode.com/posts', data)
   }
 
-  // 幂等 POST 请求
-  async createPostIdempotent(postData: any, config = {}) {
-    const url = 'https://jsonplaceholder.typicode.com/posts'
-    return this.requestCore.postIdempotent(url, postData, config, {
-      ttl: 5000, // 5秒幂等保护期
-      includeHeaders: ['content-type'],
-      onDuplicate: (original: any, duplicate: any) => {
-        console.log('🚫 Duplicate request blocked:', duplicate.url)
+  async createPostIdempotent(data: any) {
+    return this.requestCore.postIdempotent(
+      'https://jsonplaceholder.typicode.com/posts', 
+      data,
+      {},
+      {
+        ttl: 5000,
+        includeHeaders: ['content-type'],
+        onDuplicate: (original, duplicate) => {
+          console.log('检测到重复请求:', duplicate.url)
+        }
       }
-    })
+    )
   }
 
-  // 获取幂等统计信息
-  getIdempotentStats() {
-    return this.requestCore.getIdempotentStats ? this.requestCore.getIdempotentStats() : {
-      totalRequests: 0,
-      duplicatesBlocked: 0,
-      pendingRequestsReused: 0,
-      cacheHits: 0,
-      actualNetworkRequests: 0,
-      duplicateRate: 0,
-      avgResponseTime: 0,
-      keyGenerationTime: 0
-    }
-  }
 }
 
-// 创建 API 客户端实例
 const apiClient = createApiClient(
   { post: PostApi },
   {
     requestor: fetchRequestor,
-    globalConfig: {
-      timeout: 10000,
-      debug: true,
-    },
+    globalConfig: { timeout: 10000, debug: true }
   }
 )
 
-const postApi = apiClient.post
-
-// 组件状态
-const ttl = ref(5000) // 5秒保护期
 const formData = ref({
-  userId: '1',
   title: '测试文章标题',
-  body: '这是一个用于测试幂等请求的文章内容。快速点击幂等提交按钮可以观察防重复提交效果。'
+  content: '这是测试内容'
 })
 
-const logs = ref<Array<any>>([])
+const logs = ref<Array<{
+  id: number
+  time: string
+  status: string
+  type: string
+  message: string
+  duration: number
+}>>([])
+
 let logId = 0
 
-// 统计信息
-const stats = ref({
-  totalRequests: 0,
-  duplicatesBlocked: 0,
-  pendingRequestsReused: 0,
-  cacheHits: 0,
-  actualNetworkRequests: 0,
-  duplicateRate: 0,
-  avgResponseTime: 0,
-  keyGenerationTime: 0
-})
-
-// 表单验证
 const isFormValid = computed(() => {
-  return formData.value.title.trim() && formData.value.body.trim()
+  return formData.value.title.trim() && formData.value.content.trim()
 })
 
-// 添加日志的方法
-const addLog = (type: string, status: string, message: string, requestType: string, duration?: number) => {
+const addLog = (status: string, type: string, message: string, duration: number) => {
   logs.value.unshift({
     id: ++logId,
-    type,
+    time: new Date().toLocaleTimeString(),
     status,
+    type,
     message,
-    requestType,
-    duration,
-    time: new Date().toLocaleTimeString()
+    duration
   })
-
-  // 限制日志数量
-  if (logs.value.length > 20) {
-    logs.value.pop()
+  
+  if (logs.value.length > 15) {
+    logs.value = logs.value.slice(0, 15)
   }
 }
 
-// 普通提交
-const submitForm = async () => {
-  const startTime = Date.now()
+const submitNormal = async () => {
+  const start = Date.now()
   
-  addLog('info', 'pending', '发送普通POST请求...', '普通请求')
-
   try {
-    const result = await postApi.createPost({
-      userId: parseInt(formData.value.userId),
+    const result = await apiClient.post.createPost({
       title: formData.value.title,
-      body: formData.value.body
+      body: formData.value.content,
+      userId: 1
     })
     
-    const duration = Date.now() - startTime
-    addLog('success', 'success', `普通请求成功 - ID: ${result.id}`, '普通请求', duration)
+    const duration = Date.now() - start
+    addLog('成功', 'success', `普通请求完成 - ID: ${result.id}`, duration)
     
-    // 更新统计
-    stats.value.totalRequests++
-    updateAvgResponseTime(duration)
-    
-  } catch (error) {
-    const duration = Date.now() - startTime
-    addLog('error', 'error', `普通请求失败: ${error.message}`, '普通请求', duration)
+  } catch (error: any) {
+    const duration = Date.now() - start
+    addLog('失败', 'error', `普通请求失败: ${error.message}`, duration)
   }
 }
 
-// 幂等提交
 const submitIdempotent = async () => {
-  const startTime = Date.now()
-  const requestId = Math.random().toString(36).substr(2, 9)
+  const start = Date.now()
   
-  addLog('info', 'pending', `发送幂等POST请求... [${requestId}]`, '幂等请求')
-
   try {
-    const result = await postApi.createPostIdempotent({
-      userId: parseInt(formData.value.userId),
+    const result = await apiClient.post.createPostIdempotent({
       title: formData.value.title,
-      body: formData.value.body
+      body: formData.value.content,
+      userId: 1
     })
     
-    const duration = Date.now() - startTime
+    const duration = Date.now() - start
     
-    // 获取真实的统计信息
-    const realStats = postApi.getIdempotentStats()
-    stats.value = { ...realStats }
+    let status = '成功', type = 'success', message = ''
     
-    // 判断是否是重复请求（通过响应时间和统计信息）
-    const isDuplicate = duration < 100 // 响应时间很短
-    const isCacheHit = duration < 30    // 极短的响应时间，可能是缓存命中
-    const isPendingReuse = duration < 100 && duration >= 30 // 中等响应时间，可能是等待pending请求
-    
-    if (isCacheHit) {
-      addLog('warning', 'cached', `💾 缓存命中 [${requestId}] - 返回缓存结果 ID: ${result.id}`, '幂等请求', duration)
-    } else if (isPendingReuse) {
-      addLog('warning', 'pending', `🔄 等待进行中请求 [${requestId}] - ID: ${result.id}`, '幂等请求', duration)
+    if (duration < 30) {
+      status = '缓存'
+      type = 'cached'  
+      message = `缓存命中 - 瞬间返回 ID: ${result.id}`
+    } else if (duration < 100) {
+      status = '等待'
+      type = 'pending'
+      message = `等待现有请求完成 - ID: ${result.id}`
     } else {
-      addLog('success', 'success', `✅ 新请求成功 [${requestId}] - ID: ${result.id}`, '幂等请求', duration)
+      message = `新请求完成 - ID: ${result.id}`
     }
     
-  } catch (error) {
-    const duration = Date.now() - startTime
-    addLog('error', 'error', `❌ 幂等请求失败 [${requestId}]: ${error.message}`, '幂等请求', duration)
+    addLog(status, type, message, duration)
     
-    // 即使失败也更新统计
-    const realStats = postApi.getIdempotentStats()
-    stats.value = { ...realStats }
+  } catch (error: any) {
+    const duration = Date.now() - start
+    addLog('失败', 'error', `幂等请求失败: ${error.message}`, duration)
   }
-}
-
-// 更新平均响应时间
-const updateAvgResponseTime = (responseTime: number) => {
-  const totalResponseTime = stats.value.avgResponseTime * (stats.value.totalRequests - 1)
-  stats.value.avgResponseTime = (totalResponseTime + responseTime) / stats.value.totalRequests
-}
-
-// 清空日志
-const clearLogs = () => {
-  logs.value = []
 }
 </script>
 
 <style scoped>
 .demo-container {
+  max-width: 800px;
+  margin: 0 auto;
   padding: 20px;
-  border: 1px solid #e1e5e9;
-  border-radius: 8px;
-  background: #fafbfc;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
 }
 
-.demo-content {
-  margin-top: 15px;
-}
-
-.info-section {
+.demo-container > * {
   margin-bottom: 20px;
 }
 
-.info-card {
-  background: #f0f8ff;
-  padding: 15px;
-  border-radius: 6px;
-  border-left: 4px solid #0366d6;
-}
-
-.info-card h4 {
-  margin: 0 0 10px 0;
-  color: #0366d6;
-}
-
-.info-card p {
-  margin: 0 0 10px 0;
-  color: #24292e;
-}
-
-.protection-info {
-  display: flex;
-  gap: 15px;
-  align-items: center;
-}
-
-.protection-badge {
-  background: #28a745;
-  color: white;
-  padding: 4px 8px;
-  border-radius: 12px;
-  font-size: 12px;
-  font-weight: bold;
-}
-
-.key-info {
-  font-size: 12px;
-  color: #666;
-  font-style: italic;
-}
-
+/* 表单区域 */
 .form-section {
   background: white;
   padding: 20px;
-  border-radius: 6px;
-  margin-bottom: 20px;
-  box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+  border-radius: 8px;
+  border: 1px solid #e1e5e9;
 }
 
-.form-group {
+.form-row {
+  display: flex;
+  align-items: center;
+  gap: 15px;
   margin-bottom: 15px;
 }
 
-.form-group label {
-  display: block;
-  margin-bottom: 5px;
-  font-weight: bold;
+.form-row label {
+  min-width: 60px;
+  font-weight: 600;
   color: #24292e;
 }
 
-.form-control {
-  width: 100%;
+.form-input {
+  flex: 1;
   padding: 8px 12px;
   border: 1px solid #d1d9e0;
   border-radius: 4px;
   font-size: 14px;
 }
 
-.textarea {
-  resize: vertical;
-  font-family: inherit;
+.form-input:focus {
+  outline: none;
+  border-color: #0366d6;
+  box-shadow: 0 0 0 2px rgba(3, 102, 214, 0.1);
 }
 
 .button-group {
   display: flex;
-  gap: 15px;
+  gap: 10px;
+  margin-top: 20px;
 }
 
-.submit-btn {
+.btn {
   padding: 10px 20px;
   border: none;
-  border-radius: 4px;
+  border-radius: 5px;
   cursor: pointer;
   font-size: 14px;
-  font-weight: bold;
-  transition: background-color 0.2s;
+  font-weight: 600;
+  transition: all 0.2s;
 }
 
-.submit-btn.normal {
+.btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.btn-normal {
   background: #28a745;
   color: white;
 }
 
-.submit-btn.normal:hover:not(:disabled) {
+.btn-normal:hover:not(:disabled) {
   background: #218838;
 }
 
-.submit-btn.idempotent {
+.btn-idempotent {
   background: #007acc;
   color: white;
 }
 
-.submit-btn.idempotent:hover:not(:disabled) {
-  background: #005a9e;
+.btn-idempotent:hover:not(:disabled) {
+  background: #0056b3;
 }
 
-.submit-btn:disabled {
-  background: #6c757d;
-  cursor: not-allowed;
-}
-
+/* 日志区域 */
 .logs-section {
   background: white;
   padding: 20px;
-  border-radius: 6px;
-  margin-bottom: 20px;
-  box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+  border-radius: 8px;
+  border: 1px solid #e1e5e9;
 }
 
 .logs-section h4 {
@@ -460,7 +270,7 @@ const clearLogs = () => {
   background: #dc3545;
   color: white;
   border: none;
-  padding: 4px 8px;
+  padding: 5px 10px;
   border-radius: 4px;
   font-size: 12px;
   cursor: pointer;
@@ -473,13 +283,14 @@ const clearLogs = () => {
 .logs-container {
   max-height: 300px;
   overflow-y: auto;
-  border: 1px solid #e1e5e9;
-  border-radius: 4px;
 }
 
 .log-item {
-  padding: 10px;
-  border-bottom: 1px solid #e1e5e9;
+  display: flex;
+  align-items: center;
+  gap: 15px;
+  padding: 8px 0;
+  border-bottom: 1px solid #f1f3f4;
   font-size: 13px;
 }
 
@@ -487,127 +298,35 @@ const clearLogs = () => {
   border-bottom: none;
 }
 
-.log-item.success {
-  background: #f0fff4;
-}
-
-.log-item.warning {
-  background: #fffbf0;
-}
-
-.log-item.error {
-  background: #ffeef0;
-}
-
-.log-item.info {
-  background: #f6f8fa;
-}
-
-.log-header {
-  display: flex;
-  gap: 10px;
-  align-items: center;
-  margin-bottom: 5px;
-}
-
 .log-time {
+  font-family: 'Courier New', monospace;
   color: #666;
-  font-family: monospace;
-  font-size: 11px;
+  min-width: 80px;
 }
 
 .log-status {
-  padding: 2px 6px;
-  border-radius: 3px;
-  font-size: 10px;
+  padding: 2px 8px;
+  border-radius: 12px;
+  font-size: 11px;
   font-weight: bold;
   text-transform: uppercase;
+  min-width: 50px;
+  text-align: center;
 }
 
 .log-status.success { background: #28a745; color: white; }
-.log-status.cached { background: #28a745; color: white; }
-.log-status.blocked { background: #ffc107; color: #212529; }
+.log-status.cached { background: #ffc107; color: #212529; }
+.log-status.pending { background: #17a2b8; color: white; }
 .log-status.error { background: #dc3545; color: white; }
-.log-status.pending { background: #007acc; color: white; }
 
-.log-type {
-  font-size: 11px;
+.log-message {
+  flex: 1;
+}
+
+.log-duration {
+  font-family: 'Courier New', monospace;
   color: #666;
-  font-style: italic;
-}
-
-.log-content {
-  color: #24292e;
-  line-height: 1.4;
-}
-
-.log-meta {
-  font-size: 11px;
-  color: #666;
-  margin-top: 5px;
-}
-
-.stats-section {
-  background: white;
-  padding: 20px;
-  border-radius: 6px;
-  box-shadow: 0 1px 3px rgba(0,0,0,0.1);
-}
-
-.stats-section h4 {
-  margin: 0 0 15px 0;
-}
-
-.demo-features {
-  margin: 10px 0;
-  padding-left: 20px;
-}
-
-.demo-features li {
-  margin: 5px 0;
-  font-size: 14px;
-  color: #24292e;
-}
-
-.stats-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
-  gap: 12px;
-}
-
-.stat-card {
-  background: #f8f9fa;
-  padding: 12px;
-  border-radius: 6px;
-  text-align: center;
-  border-left: 4px solid;
-  transition: transform 0.2s, box-shadow 0.2s;
-}
-
-.stat-card:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 4px 12px rgba(0,0,0,0.1);
-}
-
-.stat-card.total { border-left-color: #6c757d; }
-.stat-card.network { border-left-color: #007acc; }
-.stat-card.cache { border-left-color: #28a745; }
-.stat-card.pending { border-left-color: #ffc107; }
-.stat-card.blocked { border-left-color: #dc3545; }
-.stat-card.rate { border-left-color: #6f42c1; }
-.stat-card.time { border-left-color: #fd7e14; }
-.stat-card.keytime { border-left-color: #20c997; }
-
-.stat-value {
-  font-size: 24px;
-  font-weight: bold;
-  color: #007acc;
-  margin-bottom: 5px;
-}
-
-.stat-label {
-  font-size: 12px;
-  color: #666;
-  text-transform: uppercase;
+  min-width: 60px;
+  text-align: right;
 }
 </style>
