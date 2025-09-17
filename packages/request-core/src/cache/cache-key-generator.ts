@@ -67,7 +67,7 @@ export class CacheKeyGenerator {
     }
 
     this.context = {
-      seed: Math.random() * 0x7fffffff | 0,
+      seed: 0x9e3779b1, // 固定种子（黄金分割比例），确保幂等键一致性
       cache: new Map(),
       stats: {
         cacheHits: 0,
