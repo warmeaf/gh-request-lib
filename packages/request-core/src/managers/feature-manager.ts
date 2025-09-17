@@ -2,6 +2,8 @@ import { Requestor, RequestConfig } from '../interface'
 import { RetryFeature, RetryConfig } from '../features/retry'
 import { CacheFeature, CacheConfig } from '../features/cache'
 import { ConcurrentFeature, ConcurrentConfig, ConcurrentResult } from '../features/concurrent'
+import { IdempotentFeature } from '../features/idempotent'
+import { IdempotentConfig, IdempotentStats } from '../interface'
 
 /**
  * @description 功能特性管理器
@@ -13,11 +15,13 @@ export class FeatureManager {
   private retryFeature: RetryFeature
   private cacheFeature: CacheFeature
   private concurrentFeature: ConcurrentFeature
+  private idempotentFeature: IdempotentFeature
 
   constructor(requestor: Requestor) {
     this.retryFeature = new RetryFeature(requestor)
     this.cacheFeature = new CacheFeature(requestor)
     this.concurrentFeature = new ConcurrentFeature(requestor)
+    this.idempotentFeature = new IdempotentFeature(requestor)
   }
 
   // ==================== 重试功能 ====================
@@ -157,6 +161,57 @@ export class FeatureManager {
     return this.getSuccessfulResults(results)
   }
 
+  // ==================== 幂等功能 ====================
+
+  /**
+   * 幂等请求
+   */
+  async requestIdempotent<T>(config: RequestConfig, idempotentConfig?: IdempotentConfig): Promise<T> {
+    return this.idempotentFeature.requestIdempotent<T>(config, idempotentConfig)
+  }
+
+  /**
+   * GET请求幂等
+   */
+  async getIdempotent<T>(url: string, config?: Partial<RequestConfig>, idempotentConfig?: IdempotentConfig): Promise<T> {
+    return this.idempotentFeature.getIdempotent<T>(url, config, idempotentConfig)
+  }
+
+  /**
+   * POST请求幂等
+   */
+  async postIdempotent<T>(url: string, data?: any, config?: Partial<RequestConfig>, idempotentConfig?: IdempotentConfig): Promise<T> {
+    return this.idempotentFeature.postIdempotent<T>(url, data, config, idempotentConfig)
+  }
+
+  /**
+   * PUT请求幂等
+   */
+  async putIdempotent<T>(url: string, data?: any, config?: Partial<RequestConfig>, idempotentConfig?: IdempotentConfig): Promise<T> {
+    return this.idempotentFeature.putIdempotent<T>(url, data, config, idempotentConfig)
+  }
+
+  /**
+   * PATCH请求幂等
+   */
+  async patchIdempotent<T>(url: string, data?: any, config?: Partial<RequestConfig>, idempotentConfig?: IdempotentConfig): Promise<T> {
+    return this.idempotentFeature.patchIdempotent<T>(url, data, config, idempotentConfig)
+  }
+
+  /**
+   * 清除幂等缓存
+   */
+  async clearIdempotentCache(key?: string): Promise<void> {
+    return this.idempotentFeature.clearIdempotentCache(key)
+  }
+
+  /**
+   * 获取幂等统计信息
+   */
+  getIdempotentStats(): IdempotentStats {
+    return this.idempotentFeature.getIdempotentStats()
+  }
+
   // ==================== 并发结果处理 ====================
 
   /**
@@ -256,7 +311,8 @@ export class FeatureManager {
   async getAllStats() {
     return {
       cache: await this.getCacheStats(),
-      concurrent: this.getConcurrentStats()
+      concurrent: this.getConcurrentStats(),
+      idempotent: this.getIdempotentStats()
     }
   }
 
@@ -272,9 +328,12 @@ export class FeatureManager {
   /**
    * 销毁所有功能，释放资源
    */
-  destroy(): void {
-    this.cacheFeature.destroy()
-    this.concurrentFeature.destroy()
+  async destroy(): Promise<void> {
+    await Promise.all([
+      this.cacheFeature.destroy(),
+      this.concurrentFeature.destroy(),
+      this.idempotentFeature.destroy()  // 新增这一行
+    ])
     // retryFeature 无需特殊销毁
   }
 
@@ -285,6 +344,7 @@ export class FeatureManager {
     hasRetry: boolean
     hasCache: boolean
     hasConcurrent: boolean
+    hasIdempotent: boolean
     cacheSize: number
     maxConcurrency?: number
   }> {
@@ -295,6 +355,7 @@ export class FeatureManager {
       hasRetry: !!this.retryFeature,
       hasCache: !!this.cacheFeature,
       hasConcurrent: !!this.concurrentFeature,
+      hasIdempotent: !!this.idempotentFeature,
       cacheSize: cacheStats.size,
       maxConcurrency: concurrentStats.maxConcurrencyUsed
     }

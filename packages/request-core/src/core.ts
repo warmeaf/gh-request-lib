@@ -10,7 +10,9 @@ import {
   RequestParams,
   FileUploadOptions,
   PaginationParams,
-  PaginatedResponse
+  PaginatedResponse,
+  IdempotentConfig,
+  IdempotentStats
 } from './interface'
 import { RetryConfig } from './features/retry'
 import { CacheConfig } from './features/cache'
@@ -187,6 +189,35 @@ export class RequestCore implements ConvenienceExecutor {
 
   clearCache(key?: string): void {
     this.featureManager.clearCache(key)
+  }
+
+  // 幂等功能
+  async requestIdempotent<T>(config: RequestConfig, idempotentConfig?: IdempotentConfig): Promise<T> {
+    return this.featureManager.requestIdempotent<T>(config, idempotentConfig)
+  }
+
+  async getIdempotent<T>(url: string, config?: Partial<RequestConfig>, idempotentConfig?: IdempotentConfig): Promise<T> {
+    return this.featureManager.getIdempotent<T>(url, config, idempotentConfig)
+  }
+
+  async postIdempotent<T>(url: string, data?: any, config?: Partial<RequestConfig>, idempotentConfig?: IdempotentConfig): Promise<T> {
+    return this.featureManager.postIdempotent<T>(url, data, config, idempotentConfig)
+  }
+
+  async putIdempotent<T>(url: string, data?: any, config?: Partial<RequestConfig>, idempotentConfig?: IdempotentConfig): Promise<T> {
+    return this.featureManager.putIdempotent<T>(url, data, config, idempotentConfig)
+  }
+
+  async patchIdempotent<T>(url: string, data?: any, config?: Partial<RequestConfig>, idempotentConfig?: IdempotentConfig): Promise<T> {
+    return this.featureManager.patchIdempotent<T>(url, data, config, idempotentConfig)
+  }
+
+  async clearIdempotentCache(key?: string): Promise<void> {
+    return this.featureManager.clearIdempotentCache(key)
+  }
+
+  getIdempotentStats(): IdempotentStats {
+    return this.featureManager.getIdempotentStats()
   }
 
   // 并发功能
@@ -393,6 +424,22 @@ class RequestBuilderImpl<T> implements RequestBuilder<T> {
     return this
   }
   
+  idempotent(ttl?: number): RequestBuilder<T> {
+    this.config.metadata = {
+      ...this.config.metadata,
+      idempotentConfig: { ttl }
+    }
+    return this
+  }
+
+  idempotentWith(idempotentConfig: IdempotentConfig): RequestBuilder<T> {
+    this.config.metadata = {
+      ...this.config.metadata,
+      idempotentConfig
+    }
+    return this
+  }
+  
   json<U = unknown>(): RequestBuilder<U> {
     this.config.responseType = 'json'
     return this as unknown as RequestBuilder<U>
@@ -437,6 +484,12 @@ class RequestBuilderImpl<T> implements RequestBuilder<T> {
     const cacheConfig = this.config.metadata?.cacheConfig as any
     if (cacheConfig) {
       return this.core.requestWithCache<T>(requestConfig, cacheConfig)
+    }
+    
+    // 检查是否有幂等配置
+    const idempotentConfig = this.config.metadata?.idempotentConfig as IdempotentConfig
+    if (idempotentConfig) {
+      return this.core.requestIdempotent<T>(requestConfig, idempotentConfig)
     }
     
     // 普通请求

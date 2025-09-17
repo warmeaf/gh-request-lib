@@ -278,6 +278,32 @@ export interface RequestInterceptor {
 }
 
 /**
+ * @description 幂等配置接口
+ */
+export interface IdempotentConfig {
+  ttl?: number                    // 幂等保护时间(毫秒)，默认30秒
+  key?: string                   // 自定义幂等键
+  includeHeaders?: string[]      // 参与幂等判断的请求头白名单
+  includeAllHeaders?: boolean    // 是否包含所有请求头，默认false
+  hashAlgorithm?: 'fnv1a' | 'xxhash' | 'simple'  // Hash算法
+  onDuplicate?: (originalRequest: RequestConfig, duplicateRequest: RequestConfig) => void  // 重复请求回调
+}
+
+/**
+ * @description 幂等统计信息
+ */
+export interface IdempotentStats {
+  totalRequests: number          // 总请求数
+  duplicatesBlocked: number      // 阻止的重复请求数（包括缓存命中和等待正在进行的请求）
+  pendingRequestsReused: number  // 复用正在进行请求的次数
+  cacheHits: number             // 纯缓存命中次数
+  actualNetworkRequests: number // 实际发起的网络请求数
+  duplicateRate: number         // 重复率 = (duplicatesBlocked / totalRequests) * 100
+  avgResponseTime: number       // 平均响应时间
+  keyGenerationTime: number     // 键生成平均时间
+}
+
+/**
  * @description 全局配置接口
  */
 export interface GlobalConfig {
@@ -288,6 +314,10 @@ export interface GlobalConfig {
   retries?: number
   cacheEnabled?: boolean
   interceptors?: RequestInterceptor[]
+  idempotentEnabled?: boolean    // 是否启用全局幂等
+  idempotentTtl?: number        // 默认幂等TTL
+  idempotentMethods?: string[]  // 启用幂等的HTTP方法
+  idempotentConfig?: IdempotentConfig  // 默认幂等配置
 }
 
 /**
@@ -305,6 +335,8 @@ export interface RequestBuilder<T = unknown> {
   debug(enabled?: boolean): RequestBuilder<T>
   retry(retries: number): RequestBuilder<T>
   cache(ttl?: number): RequestBuilder<T>
+  idempotent(ttl?: number): RequestBuilder<T>
+  idempotentWith(config: IdempotentConfig): RequestBuilder<T>
   json<U = unknown>(): RequestBuilder<U>
   text(): RequestBuilder<string>
   blob(): RequestBuilder<Blob>

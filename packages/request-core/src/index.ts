@@ -11,7 +11,9 @@ export type {
   FileUploadOptions,
   PaginationParams,
   PaginatedResponse,
-  RestfulOptions
+  RestfulOptions,
+  IdempotentConfig,
+  IdempotentStats
 } from './interface'
 export { RequestError, RequestErrorType } from './interface'
 export type { RetryConfig } from './features/retry'
@@ -25,6 +27,7 @@ export { RequestCore } from './core'
 export { RetryFeature } from './features/retry'
 export { CacheFeature } from './features/cache'
 export { ConcurrentFeature } from './features/concurrent'
+export { IdempotentFeature } from './features/idempotent'
 
 // 导出工具类
 export { ErrorHandler, LogFormatter } from './utils/error-handler'
