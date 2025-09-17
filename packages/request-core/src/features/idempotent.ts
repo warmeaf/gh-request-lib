@@ -193,10 +193,24 @@ export class IdempotentFeature {
     config: RequestConfig,
     keyConfig: CacheKeyConfig
   ): string {
-    // 为幂等请求添加特殊前缀
-    const baseKey = this.keyGenerator.generateCacheKey(config)
-    console.log(config, baseKey, '幂等键参数')
-    return `idempotent:${baseKey}`
+    // 保存当前配置
+    const originalConfig = { ...this.keyGenerator['config'] }
+    
+    try {
+      // 临时更新键生成器配置
+      this.keyGenerator.updateConfig({
+        ...this.cacheKeyConfig,
+        ...keyConfig,
+      })
+      
+      // 为幂等请求添加特殊前缀
+      const baseKey = this.keyGenerator.generateCacheKey(config)
+      console.log(config, baseKey, '幂等键参数')
+      return `idempotent:${baseKey}`
+    } finally {
+      // 恢复原始配置
+      this.keyGenerator.updateConfig(originalConfig)
+    }
   }
 
   /**
