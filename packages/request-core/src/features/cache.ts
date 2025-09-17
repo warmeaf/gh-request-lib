@@ -498,4 +498,34 @@ export class CacheFeature {
   setInvalidationPolicy(policy: CacheInvalidationPolicy): void {
     this.invalidationPolicy = policy
   }
+
+  /**
+   * 获取缓存项（供其他功能模块使用）
+   */
+  async getCacheItem(key: string): Promise<any | null> {
+    return await this.storageAdapter.getItem(key)
+  }
+
+  /**
+   * 设置缓存项（供其他功能模块使用）
+   */
+  async setCacheItem(item: any): Promise<void> {
+    await this.storageAdapter.setItem(item)
+  }
+
+  /**
+   * 删除缓存项（供其他功能模块使用）
+   */
+  async removeCacheItem(key: string): Promise<void> {
+    await this.storageAdapter.removeItem(key)
+  }
+
+  /**
+   * 检查缓存项是否有效
+   */
+  isCacheItemValid(item: any): boolean {
+    if (!item) return false
+    const now = Date.now()
+    return !this.invalidationPolicy.shouldInvalidate(item, now)
+  }
 }

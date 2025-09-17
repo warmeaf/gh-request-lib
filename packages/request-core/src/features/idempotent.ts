@@ -18,47 +18,39 @@ import { CacheKeyGenerator, CacheKeyConfig } from '../cache/cache-key-generator'
 const DEFAULT_IDEMPOTENT_CONFIG = {
   TTL: 30000, // 默认30秒幂等保护
   MAX_ENTRIES: 5000, // 最大缓存条目数
-  CACHE_KEY_CONFIG: {
-    includeHeaders: true,
-    headersWhitelist: [
-      'content-type',
-      'authorization',
-      'x-api-key',
-    ] as string[],
-    maxKeyLength: 512,
-    enableHashCache: true,
-    hashAlgorithm: 'fnv1a' as const,
-  },
   DEFAULT_INCLUDE_HEADERS: ['content-type', 'authorization'] as string[],
-}
+} as const
+
+/**
+ * 默认缓存键生成配置
+ */
+const DEFAULT_CACHE_KEY_CONFIG: CacheKeyConfig = {
+  includeHeaders: true,
+  headersWhitelist: ['content-type', 'authorization', 'x-api-key'],
+  maxKeyLength: 512,
+  enableHashCache: true,
+  hashAlgorithm: 'fnv1a',
+} as const
 
 export class IdempotentFeature {
   private cacheFeature: CacheFeature
-  private pendingRequests: Map<string, Promise<any>> // 正在进行的请求
+  private pendingRequests: Map<string, Promise<unknown>> // 正在进行的请求
   private stats: IdempotentStats
-  private keyGenerator: CacheKeyGenerator
   private readonly cacheKeyConfig: CacheKeyConfig
 
-  constructor(private requestor: Requestor) {
-    // 使用常量配置，确保类型兼容
+  constructor(private requestor: Requestor, config?: Partial<CacheKeyConfig>) {
+    // 合并配置，使用默认配置作为基础
     this.cacheKeyConfig = {
-      includeHeaders: DEFAULT_IDEMPOTENT_CONFIG.CACHE_KEY_CONFIG.includeHeaders,
-      headersWhitelist: [
-        ...DEFAULT_IDEMPOTENT_CONFIG.CACHE_KEY_CONFIG.headersWhitelist,
-      ],
-      maxKeyLength: DEFAULT_IDEMPOTENT_CONFIG.CACHE_KEY_CONFIG.maxKeyLength,
-      enableHashCache:
-        DEFAULT_IDEMPOTENT_CONFIG.CACHE_KEY_CONFIG.enableHashCache,
-      hashAlgorithm: DEFAULT_IDEMPOTENT_CONFIG.CACHE_KEY_CONFIG.hashAlgorithm,
+      ...DEFAULT_CACHE_KEY_CONFIG,
+      ...config,
     }
 
-    // 初化组件
+    // 初始化组件
     this.cacheFeature = new CacheFeature(
       requestor,
       DEFAULT_IDEMPOTENT_CONFIG.MAX_ENTRIES,
       this.cacheKeyConfig
     )
-    this.keyGenerator = new CacheKeyGenerator(this.cacheKeyConfig)
     this.pendingRequests = new Map()
     this.stats = this.createInitialStats()
   }
@@ -89,10 +81,76 @@ export class IdempotentFeature {
     const startTime = Date.now()
     this.stats.totalRequests++
 
-    // 配置验证
-    this.validateIdempotentConfig(idempotentConfig)
+    try {
+      return await this.processIdempotentRequest<T>(
+        config,
+        idempotentConfig,
+        startTime
+      )
+    } catch (error) {
+      const responseTime = Date.now() - startTime
+      this.updateStats({ responseTime })
+      throw this.enhanceError(error, config, responseTime)
+    }
+  }
 
-    // 配置默认值
+  /**
+   * 处理幂等请求的主要流程
+   */
+  private async processIdempotentRequest<T>(
+    config: RequestConfig,
+    idempotentConfig: IdempotentConfig,
+    startTime: number
+  ): Promise<T> {
+    // 配置验证和准备
+    this.validateIdempotentConfig(idempotentConfig)
+    const processedConfig = this.prepareIdempotentConfig(idempotentConfig)
+
+    // 生成幂等键
+    const { idempotentKey, keyGenTime } = this.generateIdempotentKeyWithStats(
+      config,
+      processedConfig.keyGeneratorConfig,
+      processedConfig.key
+    )
+    this.updateStats({ keyGenTime })
+
+    // 检查缓存命中
+    const cachedResult = await this.checkCacheHit<T>(
+      idempotentKey,
+      config,
+      processedConfig.onDuplicate
+    )
+    if (cachedResult !== null) {
+      const responseTime = Date.now() - startTime
+      this.updateStats({ responseTime })
+      return cachedResult
+    }
+
+    // 检查正在进行的请求
+    const pendingResult = await this.checkPendingRequest<T>(
+      idempotentKey,
+      config,
+      startTime,
+      processedConfig.onDuplicate
+    )
+    if (pendingResult !== null) {
+      return pendingResult
+    }
+
+    // 执行新请求
+    return await this.executeNewIdempotentRequest<T>(
+      config,
+      idempotentKey,
+      processedConfig.ttl,
+      processedConfig.keyGeneratorConfig,
+      startTime
+    )
+  }
+
+  /**
+   * 准备幂等配置
+   */
+  private prepareIdempotentConfig(idempotentConfig: IdempotentConfig) {
     const {
       ttl = DEFAULT_IDEMPOTENT_CONFIG.TTL,
       key,
@@ -102,88 +160,34 @@ export class IdempotentFeature {
       onDuplicate,
     } = idempotentConfig
 
-    // 更新键生成器配置以支持幂等逻辑
     const keyGeneratorConfig: CacheKeyConfig = {
       includeHeaders: includeAllHeaders || includeHeaders.length > 0,
       headersWhitelist: includeAllHeaders ? undefined : includeHeaders,
       hashAlgorithm,
     }
 
-    // 生成幂等键 - 确保请求方法、URL、参数、数据、指定请求头完全一致
+    return {
+      ttl,
+      key,
+      keyGeneratorConfig,
+      onDuplicate,
+    }
+  }
+
+  /**
+   * 生成幂等键并计算统计信息
+   */
+  private generateIdempotentKeyWithStats(
+    config: RequestConfig,
+    keyConfig: CacheKeyConfig,
+    customKey?: string
+  ): { idempotentKey: string; keyGenTime: number } {
     const keyGenStartTime = Date.now()
     const idempotentKey =
-      key || this.generateIdempotentKey(config, keyGeneratorConfig)
+      customKey || this.generateIdempotentKey(config, keyConfig)
     const keyGenTime = Date.now() - keyGenStartTime
-    this.updateStats({ keyGenTime })
 
-    try {
-      // 第一步：检查缓存是否命中
-      const cached = await this.checkCacheHit<T>(
-        idempotentKey,
-        config,
-        onDuplicate
-      )
-      if (cached !== null) {
-        const responseTime = Date.now() - startTime
-        this.updateStats({ responseTime })
-        return cached
-      }
-
-      // 第二步：检查是否有正在进行的相同请求
-      const pendingRequest = this.pendingRequests.get(idempotentKey)
-      if (pendingRequest) {
-        this.updateStats({
-          incrementDuplicates: true,
-          incrementPendingReused: true,
-        })
-
-        // 触发重复请求回调
-        this.handleDuplicateCallback(config, onDuplicate)
-
-        console.log(
-          `🔄 [Idempotent] Waiting for pending request: ${config.method} ${config.url}`
-        )
-        const result = await pendingRequest
-        const responseTime = Date.now() - startTime
-        this.updateStats({ responseTime })
-        return result
-      }
-
-      // 第三步：创建新请求并执行
-      const requestPromise = this.executeRequest<T>(
-        config,
-        idempotentKey,
-        ttl,
-        keyGeneratorConfig
-      )
-      this.pendingRequests.set(idempotentKey, requestPromise)
-      this.updateStats({ incrementNetworkRequests: true })
-
-      const result = await requestPromise
-      const responseTime = Date.now() - startTime
-      this.updateStats({ responseTime })
-      return result
-    } catch (error) {
-      const responseTime = Date.now() - startTime
-      this.updateStats({ responseTime })
-
-      // 处理错误并抛出增强的错误信息
-      const enhancedError = this.createEnhancedError(
-        error,
-        config,
-        responseTime,
-        idempotentKey
-      )
-      console.error(
-        `❌ [Idempotent] Request failed: ${config.method} ${config.url}`,
-        {
-          error: enhancedError.toJSON(),
-          key: idempotentKey,
-          duration: `${responseTime}ms`,
-        }
-      )
-      throw enhancedError
-    }
+    return { idempotentKey, keyGenTime }
   }
 
   /**
@@ -193,24 +197,154 @@ export class IdempotentFeature {
     config: RequestConfig,
     keyConfig: CacheKeyConfig
   ): string {
-    // 保存当前配置
-    const originalConfig = { ...this.keyGenerator['config'] }
-    
-    try {
-      // 临时更新键生成器配置
-      this.keyGenerator.updateConfig({
-        ...this.cacheKeyConfig,
-        ...keyConfig,
-      })
-      
-      // 为幂等请求添加特殊前缀
-      const baseKey = this.keyGenerator.generateCacheKey(config)
-      console.log(config, baseKey, '幂等键参数')
-      return `idempotent:${baseKey}`
-    } finally {
-      // 恢复原始配置
-      this.keyGenerator.updateConfig(originalConfig)
+    // 创建临时键生成器，避免修改实例配置
+    const tempKeyGenerator = new CacheKeyGenerator({
+      ...this.cacheKeyConfig,
+      ...keyConfig,
+    })
+
+    // 为幂等请求添加特殊前缀
+    const baseKey = tempKeyGenerator.generateCacheKey(config)
+    return `idempotent:${baseKey}`
+  }
+
+  /**
+   * 检查是否有正在进行的请求
+   */
+  private async checkPendingRequest<T>(
+    idempotentKey: string,
+    config: RequestConfig,
+    startTime: number,
+    onDuplicate?: (
+      originalRequest: RequestConfig,
+      duplicateRequest: RequestConfig
+    ) => void
+  ): Promise<T | null> {
+    const pendingRequest = this.pendingRequests.get(idempotentKey)
+    if (!pendingRequest) {
+      return null
     }
+
+    this.updateStats({
+      incrementDuplicates: true,
+      incrementPendingReused: true,
+    })
+
+    // 触发重复请求回调
+    this.handleDuplicateCallback(config, onDuplicate)
+
+    console.log(
+      `🔄 [Idempotent] Waiting for pending request: ${config.method} ${config.url}`
+    )
+
+    const result = (await pendingRequest) as T
+    const responseTime = Date.now() - startTime
+    this.updateStats({ responseTime })
+
+    return result
+  }
+
+  /**
+   * 执行新的幂等请求
+   */
+  private async executeNewIdempotentRequest<T>(
+    config: RequestConfig,
+    idempotentKey: string,
+    ttl: number,
+    keyGeneratorConfig: CacheKeyConfig,
+    startTime: number
+  ): Promise<T> {
+    const requestPromise = this.executeRequest<T>(
+      config,
+      idempotentKey,
+      ttl,
+      keyGeneratorConfig
+    )
+    this.pendingRequests.set(idempotentKey, requestPromise)
+    this.updateStats({ incrementNetworkRequests: true })
+
+    const result = await requestPromise
+    const responseTime = Date.now() - startTime
+    this.updateStats({ responseTime })
+
+    return result
+  }
+
+  /**
+   * 简化的错误增强方法
+   */
+  private enhanceError(
+    error: unknown,
+    config: RequestConfig,
+    responseTime: number
+  ): RequestError {
+    if (error instanceof RequestError) {
+      console.error(
+        `❌ [Idempotent] Request failed: ${config.method} ${config.url}`,
+        {
+          error: error.toJSON(),
+          duration: `${responseTime}ms`,
+        }
+      )
+      return error
+    }
+
+    const enhancedError = new RequestError(
+      `Idempotent request failed: ${
+        error instanceof Error ? error.message : 'Unknown error'
+      }`,
+      {
+        type: RequestErrorType.UNKNOWN_ERROR,
+        originalError: error,
+        context: {
+          url: config.url,
+          method: config.method,
+          tag: config.tag,
+          duration: responseTime,
+          timestamp: Date.now(),
+          userAgent:
+            typeof navigator !== 'undefined' && navigator
+              ? navigator.userAgent
+              : 'Node.js',
+        },
+        suggestion:
+          'Please check the network connection and request configuration',
+      }
+    )
+
+    console.error(
+      `❌ [Idempotent] Request failed: ${config.method} ${config.url}`,
+      {
+        error: enhancedError.toJSON(),
+        duration: `${responseTime}ms`,
+      }
+    )
+
+    return enhancedError
+  }
+
+  /**
+   * 通用的HTTP方法幂等请求
+   */
+  private async httpIdempotent<T>(
+    method: RequestConfig['method'],
+    url: string,
+    data?: any,
+    config?: Partial<RequestConfig>,
+    idempotentConfig?: IdempotentConfig
+  ): Promise<T> {
+    const requestConfig: RequestConfig = {
+      url,
+      method,
+      ...config,
+    }
+
+    // 只有非GET请求才添加data
+    if (data !== undefined && method !== 'GET') {
+      requestConfig.data = data
+    }
+
+    return this.requestIdempotent<T>(requestConfig, idempotentConfig)
   }
 
   /**
@@ -221,12 +355,11 @@ export class IdempotentFeature {
     config?: Partial<RequestConfig>,
     idempotentConfig?: IdempotentConfig
   ): Promise<T> {
-    return this.requestIdempotent<T>(
-      {
-        url,
-        method: 'GET',
-        ...config,
-      },
+    return this.httpIdempotent<T>(
+      'GET',
+      url,
+      undefined,
+      config,
       idempotentConfig
     )
   }
@@ -240,15 +373,7 @@ export class IdempotentFeature {
     config?: Partial<RequestConfig>,
     idempotentConfig?: IdempotentConfig
   ): Promise<T> {
-    return this.requestIdempotent<T>(
-      {
-        url,
-        method: 'POST',
-        data,
-        ...config,
-      },
-      idempotentConfig
-    )
+    return this.httpIdempotent<T>('POST', url, data, config, idempotentConfig)
   }
 
   /**
@@ -260,15 +385,7 @@ export class IdempotentFeature {
     config?: Partial<RequestConfig>,
     idempotentConfig?: IdempotentConfig
   ): Promise<T> {
-    return this.requestIdempotent<T>(
-      {
-        url,
-        method: 'PUT',
-        data,
-        ...config,
-      },
-      idempotentConfig
-    )
+    return this.httpIdempotent<T>('PUT', url, data, config, idempotentConfig)
   }
 
   /**
@@ -280,15 +397,7 @@ export class IdempotentFeature {
     config?: Partial<RequestConfig>,
     idempotentConfig?: IdempotentConfig
   ): Promise<T> {
-    return this.requestIdempotent<T>(
-      {
-        url,
-        method: 'PATCH',
-        data,
-        ...config,
-      },
-      idempotentConfig
-    )
+    return this.httpIdempotent<T>('PATCH', url, data, config, idempotentConfig)
   }
 
   /**
@@ -303,19 +412,13 @@ export class IdempotentFeature {
     ) => void
   ): Promise<T | null> {
     try {
-      // 直接访问存储适配器检查缓存
-      const storageAdapter = (this.cacheFeature as any).storageAdapter
-      if (!storageAdapter) {
-        return null
-      }
-
-      const cachedItem = await storageAdapter.getItem(idempotentKey)
+      const cachedItem = await this.cacheFeature.getCacheItem(idempotentKey)
       if (!cachedItem) {
         return null
       }
 
       // 检查缓存是否有效
-      if (this.isCacheValid(cachedItem)) {
+      if (this.cacheFeature.isCacheItemValid(cachedItem)) {
         // 缓存有效，更新统计
         this.updateStats({
           incrementDuplicates: true,
@@ -338,7 +441,7 @@ export class IdempotentFeature {
         // 更新访问信息
         cachedItem.accessTime = Date.now()
         cachedItem.accessCount = (cachedItem.accessCount || 0) + 1
-        await storageAdapter.setItem(cachedItem)
+        await this.cacheFeature.setCacheItem(cachedItem)
 
         return this.safeCloneData(cachedItem.data, 'deep') as T
       } else {
@@ -346,7 +449,7 @@ export class IdempotentFeature {
         console.log(
           `🗑️ [Idempotent] Removing expired cache: ${config.method} ${config.url}`
         )
-        await storageAdapter.removeItem(idempotentKey)
+        await this.cacheFeature.removeCacheItem(idempotentKey)
         return null
       }
     } catch (error) {
@@ -364,32 +467,21 @@ export class IdempotentFeature {
   }
 
   /**
-   * 检查缓存项是否有效
-   */
-  private isCacheValid(cachedItem: any): boolean {
-    if (!cachedItem || !cachedItem.timestamp || !cachedItem.ttl) {
-      return false
-    }
-
-    const now = Date.now()
-    return now - cachedItem.timestamp < cachedItem.ttl
-  }
-
-  /**
    * 安全克隆数据
    */
-  private safeCloneData(
-    data: any,
+  private safeCloneData<T>(
+    data: T,
     cloneType: 'deep' | 'shallow' | 'none' = 'none'
-  ): any {
+  ): T {
     if (cloneType === 'none') return data
 
     try {
       if (cloneType === 'deep') {
-        return JSON.parse(JSON.stringify(data))
+        return JSON.parse(JSON.stringify(data)) as T
       } else if (cloneType === 'shallow') {
-        if (Array.isArray(data)) return [...data]
-        if (data && typeof data === 'object') return { ...data }
+        if (Array.isArray(data)) return [...data] as unknown as T
+        if (data && typeof data === 'object')
+          return { ...(data as Record<string, unknown>) } as unknown as T
       }
     } catch (error) {
       console.warn(
@@ -470,7 +562,16 @@ export class IdempotentFeature {
    * 获取幂等统计信息
    */
   getIdempotentStats(): IdempotentStats {
-    return { ...this.stats }
+    // 动态计算重复率，避免每次更新统计时都计算
+    const duplicateRate =
+      this.stats.totalRequests > 0
+        ? (this.stats.duplicatesBlocked / this.stats.totalRequests) * 100
+        : 0
+
+    return {
+      ...this.stats,
+      duplicateRate,
+    }
   }
 
   /**
@@ -566,24 +667,32 @@ export class IdempotentFeature {
 
     // 更新平均值（只在有值时计算）
     if (responseTime !== undefined) {
-      const totalResponseTime =
-        this.stats.avgResponseTime * (this.stats.totalRequests - 1)
-      this.stats.avgResponseTime =
-        (totalResponseTime + responseTime) / this.stats.totalRequests
+      this.updateAvgResponseTime(responseTime)
     }
 
     if (keyGenTime !== undefined) {
-      const totalKeyTime =
-        this.stats.keyGenerationTime * (this.stats.totalRequests - 1)
-      this.stats.keyGenerationTime =
-        (totalKeyTime + keyGenTime) / this.stats.totalRequests
+      this.updateAvgKeyGenTime(keyGenTime)
     }
+  }
 
-    // 更新重复率
-    this.stats.duplicateRate =
-      this.stats.totalRequests > 0
-        ? (this.stats.duplicatesBlocked / this.stats.totalRequests) * 100
-        : 0
+  /**
+   * 更新平均响应时间
+   */
+  private updateAvgResponseTime(responseTime: number): void {
+    const totalResponseTime =
+      this.stats.avgResponseTime * (this.stats.totalRequests - 1)
+    this.stats.avgResponseTime =
+      (totalResponseTime + responseTime) / this.stats.totalRequests
+  }
+
+  /**
+   * 更新平均键生成时间
+   */
+  private updateAvgKeyGenTime(keyGenTime: number): void {
+    const totalKeyTime =
+      this.stats.keyGenerationTime * (this.stats.totalRequests - 1)
+    this.stats.keyGenerationTime =
+      (totalKeyTime + keyGenTime) / this.stats.totalRequests
   }
 
   /**
@@ -614,66 +723,4 @@ export class IdempotentFeature {
       )
     }
   }
-
-  /**
-   * 创建增强的错误对象
-   */
-  private createEnhancedError(
-    error: unknown,
-    config: RequestConfig,
-    duration: number,
-    idempotentKey: string
-  ): RequestError {
-    if (error instanceof RequestError) {
-      // 增强现有的 RequestError
-      return new RequestError(`Idempotent request failed: ${error.message}`, {
-        type: error.type,
-        status: error.status,
-        isHttpError: error.isHttpError,
-        originalError: error.originalError,
-        context: {
-          ...error.context,
-          url: config.url,
-          method: config.method,
-          tag: config.tag,
-          duration,
-          metadata: {
-            ...error.context?.metadata,
-            idempotentKey,
-          },
-        },
-        suggestion:
-          error.suggestion ||
-          'Please check the request configuration and try again',
-        code: error.code,
-      })
-    } else {
-      // 包装未知错误
-      return new RequestError(
-        `Idempotent request failed with unknown error: ${
-          error instanceof Error ? error.message : 'Unknown error'
-        }`,
-        {
-          type: RequestErrorType.UNKNOWN_ERROR,
-          originalError: error,
-          context: {
-            url: config.url,
-            method: config.method,
-            tag: config.tag,
-            duration,
-            timestamp: Date.now(),
-            userAgent:
-              typeof navigator !== 'undefined' && navigator
-                ? navigator.userAgent
-                : 'Node.js',
-            metadata: { idempotentKey },
-          },
-          suggestion:
-            'Please check the network connection and request configuration',
-        }
-      )
-    }
-  }
-
-  // 移除updateCacheHitRate方法，因为现在有独立的cacheHits统计
 }
