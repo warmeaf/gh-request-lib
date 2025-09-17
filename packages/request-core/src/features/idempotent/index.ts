@@ -6,9 +6,9 @@ import {
   RequestErrorType,
   IdempotentConfig,
   IdempotentStats,
-} from '../interface'
-import { CacheFeature, CacheConfig } from './cache'
-import { CacheKeyGenerator, CacheKeyConfig } from '../cache/cache-key-generator'
+} from '../../interface'
+import { CacheFeature, CacheConfig } from '../cache'
+import { CacheKeyGenerator, CacheKeyConfig } from '../../cache/cache-key-generator'
 
 /**
  * @description 幂等请求功能 - 基于缓存实现，支持请求去重
@@ -40,7 +40,10 @@ interface IdempotentRequestContext {
   idempotentKey: string
   config: RequestConfig
   startTime: number
-  onDuplicate?: (originalRequest: RequestConfig, duplicateRequest: RequestConfig) => void
+  onDuplicate?: (
+    originalRequest: RequestConfig,
+    duplicateRequest: RequestConfig
+  ) => void
 }
 
 /**
@@ -237,7 +240,7 @@ export class IdempotentFeature {
     customKey?: string
   ): { idempotentKey: string; keyGenTime: number } {
     const keyGenStartTime = Date.now()
-    
+
     try {
       const idempotentKey =
         customKey || this.generateIdempotentKey(config, keyConfig)
@@ -245,10 +248,10 @@ export class IdempotentFeature {
       return { idempotentKey, keyGenTime }
     } catch (error) {
       const keyGenTime = Date.now() - keyGenStartTime
-      
+
       // 键生成失败，使用降级策略
       const fallbackKey = this.generateFallbackKey(config)
-      
+
       console.warn(
         `⚠️ [Idempotent] Key generation failed for ${config.method} ${config.url}, using fallback:`,
         {
@@ -256,7 +259,7 @@ export class IdempotentFeature {
           fallbackKey,
         }
       )
-      
+
       return { idempotentKey: fallbackKey, keyGenTime }
     }
   }
@@ -304,13 +307,13 @@ export class IdempotentFeature {
   private simpleHash(str: string): string {
     let hash = 0
     if (str.length === 0) return hash.toString()
-    
+
     for (let i = 0; i < str.length; i++) {
       const char = str.charCodeAt(i)
-      hash = ((hash << 5) - hash) + char
+      hash = (hash << 5) - hash + char
       hash = hash & hash // 转换为32位整数
     }
-    
+
     return Math.abs(hash).toString(36)
   }
 
@@ -550,15 +553,21 @@ export class IdempotentFeature {
       const data = await operation()
       return { success: true, data }
     } catch (error) {
-      const err = error instanceof Error ? error : new Error('Unknown cache error')
-      
+      const err =
+        error instanceof Error ? error : new Error('Unknown cache error')
+
       // 如果有降级值，使用降级策略
       if (fallbackValue !== undefined) {
         console.warn(
           `🔄 [Idempotent] Cache operation failed, using fallback for ${context.config.method} ${context.config.url}:`,
           err.message
         )
-        return { success: false, data: fallbackValue, error: err, fallbackUsed: true }
+        return {
+          success: false,
+          data: fallbackValue,
+          error: err,
+          fallbackUsed: true,
+        }
       }
 
       return { success: false, error: err, fallbackUsed: false }
@@ -571,7 +580,9 @@ export class IdempotentFeature {
   private async getCacheHitResult<T>(
     context: IdempotentRequestContext
   ): Promise<T | null> {
-    const cachedItem = await this.cacheFeature.getCacheItem(context.idempotentKey)
+    const cachedItem = await this.cacheFeature.getCacheItem(
+      context.idempotentKey
+    )
     if (!cachedItem) {
       return null
     }
@@ -748,15 +759,20 @@ export class IdempotentFeature {
       if (key && !key.startsWith('idempotent:')) {
         key = `idempotent:${key}`
       }
-      
+
       // 尝试清理缓存
       await this.cacheFeature.clearCache(key)
-      console.log(`✅ [Idempotent] Cache cleared successfully${key ? ` for key: ${key}` : ' (all)'}`)
-      
+      console.log(
+        `✅ [Idempotent] Cache cleared successfully${
+          key ? ` for key: ${key}` : ' (all)'
+        }`
+      )
     } catch (error) {
       // 缓存清理失败，记录错误但不抛出
       console.error(
-        `❌ [Idempotent] Failed to clear cache${key ? ` for key: ${key}` : ' (all)'}:`,
+        `❌ [Idempotent] Failed to clear cache${
+          key ? ` for key: ${key}` : ' (all)'
+        }:`,
         {
           error: error instanceof Error ? error.message : 'Unknown error',
           timestamp: Date.now(),
@@ -770,10 +786,17 @@ export class IdempotentFeature {
         } else {
           this.pendingRequests.clear()
         }
-        console.log(`✅ [Idempotent] Pending requests cleaned${key ? ` for key: ${key}` : ' (all)'}`)
+        console.log(
+          `✅ [Idempotent] Pending requests cleaned${
+            key ? ` for key: ${key}` : ' (all)'
+          }`
+        )
       } catch (error) {
         // 这种情况很少见，但也要处理
-        console.error(`❌ [Idempotent] Failed to clear pending requests:`, error)
+        console.error(
+          `❌ [Idempotent] Failed to clear pending requests:`,
+          error
+        )
       }
     }
   }
