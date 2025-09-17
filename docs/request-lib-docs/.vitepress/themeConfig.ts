@@ -53,6 +53,7 @@ const themeConfig: DefaultTheme.Config = {
           { text: '缓存使用示例', link: '/examples/caching' },
           { text: '重试机制示例', link: '/examples/retry-logic' },
           { text: '并发请求示例', link: '/examples/concurrent-requests' },
+          { text: '幂等请求示例', link: '/examples/idempotent-requests' },
           { text: '自定义API示例', link: '/examples/custom-apis' },
           { text: '框架集成示例', link: '/examples/integration' },
         ],
