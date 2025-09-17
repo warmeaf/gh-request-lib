@@ -1,6 +1,7 @@
 import {
   Requestor,
   RequestConfig,
+  RequestData,
   RequestError,
   RequestErrorType,
   IdempotentConfig,
@@ -31,6 +32,59 @@ const DEFAULT_CACHE_KEY_CONFIG: CacheKeyConfig = {
   enableHashCache: true,
   hashAlgorithm: 'fnv1a',
 } as const
+
+/**
+ * 幂等请求处理上下文
+ */
+interface IdempotentRequestContext {
+  idempotentKey: string
+  config: RequestConfig
+  startTime: number
+  onDuplicate?: (originalRequest: RequestConfig, duplicateRequest: RequestConfig) => void
+}
+
+/**
+ * 新请求执行配置
+ */
+interface NewRequestExecutionConfig {
+  config: RequestConfig
+  idempotentKey: string
+  ttl: number
+  keyGeneratorConfig: CacheKeyConfig
+  startTime: number
+}
+
+/**
+ * 错误类型枚举
+ */
+enum IdempotentErrorType {
+  CACHE_ERROR = 'CACHE_ERROR',
+  KEY_GENERATION_ERROR = 'KEY_GENERATION_ERROR',
+  REQUEST_ERROR = 'REQUEST_ERROR',
+  VALIDATION_ERROR = 'VALIDATION_ERROR',
+}
+
+/**
+ * 缓存操作结果
+ */
+interface CacheOperationResult<T> {
+  success: boolean
+  data?: T
+  error?: Error
+  fallbackUsed?: boolean
+}
+
+/**
+ * 缓存项接口定义
+ */
+interface CacheItem {
+  key: string
+  data: unknown
+  timestamp: number
+  ttl: number
+  accessTime: number
+  accessCount: number
+}
 
 export class IdempotentFeature {
   private cacheFeature: CacheFeature
@@ -114,12 +168,16 @@ export class IdempotentFeature {
     )
     this.updateStats({ keyGenTime })
 
-    // 检查缓存命中
-    const cachedResult = await this.checkCacheHit<T>(
+    // 构建请求上下文
+    const requestContext: IdempotentRequestContext = {
       idempotentKey,
       config,
-      processedConfig.onDuplicate
-    )
+      startTime,
+      onDuplicate: processedConfig.onDuplicate,
+    }
+
+    // 检查缓存命中
+    const cachedResult = await this.checkCacheHit<T>(requestContext)
     if (cachedResult !== null) {
       const responseTime = Date.now() - startTime
       this.updateStats({ responseTime })
@@ -127,24 +185,20 @@ export class IdempotentFeature {
     }
 
     // 检查正在进行的请求
-    const pendingResult = await this.checkPendingRequest<T>(
-      idempotentKey,
-      config,
-      startTime,
-      processedConfig.onDuplicate
-    )
+    const pendingResult = await this.checkPendingRequest<T>(requestContext)
     if (pendingResult !== null) {
       return pendingResult
     }
 
     // 执行新请求
-    return await this.executeNewIdempotentRequest<T>(
+    const executionConfig: NewRequestExecutionConfig = {
       config,
       idempotentKey,
-      processedConfig.ttl,
-      processedConfig.keyGeneratorConfig,
-      startTime
-    )
+      ttl: processedConfig.ttl,
+      keyGeneratorConfig: processedConfig.keyGeneratorConfig,
+      startTime,
+    }
+    return await this.executeNewIdempotentRequest<T>(executionConfig)
   }
 
   /**
@@ -175,7 +229,7 @@ export class IdempotentFeature {
   }
 
   /**
-   * 生成幂等键并计算统计信息
+   * 生成幂等键并计算统计信息（带错误处理）
    */
   private generateIdempotentKeyWithStats(
     config: RequestConfig,
@@ -183,11 +237,81 @@ export class IdempotentFeature {
     customKey?: string
   ): { idempotentKey: string; keyGenTime: number } {
     const keyGenStartTime = Date.now()
-    const idempotentKey =
-      customKey || this.generateIdempotentKey(config, keyConfig)
-    const keyGenTime = Date.now() - keyGenStartTime
+    
+    try {
+      const idempotentKey =
+        customKey || this.generateIdempotentKey(config, keyConfig)
+      const keyGenTime = Date.now() - keyGenStartTime
+      return { idempotentKey, keyGenTime }
+    } catch (error) {
+      const keyGenTime = Date.now() - keyGenStartTime
+      
+      // 键生成失败，使用降级策略
+      const fallbackKey = this.generateFallbackKey(config)
+      
+      console.warn(
+        `⚠️ [Idempotent] Key generation failed for ${config.method} ${config.url}, using fallback:`,
+        {
+          error: error instanceof Error ? error.message : 'Unknown error',
+          fallbackKey,
+        }
+      )
+      
+      return { idempotentKey: fallbackKey, keyGenTime }
+    }
+  }
 
-    return { idempotentKey, keyGenTime }
+  /**
+   * 生成降级键（简化版本）
+   */
+  private generateFallbackKey(config: RequestConfig): string {
+    try {
+      // 使用简单的字符串拼接作为降级方案
+      const parts: string[] = [
+        config.method || 'GET',
+        config.url || '',
+        config.data ? this.safeStringify(config.data) : '',
+      ]
+
+      const baseKey = parts.join('|')
+      // 使用简单的哈希避免键过长
+      const hash = this.simpleHash(baseKey)
+
+      return `idempotent:fallback:${hash}`
+    } catch (error) {
+      // 如果连降级都失败了，使用最基础的键
+      const timestamp = Date.now()
+      const random = Math.random().toString(36).substring(2, 8)
+      return `idempotent:emergency:${timestamp}_${random}`
+    }
+  }
+
+  /**
+   * 安全的JSON序列化
+   */
+  private safeStringify(data: unknown): string {
+    try {
+      return JSON.stringify(data)
+    } catch (error) {
+      // JSON序列化失败，返回类型信息
+      return `[${typeof data}]`
+    }
+  }
+
+  /**
+   * 简单哈希函数（降级方案）
+   */
+  private simpleHash(str: string): string {
+    let hash = 0
+    if (str.length === 0) return hash.toString()
+    
+    for (let i = 0; i < str.length; i++) {
+      const char = str.charCodeAt(i)
+      hash = ((hash << 5) - hash) + char
+      hash = hash & hash // 转换为32位整数
+    }
+    
+    return Math.abs(hash).toString(36)
   }
 
   /**
@@ -212,15 +336,9 @@ export class IdempotentFeature {
    * 检查是否有正在进行的请求
    */
   private async checkPendingRequest<T>(
-    idempotentKey: string,
-    config: RequestConfig,
-    startTime: number,
-    onDuplicate?: (
-      originalRequest: RequestConfig,
-      duplicateRequest: RequestConfig
-    ) => void
+    context: IdempotentRequestContext
   ): Promise<T | null> {
-    const pendingRequest = this.pendingRequests.get(idempotentKey)
+    const pendingRequest = this.pendingRequests.get(context.idempotentKey)
     if (!pendingRequest) {
       return null
     }
@@ -231,14 +349,14 @@ export class IdempotentFeature {
     })
 
     // 触发重复请求回调
-    this.handleDuplicateCallback(config, onDuplicate)
+    this.handleDuplicateCallback(context.config, context.onDuplicate)
 
     console.log(
-      `🔄 [Idempotent] Waiting for pending request: ${config.method} ${config.url}`
+      `🔄 [Idempotent] Waiting for pending request: ${context.config.method} ${context.config.url}`
     )
 
     const result = (await pendingRequest) as T
-    const responseTime = Date.now() - startTime
+    const responseTime = Date.now() - context.startTime
     this.updateStats({ responseTime })
 
     return result
@@ -248,23 +366,19 @@ export class IdempotentFeature {
    * 执行新的幂等请求
    */
   private async executeNewIdempotentRequest<T>(
-    config: RequestConfig,
-    idempotentKey: string,
-    ttl: number,
-    keyGeneratorConfig: CacheKeyConfig,
-    startTime: number
+    execConfig: NewRequestExecutionConfig
   ): Promise<T> {
     const requestPromise = this.executeRequest<T>(
-      config,
-      idempotentKey,
-      ttl,
-      keyGeneratorConfig
+      execConfig.config,
+      execConfig.idempotentKey,
+      execConfig.ttl,
+      execConfig.keyGeneratorConfig
     )
-    this.pendingRequests.set(idempotentKey, requestPromise)
+    this.pendingRequests.set(execConfig.idempotentKey, requestPromise)
     this.updateStats({ incrementNetworkRequests: true })
 
     const result = await requestPromise
-    const responseTime = Date.now() - startTime
+    const responseTime = Date.now() - execConfig.startTime
     this.updateStats({ responseTime })
 
     return result
@@ -329,7 +443,7 @@ export class IdempotentFeature {
   private async httpIdempotent<T>(
     method: RequestConfig['method'],
     url: string,
-    data?: any,
+    data?: RequestData,
     config?: Partial<RequestConfig>,
     idempotentConfig?: IdempotentConfig
   ): Promise<T> {
@@ -369,7 +483,7 @@ export class IdempotentFeature {
    */
   async postIdempotent<T>(
     url: string,
-    data?: any,
+    data?: RequestData,
     config?: Partial<RequestConfig>,
     idempotentConfig?: IdempotentConfig
   ): Promise<T> {
@@ -381,7 +495,7 @@ export class IdempotentFeature {
    */
   async putIdempotent<T>(
     url: string,
-    data?: any,
+    data?: RequestData,
     config?: Partial<RequestConfig>,
     idempotentConfig?: IdempotentConfig
   ): Promise<T> {
@@ -393,7 +507,7 @@ export class IdempotentFeature {
    */
   async patchIdempotent<T>(
     url: string,
-    data?: any,
+    data?: RequestData,
     config?: Partial<RequestConfig>,
     idempotentConfig?: IdempotentConfig
   ): Promise<T> {
@@ -401,69 +515,155 @@ export class IdempotentFeature {
   }
 
   /**
-   * 检查缓存是否命中
+   * 检查缓存是否命中（带降级策略）
    */
   private async checkCacheHit<T>(
-    idempotentKey: string,
-    config: RequestConfig,
-    onDuplicate?: (
-      originalRequest: RequestConfig,
-      duplicateRequest: RequestConfig
-    ) => void
+    context: IdempotentRequestContext
   ): Promise<T | null> {
-    try {
-      const cachedItem = await this.cacheFeature.getCacheItem(idempotentKey)
-      if (!cachedItem) {
-        return null
-      }
+    const cacheResult = await this.safeCacheOperation(
+      () => this.getCacheHitResult<T>(context),
+      context
+    )
 
-      // 检查缓存是否有效
-      if (this.cacheFeature.isCacheItemValid(cachedItem)) {
-        // 缓存有效，更新统计
-        this.updateStats({
-          incrementDuplicates: true,
-          incrementCacheHits: true,
-        })
+    if (cacheResult.success && cacheResult.data !== null) {
+      return cacheResult.data as T
+    }
 
-        // 触发重复请求回调
-        this.handleDuplicateCallback(config, onDuplicate)
-
-        console.log(
-          `💾 [Idempotent] Cache hit: ${config.method} ${config.url}`,
-          {
-            ttlRemaining: `${Math.round(
-              (cachedItem.ttl - (Date.now() - cachedItem.timestamp)) / 1000
-            )}s`,
-            accessCount: cachedItem.accessCount || 0,
-          }
-        )
-
-        // 更新访问信息
-        cachedItem.accessTime = Date.now()
-        cachedItem.accessCount = (cachedItem.accessCount || 0) + 1
-        await this.cacheFeature.setCacheItem(cachedItem)
-
-        return this.safeCloneData(cachedItem.data, 'deep') as T
-      } else {
-        // 缓存过期，主动删除
-        console.log(
-          `🗑️ [Idempotent] Removing expired cache: ${config.method} ${config.url}`
-        )
-        await this.cacheFeature.removeCacheItem(idempotentKey)
-        return null
-      }
-    } catch (error) {
-      // 缓存检查失败，记录详细错误信息但继续正常流程
-      console.warn(
-        `⚠️ [Idempotent] Cache check failed for ${config.method} ${config.url}:`,
-        {
-          error: error instanceof Error ? error.message : 'Unknown error',
-          key: idempotentKey,
-        }
-      )
+    // 如果缓存操作失败但没有使用降级，说明是正常的cache miss
+    if (!cacheResult.success && !cacheResult.fallbackUsed) {
+      // 记录缓存错误但继续流程
+      this.logCacheError(cacheResult.error, context, 'Cache hit check failed')
     }
 
     return null
+  }
+
+  /**
+   * 安全的缓存操作，带降级策略
+   */
+  private async safeCacheOperation<T>(
+    operation: () => Promise<T | null>,
+    context: IdempotentRequestContext,
+    fallbackValue?: T
+  ): Promise<CacheOperationResult<T | null>> {
+    try {
+      const data = await operation()
+      return { success: true, data }
+    } catch (error) {
+      const err = error instanceof Error ? error : new Error('Unknown cache error')
+      
+      // 如果有降级值，使用降级策略
+      if (fallbackValue !== undefined) {
+        console.warn(
+          `🔄 [Idempotent] Cache operation failed, using fallback for ${context.config.method} ${context.config.url}:`,
+          err.message
+        )
+        return { success: false, data: fallbackValue, error: err, fallbackUsed: true }
+      }
+
+      return { success: false, error: err, fallbackUsed: false }
+    }
+  }
+
+  /**
+   * 获取缓存命中结果
+   */
+  private async getCacheHitResult<T>(
+    context: IdempotentRequestContext
+  ): Promise<T | null> {
+    const cachedItem = await this.cacheFeature.getCacheItem(context.idempotentKey)
+    if (!cachedItem) {
+      return null
+    }
+
+    // 检查缓存是否有效
+    if (this.cacheFeature.isCacheItemValid(cachedItem)) {
+      // 缓存有效，更新统计
+      this.updateStats({
+        incrementDuplicates: true,
+        incrementCacheHits: true,
+      })
+
+      // 触发重复请求回调
+      this.handleDuplicateCallback(context.config, context.onDuplicate)
+
+      console.log(
+        `💾 [Idempotent] Cache hit: ${context.config.method} ${context.config.url}`,
+        {
+          ttlRemaining: `${Math.round(
+            (cachedItem.ttl - (Date.now() - cachedItem.timestamp)) / 1000
+          )}s`,
+          accessCount: cachedItem.accessCount || 0,
+        }
+      )
+
+      // 安全更新访问信息
+      await this.safeUpdateCacheItem(cachedItem, context)
+
+      return this.safeCloneData(cachedItem.data, 'deep') as T
+    } else {
+      // 缓存过期，安全删除
+      await this.safeRemoveExpiredCache(context)
+      return null
+    }
+  }
+
+  /**
+   * 安全更新缓存项访问信息
+   */
+  private async safeUpdateCacheItem(
+    cachedItem: CacheItem,
+    context: IdempotentRequestContext
+  ): Promise<void> {
+    try {
+      cachedItem.accessTime = Date.now()
+      cachedItem.accessCount = (cachedItem.accessCount || 0) + 1
+      await this.cacheFeature.setCacheItem(cachedItem)
+    } catch (error) {
+      // 更新访问信息失败不应该影响主流程
+      console.warn(
+        `⚠️ [Idempotent] Failed to update cache access info for ${context.config.method} ${context.config.url}:`,
+        error instanceof Error ? error.message : 'Unknown error'
+      )
+    }
+  }
+
+  /**
+   * 安全删除过期缓存
+   */
+  private async safeRemoveExpiredCache(
+    context: IdempotentRequestContext
+  ): Promise<void> {
+    try {
+      console.log(
+        `🗑️ [Idempotent] Removing expired cache: ${context.config.method} ${context.config.url}`
+      )
+      await this.cacheFeature.removeCacheItem(context.idempotentKey)
+    } catch (error) {
+      // 删除失败不应该影响主流程，但需要记录
+      console.warn(
+        `⚠️ [Idempotent] Failed to remove expired cache for ${context.config.method} ${context.config.url}:`,
+        error instanceof Error ? error.message : 'Unknown error'
+      )
+    }
+  }
+
+  /**
+   * 记录缓存错误
+   */
+  private logCacheError(
+    error: Error | undefined,
+    context: IdempotentRequestContext,
+    operation: string
+  ): void {
+    console.warn(
+      `⚠️ [Idempotent] ${operation} for ${context.config.method} ${context.config.url}:`,
+      {
+        error: error?.message || 'Unknown error',
+        key: context.idempotentKey,
+        timestamp: Date.now(),
+      }
+    )
   }
 
   /**
@@ -541,20 +741,40 @@ export class IdempotentFeature {
   }
 
   /**
-   * 清除幂等缓存
+   * 清除幂等缓存（增强错误处理）
    */
   async clearIdempotentCache(key?: string): Promise<void> {
-    if (key && !key.startsWith('idempotent:')) {
-      key = `idempotent:${key}`
-    }
-    await this.cacheFeature.clearCache(key)
-
-    // 同时清理对应的pending requests
-    if (key) {
-      this.pendingRequests.delete(key)
-    } else {
-      // 如果没有指定key，清理所有pending requests
-      this.pendingRequests.clear()
+    try {
+      if (key && !key.startsWith('idempotent:')) {
+        key = `idempotent:${key}`
+      }
+      
+      // 尝试清理缓存
+      await this.cacheFeature.clearCache(key)
+      console.log(`✅ [Idempotent] Cache cleared successfully${key ? ` for key: ${key}` : ' (all)'}`)
+      
+    } catch (error) {
+      // 缓存清理失败，记录错误但不抛出
+      console.error(
+        `❌ [Idempotent] Failed to clear cache${key ? ` for key: ${key}` : ' (all)'}:`,
+        {
+          error: error instanceof Error ? error.message : 'Unknown error',
+          timestamp: Date.now(),
+        }
+      )
+    } finally {
+      // 无论缓存清理是否成功，都要清理pending requests
+      try {
+        if (key) {
+          this.pendingRequests.delete(key)
+        } else {
+          this.pendingRequests.clear()
+        }
+        console.log(`✅ [Idempotent] Pending requests cleaned${key ? ` for key: ${key}` : ' (all)'}`)
+      } catch (error) {
+        // 这种情况很少见，但也要处理
+        console.error(`❌ [Idempotent] Failed to clear pending requests:`, error)
+      }
     }
   }
 
