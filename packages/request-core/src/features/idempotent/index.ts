@@ -371,20 +371,39 @@ export class IdempotentFeature {
   private async executeNewIdempotentRequest<T>(
     execConfig: NewRequestExecutionConfig
   ): Promise<T> {
+    // 二次检查：避免并发窗口下的双发起
+    const existing = this.pendingRequests.get(execConfig.idempotentKey)
+    if (existing) {
+      const result = (await existing) as T
+      const responseTime = Date.now() - execConfig.startTime
+      this.updateStats({ responseTime })
+      return result
+    }
+
+    // 先占位：创建占位 Promise，保证 get-or-create 语义
+    const deferred = this.createDeferred<T>()
+    this.pendingRequests.set(execConfig.idempotentKey, deferred.promise as Promise<unknown>)
+
+    // 启动真实请求
     const requestPromise = this.executeRequest<T>(
       execConfig.config,
       execConfig.idempotentKey,
       execConfig.ttl,
       execConfig.keyGeneratorConfig
     )
-    this.pendingRequests.set(execConfig.idempotentKey, requestPromise)
+
     this.updateStats({ incrementNetworkRequests: true })
 
-    const result = await requestPromise
-    const responseTime = Date.now() - execConfig.startTime
-    this.updateStats({ responseTime })
-
-    return result
+    try {
+      const result = await requestPromise
+      deferred.resolve(result)
+      const responseTime = Date.now() - execConfig.startTime
+      this.updateStats({ responseTime })
+      return result
+    } catch (error) {
+      deferred.reject(error)
+      throw error
+    }
   }
 
   /**
@@ -976,5 +995,22 @@ export class IdempotentFeature {
         }
       )
     }
+  }
+
+  /**
+   * 创建占位Promise（Deferred）
+   */
+  private createDeferred<T>(): {
+    promise: Promise<T>
+    resolve: (value: T) => void
+    reject: (reason?: unknown) => void
+  } {
+    let resolve!: (value: T) => void
+    let reject!: (reason?: unknown) => void
+    const promise = new Promise<T>((res, rej) => {
+      resolve = res
+      reject = rej
+    })
+    return { promise, resolve, reject }
   }
 }
