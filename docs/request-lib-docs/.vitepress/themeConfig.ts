@@ -3,9 +3,8 @@ import type { DefaultTheme } from 'vitepress'
 const themeConfig: DefaultTheme.Config = {
   nav: [
     { text: '指南', link: '/guide/getting-started' },
-    { text: '概念', link: '/concepts/architecture' },
-    { text: 'API', link: '/api/request-core' },
     { text: '示例', link: '/examples/basic-requests' },
+    { text: '概念', link: '/concepts/architecture' },
   ],
 
   sidebar: {
@@ -15,9 +14,6 @@ const themeConfig: DefaultTheme.Config = {
         items: [
           { text: '快速开始', link: '/guide/getting-started' },
           { text: '安装配置', link: '/guide/installation' },
-          { text: '基础用法', link: '/guide/basic-usage' },
-          { text: '进阶功能', link: '/guide/advanced-features' },
-          { text: '故障排除', link: '/guide/troubleshooting' },
         ],
       },
     ],
@@ -34,17 +30,6 @@ const themeConfig: DefaultTheme.Config = {
       },
     ],
 
-    '/api/': [
-      {
-        text: 'API参考',
-        items: [
-          { text: '核心层API', link: '/api/request-core' },
-          { text: 'API层', link: '/api/request-api' },
-          { text: '实现层API', link: '/api/implementations' },
-        ],
-      },
-    ],
-
     '/examples/': [
       {
         text: '使用示例',
@@ -56,41 +41,6 @@ const themeConfig: DefaultTheme.Config = {
           { text: '幂等请求示例', link: '/examples/idempotent-requests' },
           { text: '自定义API示例', link: '/examples/custom-apis' },
           { text: '框架集成示例', link: '/examples/integration' },
-        ],
-      },
-    ],
-
-    '/migration/': [
-      {
-        text: '迁移指南',
-        items: [
-          { text: '从Axios迁移', link: '/migration/from-axios' },
-          { text: '从Fetch迁移', link: '/migration/from-fetch' },
-          { text: '版本升级', link: '/migration/version-upgrade' },
-        ],
-      },
-    ],
-
-    '/development/': [
-      {
-        text: '开发指南',
-        items: [
-          { text: '贡献指南', link: '/development/contributing' },
-          { text: '自定义实现', link: '/development/custom-implementation' },
-          { text: '扩展功能', link: '/development/extending-features' },
-          { text: '测试指南', link: '/development/testing' },
-        ],
-      },
-    ],
-
-    '/cookbook/': [
-      {
-        text: '实用技巧',
-        items: [
-          { text: '常用模式', link: '/cookbook/common-patterns' },
-          { text: '性能优化', link: '/cookbook/performance-tips' },
-          { text: '安全最佳实践', link: '/cookbook/security-best-practices' },
-          { text: '调试技巧', link: '/cookbook/debugging' },
         ],
       },
     ],
