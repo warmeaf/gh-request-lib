@@ -518,6 +518,17 @@ export class IdempotentFeature {
   }
 
   /**
+   * 便利方法 - DELETE请求幂等
+   */
+  async deleteIdempotent<T>(
+    url: string,
+    config?: Partial<RequestConfig>,
+    idempotentConfig?: IdempotentConfig
+  ): Promise<T> {
+    return this.httpIdempotent<T>('DELETE', url, undefined, config, idempotentConfig)
+  }
+
+  /**
    * 检查缓存是否命中（带降级策略）
    */
   private async checkCacheHit<T>(

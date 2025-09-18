@@ -199,6 +199,13 @@ export class FeatureManager {
   }
 
   /**
+   * DELETE请求幂等
+   */
+  async deleteIdempotent<T>(url: string, config?: Partial<RequestConfig>, idempotentConfig?: IdempotentConfig): Promise<T> {
+    return this.idempotentFeature.deleteIdempotent<T>(url, config, idempotentConfig)
+  }
+
+  /**
    * 清除幂等缓存
    */
   async clearIdempotentCache(key?: string): Promise<void> {

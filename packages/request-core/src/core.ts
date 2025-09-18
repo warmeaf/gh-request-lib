@@ -212,6 +212,10 @@ export class RequestCore implements ConvenienceExecutor {
     return this.featureManager.patchIdempotent<T>(url, data, config, idempotentConfig)
   }
 
+  async deleteIdempotent<T>(url: string, config?: Partial<RequestConfig>, idempotentConfig?: IdempotentConfig): Promise<T> {
+    return this.featureManager.deleteIdempotent<T>(url, config, idempotentConfig)
+  }
+
   async clearIdempotentCache(key?: string): Promise<void> {
     return this.featureManager.clearIdempotentCache(key)
   }
