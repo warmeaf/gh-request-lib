@@ -1,5 +1,16 @@
 <template>
   <div class="demo-container">
+    <!-- 操作说明 -->
+    <div class="instructions">
+      <h4>💡 体验步骤</h4>
+      <ol>
+        <li>点击「幂等提交」提交表单（会发起网络请求）</li>
+        <li>立即再次点击「幂等提交」（5秒内会直接返回缓存结果，不会重复提交）</li>
+        <li>对比：点击「普通提交」每次都会发起新的网络请求</li>
+        <li>查看控制台了解详细的请求执行情况</li>
+      </ol>
+    </div>
+
     <!-- 表单区域 -->
     <div class="form-section">
       <div class="form-row">
@@ -22,36 +33,49 @@
       <div class="button-group">
         <button
           @click="submitNormal"
-          :disabled="!isFormValid"
+          :disabled="!isFormValid || isLoading"
           class="btn btn-normal"
         >
-          普通提交
+          {{ isLoading && requestType === 'normal' ? '提交中...' : '普通提交' }}
         </button>
         <button
           @click="submitIdempotent"
-          :disabled="!isFormValid"
+          :disabled="!isFormValid || isLoading"
           class="btn btn-idempotent"
         >
-          🔒 幂等提交
+          {{ isLoading && requestType === 'idempotent' ? '提交中...' : '🔒 幂等提交' }}
         </button>
       </div>
     </div>
 
-    <!-- 请求统计 -->
-    <div class="stats-section">
-      <h4>📊 请求统计</h4>
-      <div class="stats-container">
-        <div class="stat-item">
-          <span class="stat-label">普通请求次数:</span>
-          <span class="stat-value">{{ normalRequestCount }}</span>
+    <!-- 提交结果展示 -->
+    <div v-if="lastResult" class="result-section">
+      <div class="status-badge" :class="lastResult.status">
+        {{ lastResult.statusText }}
+      </div>
+      <div class="result-info">
+        <h4>📝 {{ lastResult.data.title }}</h4>
+        <p>ID: {{ lastResult.data.id }} | 用户ID: {{ lastResult.data.userId }}</p>
+        <p class="content-preview">{{ lastResult.data.body }}</p>
+      </div>
+    </div>
+
+    <!-- 统计面板 -->
+    <div class="stats-panel">
+      <h4>📊 请求统计 <button @click="clearStats" class="clear-btn">清除缓存</button></h4>
+      <div class="stats-grid">
+        <div class="stat-card">
+          <span class="stat-number">{{ normalRequestCount }}</span>
+          <span class="stat-label">普通请求</span>
         </div>
-        <div class="stat-item">
-          <span class="stat-label"
-            >幂等请求次数（打开控制台查看实际调用的接口情况）:</span
-          >
-          <span class="stat-value">{{ idempotentRequestCount }}</span>
+        <div class="stat-card">
+          <span class="stat-number">{{ idempotentRequestCount }}</span>
+          <span class="stat-label">幂等请求</span>
         </div>
-        <button @click="resetStats" class="reset-btn">重置统计</button>
+        <div class="stat-card">
+          <span class="stat-number">{{ duplicateBlockedCount }}</span>
+          <span class="stat-label">重复阻止</span>
+        </div>
       </div>
     </div>
   </div>
@@ -82,10 +106,12 @@ class PostApi {
       data,
       {},
       {
-        ttl: 5000,
+        ttl: 5000, // 5秒内防重复
         includeHeaders: ['content-type'],
         onDuplicate: (original, duplicate) => {
-          console.log('检测到重复请求:', duplicate.url)
+          console.log('Duplicate request blocked - reusing cached result:', duplicate.url)
+          // 更新重复阻止计数
+          duplicateBlockedCount.value++
         },
       }
     )
@@ -105,54 +131,130 @@ const formData = ref({
   content: '这是测试内容',
 })
 
+const isLoading = ref(false)
+const requestType = ref<'normal' | 'idempotent' | ''>('')
+const lastResult = ref<any>(null)
+
 const normalRequestCount = ref(0)
 const idempotentRequestCount = ref(0)
+const duplicateBlockedCount = ref(0)
 
 const isFormValid = computed(() => {
   return formData.value.title.trim() && formData.value.content.trim()
 })
 
-const resetStats = () => {
+const clearStats = () => {
+  // 清除幂等缓存
+  apiClient.post.requestCore.clearIdempotentCache()
   normalRequestCount.value = 0
   idempotentRequestCount.value = 0
+  duplicateBlockedCount.value = 0
+  lastResult.value = null
+  console.log('Cache and stats cleared')
 }
 
 const submitNormal = async () => {
+  if (isLoading.value) return
+  
+  isLoading.value = true
+  requestType.value = 'normal'
+  
   try {
+    console.log('🚀 Starting normal submit...')
     const result = await apiClient.post.createPost({
       title: formData.value.title,
       body: formData.value.content,
       userId: 1,
     })
-    console.log(result, 'createPost')
+    console.log('✅ Normal submit completed:', result)
+    
+    lastResult.value = {
+      data: result,
+      status: 'network',
+      statusText: '🌐 网络提交',
+    }
     normalRequestCount.value++
-  } catch (error: any) {}
+  } catch (error: any) {
+    console.error('❌ Normal submit failed:', error)
+  } finally {
+    isLoading.value = false
+    requestType.value = ''
+  }
 }
 
 const submitIdempotent = async () => {
+  if (isLoading.value) return
+  
+  isLoading.value = true
+  requestType.value = 'idempotent'
+  const startTime = Date.now()
+  
   try {
+    console.log('🔒 Starting idempotent submit...')
     const result = await apiClient.post.createPostIdempotent({
       title: formData.value.title,
       body: formData.value.content,
       userId: 1,
     })
-    console.log(result, 'createPostIdempotent')
+    console.log('✅ Idempotent submit completed:', result)
+    
+    // 判断是否来自缓存
+    const requestDuration = Date.now() - startTime
+    const isFromCache = requestDuration < 100 // 少于100ms认为是缓存
+    
+    lastResult.value = {
+      data: result,
+      status: isFromCache && idempotentRequestCount.value > 0 ? 'cached' : 'network',
+      statusText: isFromCache && idempotentRequestCount.value > 0 ? '⚡ 缓存结果' : '🌐 网络提交',
+    }
+    
     idempotentRequestCount.value++
-  } catch (error: any) {}
+  } catch (error: any) {
+    console.error('❌ Idempotent submit failed:', error)
+  } finally {
+    isLoading.value = false
+    requestType.value = ''
+  }
 }
 </script>
 
 <style scoped>
 .demo-container {
-  max-width: 800px;
+  max-width: 700px;
   margin: 0 auto;
   padding: 20px;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui,
-    sans-serif;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+  background: #f8fafc;
+  border-radius: 12px;
 }
 
 .demo-container > * {
+  margin-bottom: 16px;
+}
+
+/* 操作说明 */
+.instructions {
+  background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+  color: white;
+  padding: 16px;
+  border-radius: 8px;
   margin-bottom: 20px;
+}
+
+.instructions h4 {
+  margin: 0 0 12px 0;
+  font-size: 16px;
+}
+
+.instructions ol {
+  margin: 0;
+  padding-left: 20px;
+}
+
+.instructions li {
+  margin: 6px 0;
+  font-size: 14px;
+  line-height: 1.4;
 }
 
 /* 表单区域 */
@@ -160,12 +262,12 @@ const submitIdempotent = async () => {
   background: white;
   padding: 20px;
   border-radius: 8px;
-  border: 1px solid #e1e5e9;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
 }
 
 .form-row {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 15px;
   margin-bottom: 15px;
 }
@@ -173,120 +275,171 @@ const submitIdempotent = async () => {
 .form-row label {
   min-width: 60px;
   font-weight: 600;
-  color: #24292e;
+  color: #374151;
+  padding-top: 8px;
 }
 
 .form-input {
   flex: 1;
   padding: 8px 12px;
-  border: 1px solid #d1d9e0;
-  border-radius: 4px;
+  border: 2px solid #e5e7eb;
+  border-radius: 6px;
   font-size: 14px;
+  transition: border-color 0.2s;
 }
 
 .form-input:focus {
   outline: none;
-  border-color: #0366d6;
-  box-shadow: 0 0 0 2px rgba(3, 102, 214, 0.1);
+  border-color: #3b82f6;
 }
 
 .button-group {
   display: flex;
-  gap: 10px;
+  gap: 12px;
   margin-top: 20px;
 }
 
 .btn {
   padding: 10px 20px;
   border: none;
-  border-radius: 5px;
+  border-radius: 6px;
   cursor: pointer;
   font-size: 14px;
   font-weight: 600;
   transition: all 0.2s;
+  min-width: 120px;
 }
 
 .btn:disabled {
-  opacity: 0.5;
+  opacity: 0.6;
   cursor: not-allowed;
+  transform: none;
 }
 
 .btn-normal {
-  background: #28a745;
+  background: #10b981;
   color: white;
 }
 
 .btn-normal:hover:not(:disabled) {
-  background: #218838;
+  background: #059669;
+  transform: translateY(-1px);
 }
 
 .btn-idempotent {
-  background: #007acc;
+  background: #3b82f6;
   color: white;
 }
 
 .btn-idempotent:hover:not(:disabled) {
-  background: #0056b3;
+  background: #2563eb;
+  transform: translateY(-1px);
 }
 
-/* 统计区域 */
-.stats-section {
+/* 结果展示 */
+.result-section {
   background: white;
   padding: 20px;
   border-radius: 8px;
-  border: 1px solid #e1e5e9;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
 }
 
-.stats-section h4 {
-  margin: 0 0 15px 0;
+.status-badge {
+  display: inline-block;
+  padding: 6px 12px;
+  border-radius: 20px;
+  font-size: 12px;
+  font-weight: bold;
+  margin-bottom: 12px;
+}
+
+.status-badge.network {
+  background: #10b981;
+  color: white;
+}
+
+.status-badge.cached {
+  background: #f59e0b;
+  color: white;
+}
+
+.result-info h4 {
+  margin: 0 0 8px 0;
+  color: #1f2937;
+  font-size: 18px;
+}
+
+.result-info p {
+  margin: 4px 0;
+  color: #6b7280;
+  font-size: 14px;
+}
+
+.content-preview {
+  background: #f3f4f6;
+  padding: 8px;
+  border-radius: 4px;
+  font-style: italic;
+  margin-top: 8px !important;
+}
+
+/* 统计面板 */
+.stats-panel {
+  background: white;
+  padding: 20px;
+  border-radius: 8px;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+.stats-panel h4 {
+  margin: 0 0 16px 0;
   display: flex;
   justify-content: space-between;
   align-items: center;
+  font-size: 16px;
+  color: #1f2937;
 }
 
-.stats-container {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
+.clear-btn {
+  background: #ef4444;
+  color: white;
+  border: none;
+  padding: 6px 12px;
+  border-radius: 4px;
+  font-size: 12px;
+  cursor: pointer;
+  transition: background-color 0.2s;
 }
 
-.stat-item {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 8px 0;
-  border-bottom: 1px solid #f1f3f4;
+.clear-btn:hover {
+  background: #dc2626;
 }
 
-.stat-item:last-child {
-  border-bottom: none;
+.stats-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 16px;
+}
+
+.stat-card {
+  background: #f8fafc;
+  padding: 16px;
+  border-radius: 8px;
+  text-align: center;
+  border: 2px solid #e2e8f0;
+}
+
+.stat-number {
+  display: block;
+  font-size: 24px;
+  font-weight: bold;
+  color: #3b82f6;
+  margin-bottom: 4px;
 }
 
 .stat-label {
-  font-weight: 600;
-  color: #24292e;
-}
-
-.stat-value {
-  font-family: 'Courier New', monospace;
-  font-size: 16px;
-  font-weight: bold;
-  color: #007acc;
-}
-
-.reset-btn {
-  background: #dc3545;
-  color: white;
-  border: none;
-  padding: 8px 16px;
-  border-radius: 4px;
-  font-size: 14px;
-  cursor: pointer;
-  margin-top: 10px;
-  align-self: flex-start;
-}
-
-.reset-btn:hover {
-  background: #c82333;
+  font-size: 12px;
+  color: #6b7280;
+  font-weight: 500;
 }
 </style>
