@@ -1,69 +1,83 @@
 <template>
-  <div class="demo-container">
-    <h3>📝 POST请求演示 - 创建新文章</h3>
-    <div class="demo-content">
-      <div class="form-section">
-        <div class="form-group">
-          <label>用户ID:</label>
-          <select v-model="formData.userId" class="form-control">
-            <option value="1">用户 1</option>
-            <option value="2">用户 2</option>
-            <option value="3">用户 3</option>
-          </select>
+  <div>
+    <!-- 请求操作区 -->
+    <div>
+      <div class="url-display">
+        <span class="method-tag">POST</span>
+        <code>https://jsonplaceholder.typicode.com/posts</code>
+      </div>
+
+      <!-- 请求体数据 -->
+      <div>
+        <h5>请求体数据：</h5>
+        <div class="form-grid">
+          <div class="form-field">
+            <label>标题</label>
+            <input
+              v-model="postData.title"
+              type="text"
+              placeholder="输入文章标题"
+              class="form-input"
+            />
+          </div>
+          <div class="form-field">
+            <label>作者</label>
+            <select v-model="postData.userId" class="form-input">
+              <option value="1">用户 1</option>
+              <option value="2">用户 2</option>
+              <option value="3">用户 3</option>
+            </select>
+          </div>
+          <div class="form-field full-width">
+            <label>内容</label>
+            <textarea
+              v-model="postData.body"
+              placeholder="输入文章内容..."
+              rows="3"
+              class="form-input"
+            ></textarea>
+          </div>
         </div>
-        
-        <div class="form-group">
-          <label>文章标题:</label>
-          <input 
-            v-model="formData.title" 
-            type="text" 
-            placeholder="请输入文章标题" 
-            class="form-control"
-          />
-        </div>
-        
-        <div class="form-group">
-          <label>文章内容:</label>
-          <textarea 
-            v-model="formData.body" 
-            placeholder="请输入文章内容..."
-            rows="4"
-            class="form-control textarea"
-          ></textarea>
-        </div>
-        
-        <button 
-          @click="createPost" 
+
+        <button
+          @click="createPost"
           :disabled="loading || !isFormValid"
           class="submit-btn"
         >
-          {{ loading ? '创建中...' : '创建文章' }}
+          {{ loading ? '发送请求...' : '创建文章' }}
         </button>
       </div>
-      
-      <div class="result-section">
-        <div v-if="loading" class="loading">
-          ⏳ 正在创建文章...
-        </div>
-        
-        <div v-if="error" class="error">
-          ❌ {{ error }}
-        </div>
-        
-        <div v-if="createdPost && !loading" class="success">
-          <h4>🎉 文章创建成功！</h4>
-          <div class="post-card">
-            <div class="post-header">
-              <div class="post-id">ID: {{ createdPost.id }}</div>
-              <div class="user-id">用户: {{ createdPost.userId }}</div>
-            </div>
-            <h5>{{ createdPost.title }}</h5>
-            <p>{{ createdPost.body }}</p>
+    </div>
+
+    <!-- 响应结果区 -->
+    <div>
+      <h4>响应结果</h4>
+
+      <!-- 加载状态 -->
+      <div v-if="loading" class="loading">
+        <div>⏳</div>
+        <span>正在创建文章...</span>
+      </div>
+
+      <!-- 错误状态 -->
+      <div v-if="error" class="error-result">
+        <div class="status-badge error">❌ 请求失败</div>
+        <div class="error-message">{{ error }}</div>
+      </div>
+
+      <!-- 成功状态 -->
+      <div v-if="createdPost && !loading" class="success-result">
+        <div class="status-badge success">✅ 创建成功</div>
+
+        <!-- 响应数据展示 -->
+        <div class="response-data">
+          <!-- 完整响应数据 -->
+          <div>
+            <h5>完整响应数据</h5>
+            <pre class="json-data">{{
+              JSON.stringify(createdPost, null, 2)
+            }}</pre>
           </div>
-          <details class="raw-data">
-            <summary>查看完整响应数据</summary>
-            <pre>{{ JSON.stringify(createdPost, null, 2) }}</pre>
-          </details>
         </div>
       </div>
     </div>
@@ -72,58 +86,53 @@
 
 <script setup lang="ts">
 import { ref, computed } from 'vue'
-import { createApiClient, type ApiClass } from 'request-api'
+import { createApiClient } from 'request-api'
 import { fetchRequestor } from 'request-imp-fetch'
 
-// 定义文章API类
+// 简化的文章API类
 class PostApi {
   requestCore: any
-  
   constructor(requestCore: any) {
     this.requestCore = requestCore
   }
 
   async createPost(postData: any) {
-    const url = 'https://jsonplaceholder.typicode.com/posts'
-    return this.requestCore.post(url, postData)
+    return this.requestCore.post(
+      'https://jsonplaceholder.typicode.com/posts',
+      postData
+    )
   }
 }
 
-// 创建 API 客户端实例
+// 创建API客户端
 const apiClient = createApiClient(
   { post: PostApi },
   {
     requestor: fetchRequestor,
-    globalConfig: {
-      timeout: 10000,
-    },
+    globalConfig: { timeout: 10000 },
   }
 )
 
-// 获取文章 API 实例
-const postApi = apiClient.post
-
-// 表单数据
-const formData = ref({
+// 状态管理
+const postData = ref({
+  title: '我的新文章',
+  body: '这是一个使用 POST 请求创建的文章示例...',
   userId: '1',
-  title: '我的第一篇文章',
-  body: '这是一个使用 request-bus 创建的文章演示。它展示了如何使用 POST 请求发送数据到服务器。'
 })
 
-// 组件状态
 const loading = ref(false)
 const error = ref('')
 const createdPost = ref<any>(null)
 
 // 表单验证
 const isFormValid = computed(() => {
-  return formData.value.title.trim() && formData.value.body.trim()
+  return postData.value.title.trim() && postData.value.body.trim()
 })
 
-// 创建文章的方法
+// 创建文章
 const createPost = async () => {
   if (!isFormValid.value) {
-    error.value = '请填写标题和内容'
+    error.value = 'Please fill in title and content'
     return
   }
 
@@ -132,14 +141,14 @@ const createPost = async () => {
   createdPost.value = null
 
   try {
-    const post = await postApi.createPost({
-      userId: parseInt(formData.value.userId),
-      title: formData.value.title,
-      body: formData.value.body
+    const result = await apiClient.post.createPost({
+      title: postData.value.title,
+      body: postData.value.body,
+      userId: parseInt(postData.value.userId),
     })
-    createdPost.value = post
-  } catch (err) {
-    error.value = `创建失败: ${err.message}`
+    createdPost.value = result
+  } catch (err: any) {
+    error.value = err.message || 'Request failed'
   } finally {
     loading.value = false
   }
@@ -147,135 +156,107 @@ const createPost = async () => {
 </script>
 
 <style scoped>
-.demo-container {
-  padding: 20px;
-  border: 1px solid #e1e5e9;
-  border-radius: 8px;
-  background: #fafbfc;
-}
-
-.demo-content {
-  margin-top: 15px;
-}
-
-.form-section {
-  background: white;
-  padding: 20px;
-  border-radius: 6px;
-  margin-bottom: 20px;
-  box-shadow: 0 1px 3px rgba(0,0,0,0.1);
-}
-
-.form-group {
+.url-display {
   margin-bottom: 15px;
 }
 
-.form-group label {
+.method-tag {
+  padding: 2px 8px;
+  color: white;
+  background: #ffc107;
+}
+
+code {
+  padding: 2px 8px;
+  background: #f5f5f5;
+}
+
+.form-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 15px;
+  margin-bottom: 15px;
+}
+
+.form-field.full-width {
+  grid-column: 1 / -1;
+}
+
+.form-field label {
   display: block;
   margin-bottom: 5px;
+  color: #333;
   font-weight: bold;
-  color: #24292e;
 }
 
-.form-control {
+.form-input {
   width: 100%;
-  padding: 8px 12px;
-  border: 1px solid #d1d9e0;
-  border-radius: 4px;
-  font-size: 14px;
+  padding: 5px 10px;
+  border: 1px solid #ccc;
 }
 
-.textarea {
-  resize: vertical;
-  font-family: inherit;
+textarea.form-input {
+  height: 60px;
 }
 
 .submit-btn {
-  padding: 10px 20px;
-  background: #28a745;
-  color: white;
+  padding: 8px 16px;
+  background: #ffc107;
+  color: #333;
   border: none;
-  border-radius: 4px;
   cursor: pointer;
-  font-size: 14px;
-}
-
-.submit-btn:hover:not(:disabled) {
-  background: #218838;
 }
 
 .submit-btn:disabled {
   background: #6c757d;
+  color: #fff;
   cursor: not-allowed;
 }
 
-.result-section {
-  min-height: 100px;
-}
-
 .loading {
-  color: #666;
-  font-style: italic;
-}
-
-.error {
-  color: #d73a49;
-  padding: 10px;
-  background: #ffeef0;
-  border-left: 4px solid #d73a49;
-  border-radius: 4px;
-}
-
-.success {
-  color: #28a745;
-}
-
-.post-card {
-  background: white;
   padding: 20px;
-  border-radius: 6px;
-  margin: 10px 0;
-  box-shadow: 0 1px 3px rgba(0,0,0,0.1);
-  border-left: 4px solid #28a745;
-}
-
-.post-header {
-  display: flex;
-  justify-content: space-between;
-  margin-bottom: 10px;
-  font-size: 12px;
   color: #666;
 }
 
-.post-id, .user-id {
-  padding: 2px 8px;
-  background: #f6f8fa;
-  border-radius: 3px;
+.error-result,
+.success-result {
+  padding: 15px;
 }
 
-.post-card h5 {
-  margin: 10px 0;
-  color: #0366d6;
-  font-size: 16px;
+.status-badge {
+  padding: 5px 10px;
+  margin-bottom: 10px;
+  font-size: 14px;
 }
 
-.post-card p {
-  margin: 0;
-  line-height: 1.5;
-  color: #24292e;
+.status-badge.success {
+  background: #d4edda;
+  color: #155724;
 }
 
-.raw-data {
-  margin-top: 15px;
+.status-badge.error {
+  background: #f8d7da;
+  color: #721c24;
+}
+
+.error-message {
+  color: #dc3545;
+  background: #f8d7da;
   padding: 10px;
-  background: #f6f8fa;
-  border-radius: 4px;
+  border: 1px solid #f5c6cb;
 }
 
-.raw-data pre {
-  margin: 10px 0 0 0;
+.response-data {
+  margin-top: 15px;
+}
+
+.json-data {
+  margin: 0;
+  padding: 10px;
+  background: #f8f9fa;
+  color: #333;
   font-size: 12px;
-  color: #586069;
-  white-space: pre-wrap;
+  white-space: pre;
+  overflow-x: auto;
 }
 </style>

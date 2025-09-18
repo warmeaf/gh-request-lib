@@ -1,86 +1,111 @@
 <template>
   <div class="demo-container">
-    <h3>🗑️ DELETE请求演示 - 删除文章</h3>
-    <div class="demo-content">
+    <h3>🗑️ DELETE 请求演示</h3>
+    
+    <!-- 请求操作区 -->
+    <div class="request-section">
+      <div class="url-display">
+        <span class="method-tag delete">DELETE</span>
+        <code>https://jsonplaceholder.typicode.com/posts/{{ selectedPostId || '{id}' }}</code>
+      </div>
+      
+      <!-- 文章选择 -->
       <div class="post-selector">
-        <label>选择要删除的文章:</label>
-        <select v-model="selectedPostId" @change="loadPost" class="form-control">
-          <option value="">请选择文章...</option>
-          <option v-for="i in 100" :key="i" :value="i">文章 {{ i }}</option>
+        <label>选择文章:</label>
+        <select v-model="selectedPostId" @change="loadPost" class="post-select">
+          <option value="">选择要删除的文章...</option>
+          <option v-for="i in 5" :key="i" :value="i">文章 {{ i }}</option>
         </select>
       </div>
 
-      <div v-if="postToDelete" class="post-section">
+      <!-- 文章预览与删除确认 -->
+      <div v-if="postToDelete" class="delete-confirmation">
         <div class="post-preview">
-          <h4>📖 文章预览:</h4>
+          <h5>即将删除的文章：</h5>
           <div class="post-card">
             <div class="post-header">
-              <div class="post-id">ID: {{ postToDelete.id }}</div>
-              <div class="user-id">用户: {{ postToDelete.userId }}</div>
+              <span class="post-id">ID: {{ postToDelete.id }}</span>
+              <span class="user-badge">用户{{ postToDelete.userId }}</span>
             </div>
-            <h5>{{ postToDelete.title }}</h5>
-            <p>{{ postToDelete.body }}</p>
+            <h6>{{ postToDelete.title }}</h6>
+            <p>{{ postToDelete.body.substring(0, 100) }}...</p>
           </div>
         </div>
-
-        <div class="delete-section">
+        
+        <div class="warning-section">
           <div class="warning-box">
-            ⚠️ <strong>警告:</strong> 此操作将永久删除这篇文章，无法恢复！
+            ⚠️ <strong>警告:</strong> 此操作将永久删除文章，无法恢复！
           </div>
           
-          <div class="confirmation">
-            <label class="checkbox-label">
-              <input 
-                v-model="confirmDelete" 
-                type="checkbox" 
-                class="checkbox"
-              />
-              我确认要删除这篇文章
-            </label>
-          </div>
+          <label class="checkbox-label">
+            <input v-model="confirmDelete" type="checkbox" class="checkbox" />
+            我确认删除这篇文章
+          </label>
           
           <button 
             @click="deletePost" 
             :disabled="loading || !confirmDelete"
             class="delete-btn"
           >
-            {{ loading ? '删除中...' : '🗑️ 删除文章' }}
+            {{ loading ? '删除中...' : '确认删除' }}
           </button>
         </div>
       </div>
+    </div>
+
+    <!-- 响应结果区 -->
+    <div class="response-section">
+      <h4>响应结果</h4>
       
-      <div class="result-section">
-        <div v-if="loadingPost" class="loading">
-          🔄 正在加载文章信息...
-        </div>
+      <!-- 加载状态 -->
+      <div v-if="loadingPost || loading" class="loading">
+        <div class="spinner">⏳</div>
+        <span>{{ loadingPost ? '加载文章信息...' : '删除文章中...' }}</span>
+      </div>
+      
+      <!-- 错误状态 -->
+      <div v-if="error" class="error-result">
+        <div class="status-badge error">❌ 请求失败</div>
+        <div class="error-message">{{ error }}</div>
+      </div>
+      
+      <!-- 成功状态 -->
+      <div v-if="deleteSuccess && !loading && !loadingPost" class="success-result">
+        <div class="status-badge success">✅ 删除成功</div>
         
-        <div v-if="loading" class="loading">
-          ⏳ 正在删除文章...
-        </div>
-        
-        <div v-if="error" class="error">
-          ❌ {{ error }}
-        </div>
-        
-        <div v-if="deleteSuccess && !loading" class="success">
-          <h4>🎉 文章删除成功！</h4>
-          <div class="success-info">
+        <!-- 删除结果展示 -->
+        <div class="response-data">
+          <div class="delete-summary">
             <div class="success-card">
-              <div class="success-icon">✅</div>
+              <div class="success-icon">🎉</div>
               <div class="success-content">
-                <p><strong>已删除文章:</strong> {{ deletedPostTitle }}</p>
-                <p><strong>文章ID:</strong> {{ selectedPostId }}</p>
-                <p><strong>删除时间:</strong> {{ deleteTime }}</p>
-                <p class="note">
-                  <em>注意：由于这是演示API，实际的数据并未真正删除。</em>
-                </p>
+                <h5>文章删除成功</h5>
+                <div class="delete-info">
+                  <div class="info-row">
+                    <span class="label">文章标题:</span>
+                    <span class="value">{{ deletedPostTitle }}</span>
+                  </div>
+                  <div class="info-row">
+                    <span class="label">文章ID:</span>
+                    <span class="value">{{ selectedPostId }}</span>
+                  </div>
+                  <div class="info-row">
+                    <span class="label">删除时间:</span>
+                    <span class="value">{{ deleteTime }}</span>
+                  </div>
+                </div>
+                <div class="note">
+                  <em>注意：这是演示API，数据并未真正删除。</em>
+                </div>
               </div>
             </div>
           </div>
-          <details class="raw-data">
-            <summary>查看响应信息</summary>
-            <pre>{{ JSON.stringify(deleteResponse, null, 2) }}</pre>
-          </details>
+          
+          <!-- 完整响应数据 -->
+          <div class="raw-response">
+            <h5>完整响应数据：</h5>
+            <pre class="json-data">{{ JSON.stringify(deleteResponse, null, 2) }}</pre>
+          </div>
         </div>
       </div>
     </div>
@@ -89,43 +114,35 @@
 
 <script setup lang="ts">
 import { ref } from 'vue'
-import { createApiClient, type ApiClass } from 'request-api'
+import { createApiClient } from 'request-api'
 import { fetchRequestor } from 'request-imp-fetch'
 
-// 定义文章API类
+// 简化的文章API类
 class PostApi {
   requestCore: any
-  
   constructor(requestCore: any) {
     this.requestCore = requestCore
   }
 
-  async getPost(postId: string) {
-    const url = `https://jsonplaceholder.typicode.com/posts/${postId}`
-    return this.requestCore.get(url)
+  async getPost(postId: number) {
+    return this.requestCore.get(`https://jsonplaceholder.typicode.com/posts/${postId}`)
   }
 
-  async deletePost(postId: string) {
-    const url = `https://jsonplaceholder.typicode.com/posts/${postId}`
-    return this.requestCore.delete(url)
+  async deletePost(postId: number) {
+    return this.requestCore.delete(`https://jsonplaceholder.typicode.com/posts/${postId}`)
   }
 }
 
-// 创建 API 客户端实例
+// 创建API客户端
 const apiClient = createApiClient(
   { post: PostApi },
   {
     requestor: fetchRequestor,
-    globalConfig: {
-      timeout: 10000,
-    },
+    globalConfig: { timeout: 10000 },
   }
 )
 
-// 获取文章 API 实例
-const postApi = apiClient.post
-
-// 组件状态
+// 状态管理
 const selectedPostId = ref('')
 const postToDelete = ref<any>(null)
 const confirmDelete = ref(false)
@@ -141,6 +158,7 @@ const deleteResponse = ref<any>(null)
 const loadPost = async () => {
   if (!selectedPostId.value) {
     postToDelete.value = null
+    deleteSuccess.value = false
     return
   }
 
@@ -150,10 +168,10 @@ const loadPost = async () => {
   confirmDelete.value = false
 
   try {
-    const post = await postApi.getPost(selectedPostId.value)
+    const post = await apiClient.post.getPost(parseInt(selectedPostId.value))
     postToDelete.value = post
-  } catch (err) {
-    error.value = `加载文章失败: ${err.message}`
+  } catch (err: any) {
+    error.value = err.message || 'Failed to load post'
   } finally {
     loadingPost.value = false
   }
@@ -161,19 +179,19 @@ const loadPost = async () => {
 
 // 删除文章
 const deletePost = async () => {
-  if (!confirmDelete.value || !postToDelete.value) return
+  if (!confirmDelete.value || !postToDelete.value || !selectedPostId.value) return
 
   loading.value = true
   error.value = ''
   deleteSuccess.value = false
 
   try {
-    const response = await postApi.deletePost(selectedPostId.value)
+    const response = await apiClient.post.deletePost(parseInt(selectedPostId.value))
     
     // 记录删除的文章信息
     deletedPostTitle.value = postToDelete.value.title
     deleteTime.value = new Date().toLocaleString()
-    deleteResponse.value = response
+    deleteResponse.value = response || {}
     deleteSuccess.value = true
     
     // 清除表单
@@ -181,8 +199,8 @@ const deletePost = async () => {
     selectedPostId.value = ''
     confirmDelete.value = false
     
-  } catch (err) {
-    error.value = `删除失败: ${err.message}`
+  } catch (err: any) {
+    error.value = err.message || 'Delete failed'
   } finally {
     loading.value = false
   }
@@ -192,115 +210,126 @@ const deletePost = async () => {
 <style scoped>
 .demo-container {
   padding: 20px;
-  border: 1px solid #e1e5e9;
-  border-radius: 8px;
-  background: #fafbfc;
+  border: 1px solid #ccc;
+  background: #f9f9f9;
 }
 
-.demo-content {
-  margin-top: 15px;
+.demo-container h3 {
+  margin: 0 0 20px 0;
+  color: #333;
+}
+
+.request-section {
+  padding: 15px;
+  background: #fff;
+  border: 1px solid #ddd;
+  margin-bottom: 20px;
+}
+
+.url-display {
+  margin-bottom: 15px;
+  font-family: monospace;
+}
+
+.method-tag {
+  padding: 2px 8px;
+  color: white;
+  font-size: 12px;
+  font-weight: bold;
+}
+
+.method-tag.delete {
+  background: #dc3545;
+}
+
+.url-display code {
+  padding: 5px 10px;
+  background: #f5f5f5;
+  border: 1px solid #ddd;
 }
 
 .post-selector {
-  margin-bottom: 20px;
+  margin-bottom: 15px;
 }
 
 .post-selector label {
   display: block;
   margin-bottom: 5px;
   font-weight: bold;
-  color: #24292e;
 }
 
-.post-section {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 20px;
-  margin-bottom: 20px;
+.post-select {
+  padding: 5px 10px;
+  border: 1px solid #ccc;
 }
 
-.post-preview,
-.delete-section {
-  background: white;
+.delete-confirmation {
+  border: 1px solid #ddd;
   padding: 15px;
-  border-radius: 6px;
-  box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+  background: #fff;
+}
+
+.post-preview h5 {
+  margin: 0 0 10px 0;
+  color: #333;
 }
 
 .post-card {
   background: #f8f9fa;
-  padding: 15px;
-  border-radius: 6px;
-  border-left: 4px solid #007acc;
+  padding: 10px;
+  border: 1px solid #ddd;
+  margin-bottom: 15px;
 }
 
 .post-header {
-  display: flex;
-  justify-content: space-between;
   margin-bottom: 10px;
   font-size: 12px;
   color: #666;
 }
 
-.post-id, .user-id {
-  padding: 2px 8px;
-  background: white;
-  border-radius: 3px;
+.post-id, .user-badge {
+  padding: 2px 6px;
+  background: #e9ecef;
+  margin-right: 10px;
 }
 
-.post-card h5 {
-  margin: 10px 0;
-  color: #0366d6;
-  font-size: 16px;
+.post-card h6 {
+  margin: 10px 0 5px 0;
+  color: #007bff;
 }
 
 .post-card p {
   margin: 0;
-  line-height: 1.5;
-  color: #24292e;
+  color: #666;
   font-size: 14px;
+}
+
+.warning-section {
+  margin-top: 15px;
 }
 
 .warning-box {
   background: #fff3cd;
-  border: 1px solid #ffeaa7;
   color: #856404;
   padding: 10px;
-  border-radius: 4px;
-  margin-bottom: 15px;
-  border-left: 4px solid #ffc107;
-}
-
-.confirmation {
-  margin-bottom: 15px;
+  border: 1px solid #ffeaa7;
+  margin-bottom: 10px;
 }
 
 .checkbox-label {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  cursor: pointer;
-  user-select: none;
+  margin: 10px 0;
 }
 
 .checkbox {
-  width: 16px;
-  height: 16px;
+  margin-right: 8px;
 }
 
 .delete-btn {
-  padding: 10px 20px;
+  padding: 8px 16px;
   background: #dc3545;
   color: white;
   border: none;
-  border-radius: 4px;
   cursor: pointer;
-  font-size: 14px;
-  font-weight: bold;
-}
-
-.delete-btn:hover:not(:disabled) {
-  background: #c82333;
 }
 
 .delete-btn:disabled {
@@ -308,82 +337,112 @@ const deletePost = async () => {
   cursor: not-allowed;
 }
 
-.form-control {
-  width: 100%;
-  padding: 8px 12px;
-  border: 1px solid #d1d9e0;
-  border-radius: 4px;
-  font-size: 14px;
+.response-section {
+  border: 1px solid #ddd;
 }
 
-.result-section {
-  min-height: 100px;
+.response-section h4 {
+  margin: 0;
+  padding: 10px 15px;
+  background: #f8f9fa;
+  border-bottom: 1px solid #ddd;
+  color: #333;
 }
 
 .loading {
+  padding: 20px;
   color: #666;
-  font-style: italic;
 }
 
-.error {
-  color: #d73a49;
+.error-result, .success-result {
+  padding: 15px;
+}
+
+.status-badge {
+  padding: 5px 10px;
+  margin-bottom: 10px;
+  font-size: 14px;
+}
+
+.status-badge.success {
+  background: #d4edda;
+  color: #155724;
+}
+
+.status-badge.error {
+  background: #f8d7da;
+  color: #721c24;
+}
+
+.error-message {
+  color: #dc3545;
+  background: #f8d7da;
   padding: 10px;
-  background: #ffeef0;
-  border-left: 4px solid #d73a49;
-  border-radius: 4px;
-}
-
-.success {
-  color: #28a745;
-}
-
-.success-info {
-  margin: 15px 0;
+  border: 1px solid #f5c6cb;
 }
 
 .success-card {
-  display: flex;
-  gap: 15px;
-  background: white;
-  padding: 20px;
-  border-radius: 6px;
-  box-shadow: 0 1px 3px rgba(0,0,0,0.1);
-  border-left: 4px solid #28a745;
+  background: #fff;
+  padding: 15px;
+  border: 1px solid #ddd;
 }
 
 .success-icon {
-  font-size: 32px;
-  color: #28a745;
+  font-size: 24px;
+  margin-bottom: 10px;
 }
 
-.success-content p {
+.success-content h5 {
+  margin: 0 0 10px 0;
+  color: #333;
+}
+
+.delete-info {
+  margin-bottom: 10px;
+}
+
+.info-row {
   margin: 5px 0;
+}
+
+.label {
+  font-weight: bold;
+  color: #666;
+}
+
+.value {
+  color: #333;
+  margin-left: 10px;
 }
 
 .note {
   font-size: 12px;
   color: #666;
   font-style: italic;
-  margin-top: 10px !important;
+  margin-top: 10px;
 }
 
-.raw-data {
+.raw-response {
+  background: #f8f9fa;
+  border: 1px solid #ddd;
   margin-top: 15px;
+}
+
+.raw-response h5 {
+  margin: 0;
   padding: 10px;
-  background: #f6f8fa;
-  border-radius: 4px;
+  background: #e9ecef;
+  color: #333;
 }
 
-.raw-data pre {
-  margin: 10px 0 0 0;
+.json-data {
+  margin: 0;
+  padding: 10px;
+  background: #f8f9fa;
+  color: #333;
+  font-family: monospace;
   font-size: 12px;
-  color: #586069;
-  white-space: pre-wrap;
-}
-
-@media (max-width: 768px) {
-  .post-section {
-    grid-template-columns: 1fr;
-  }
+  white-space: pre;
+  overflow-x: auto;
 }
 </style>

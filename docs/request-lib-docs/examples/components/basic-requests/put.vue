@@ -1,115 +1,141 @@
 <template>
   <div class="demo-container">
-    <h3>✏️ PUT请求演示 - 更新用户信息</h3>
-    <div class="demo-content">
+    <!-- 请求操作区 -->
+    <div class="request-section">
+      <div class="url-display">
+        <span class="method-tag put">PUT</span>
+        <code
+          >https://jsonplaceholder.typicode.com/users/{{
+            selectedUserId || '{id}'
+          }}</code
+        >
+      </div>
+
+      <!-- 用户选择 -->
       <div class="user-selector">
-        <label>选择要更新的用户:</label>
-        <select v-model="selectedUserId" @change="loadUser" class="form-control">
-          <option value="">请选择用户...</option>
-          <option v-for="i in 10" :key="i" :value="i">用户 {{ i }}</option>
+        <label>选择用户:</label>
+        <select v-model="selectedUserId" @change="loadUser" class="user-select">
+          <option value="">选择要更新的用户...</option>
+          <option v-for="i in 3" :key="i" :value="i">用户 {{ i }}</option>
         </select>
       </div>
 
-      <div v-if="originalUser" class="user-section">
-        <div class="original-user">
-          <h4>📋 原始用户信息:</h4>
-          <div class="user-info-display">
-            <div><strong>姓名:</strong> {{ originalUser.name }}</div>
-            <div><strong>邮箱:</strong> {{ originalUser.email }}</div>
-            <div><strong>电话:</strong> {{ originalUser.phone }}</div>
-            <div><strong>网站:</strong> {{ originalUser.website }}</div>
+      <!-- 更新表单 -->
+      <div v-if="originalUser" class="update-form">
+        <h5>更新数据：</h5>
+        <div class="form-grid">
+          <div class="form-field">
+            <label>姓名</label>
+            <input v-model="updateForm.name" type="text" class="form-input" />
+          </div>
+          <div class="form-field">
+            <label>邮箱</label>
+            <input v-model="updateForm.email" type="email" class="form-input" />
+          </div>
+          <div class="form-field">
+            <label>电话</label>
+            <input v-model="updateForm.phone" type="text" class="form-input" />
+          </div>
+          <div class="form-field">
+            <label>网站</label>
+            <input
+              v-model="updateForm.website"
+              type="text"
+              class="form-input"
+            />
           </div>
         </div>
 
-        <div class="update-form">
-          <h4>✏️ 更新用户信息:</h4>
-          <div class="form-group">
-            <label>姓名:</label>
-            <input 
-              v-model="updateForm.name" 
-              type="text" 
-              class="form-control"
-            />
-          </div>
-          
-          <div class="form-group">
-            <label>邮箱:</label>
-            <input 
-              v-model="updateForm.email" 
-              type="email" 
-              class="form-control"
-            />
-          </div>
-          
-          <div class="form-group">
-            <label>电话:</label>
-            <input 
-              v-model="updateForm.phone" 
-              type="text" 
-              class="form-control"
-            />
-          </div>
-          
-          <div class="form-group">
-            <label>网站:</label>
-            <input 
-              v-model="updateForm.website" 
-              type="text" 
-              class="form-control"
-            />
-          </div>
-          
-          <button 
-            @click="updateUser" 
-            :disabled="loading || !hasChanges"
-            class="update-btn"
-          >
-            {{ loading ? '更新中...' : '更新用户信息' }}
-          </button>
-        </div>
+        <button
+          @click="updateUser"
+          :disabled="loading || !hasChanges"
+          class="update-btn"
+        >
+          {{ loading ? '更新中...' : '更新用户' }}
+        </button>
       </div>
-      
-      <div class="result-section">
-        <div v-if="loadingUser" class="loading">
-          🔄 正在加载用户信息...
-        </div>
-        
-        <div v-if="loading" class="loading">
-          ⏳ 正在更新用户信息...
-        </div>
-        
-        <div v-if="error" class="error">
-          ❌ {{ error }}
-        </div>
-        
-        <div v-if="updatedUser && !loading" class="success">
-          <h4>🎉 用户信息更新成功！</h4>
-          <div class="comparison">
-            <div class="before-after">
-              <div class="before">
-                <h5>更新前:</h5>
-                <div class="user-card">
-                  <div><strong>姓名:</strong> {{ originalUser.name }}</div>
-                  <div><strong>邮箱:</strong> {{ originalUser.email }}</div>
-                  <div><strong>电话:</strong> {{ originalUser.phone }}</div>
-                  <div><strong>网站:</strong> {{ originalUser.website }}</div>
+    </div>
+
+    <!-- 响应结果区 -->
+    <div class="response-section">
+      <h4>响应结果</h4>
+
+      <!-- 加载状态 -->
+      <div v-if="loadingUser || loading" class="loading">
+        <div class="spinner">⏳</div>
+        <span>{{ loadingUser ? '加载用户信息...' : '更新用户信息...' }}</span>
+      </div>
+
+      <!-- 错误状态 -->
+      <div v-if="error" class="error-result">
+        <div class="status-badge error">❌ 请求失败</div>
+        <div class="error-message">{{ error }}</div>
+      </div>
+
+      <!-- 成功状态 -->
+      <div
+        v-if="updatedUser && !loading && !loadingUser"
+        class="success-result"
+      >
+        <div class="status-badge success">✅ 更新成功</div>
+
+        <!-- 对比展示 -->
+        <div class="response-data">
+          <div class="comparison-view">
+            <div class="before-card">
+              <h5>更新前</h5>
+              <div class="user-info">
+                <div class="info-item">
+                  <span class="label">姓名</span>
+                  <span class="value">{{ originalUser.name }}</span>
+                </div>
+                <div class="info-item">
+                  <span class="label">邮箱</span>
+                  <span class="value">{{ originalUser.email }}</span>
+                </div>
+                <div class="info-item">
+                  <span class="label">电话</span>
+                  <span class="value">{{ originalUser.phone }}</span>
+                </div>
+                <div class="info-item">
+                  <span class="label">网站</span>
+                  <span class="value">{{ originalUser.website }}</span>
                 </div>
               </div>
-              <div class="after">
-                <h5>更新后:</h5>
-                <div class="user-card updated">
-                  <div><strong>姓名:</strong> {{ updatedUser.name }}</div>
-                  <div><strong>邮箱:</strong> {{ updatedUser.email }}</div>
-                  <div><strong>电话:</strong> {{ updatedUser.phone }}</div>
-                  <div><strong>网站:</strong> {{ updatedUser.website }}</div>
+            </div>
+
+            <div class="arrow">→</div>
+
+            <div class="after-card">
+              <h5>更新后</h5>
+              <div class="user-info">
+                <div class="info-item">
+                  <span class="label">姓名</span>
+                  <span class="value highlight">{{ updatedUser.name }}</span>
+                </div>
+                <div class="info-item">
+                  <span class="label">邮箱</span>
+                  <span class="value highlight">{{ updatedUser.email }}</span>
+                </div>
+                <div class="info-item">
+                  <span class="label">电话</span>
+                  <span class="value highlight">{{ updatedUser.phone }}</span>
+                </div>
+                <div class="info-item">
+                  <span class="label">网站</span>
+                  <span class="value highlight">{{ updatedUser.website }}</span>
                 </div>
               </div>
             </div>
           </div>
-          <details class="raw-data">
-            <summary>查看完整响应数据</summary>
-            <pre>{{ JSON.stringify(updatedUser, null, 2) }}</pre>
-          </details>
+
+          <!-- 完整响应数据 -->
+          <div class="raw-response">
+            <h5>完整响应数据：</h5>
+            <pre class="json-data">{{
+              JSON.stringify(updatedUser, null, 2)
+            }}</pre>
+          </div>
         </div>
       </div>
     </div>
@@ -117,51 +143,48 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch } from 'vue'
-import { createApiClient, type ApiClass } from 'request-api'
+import { ref, computed } from 'vue'
+import { createApiClient } from 'request-api'
 import { fetchRequestor } from 'request-imp-fetch'
 
-// 定义用户API类
+// 简化的用户API类
 class UserApi {
   requestCore: any
-  
   constructor(requestCore: any) {
     this.requestCore = requestCore
   }
 
-  async getUserInfo(userId: string) {
-    const url = `https://jsonplaceholder.typicode.com/users/${userId}`
-    return this.requestCore.get(url)
+  async getUser(userId: number) {
+    return this.requestCore.get(
+      `https://jsonplaceholder.typicode.com/users/${userId}`
+    )
   }
 
-  async updateUser(userId: string, userData: any) {
-    const url = `https://jsonplaceholder.typicode.com/users/${userId}`
-    return this.requestCore.put(url, userData)
+  async updateUser(userId: number, userData: any) {
+    return this.requestCore.put(
+      `https://jsonplaceholder.typicode.com/users/${userId}`,
+      userData
+    )
   }
 }
 
-// 创建 API 客户端实例
+// 创建API客户端
 const apiClient = createApiClient(
   { user: UserApi },
   {
     requestor: fetchRequestor,
-    globalConfig: {
-      timeout: 10000,
-    },
+    globalConfig: { timeout: 10000 },
   }
 )
 
-// 获取用户 API 实例
-const userApi = apiClient.user
-
-// 组件状态
+// 状态管理
 const selectedUserId = ref('')
 const originalUser = ref<any>(null)
 const updateForm = ref({
   name: '',
   email: '',
   phone: '',
-  website: ''
+  website: '',
 })
 const loadingUser = ref(false)
 const loading = ref(false)
@@ -171,17 +194,19 @@ const updatedUser = ref<any>(null)
 // 检查是否有更改
 const hasChanges = computed(() => {
   if (!originalUser.value) return false
-  
-  return updateForm.value.name !== originalUser.value.name ||
-         updateForm.value.email !== originalUser.value.email ||
-         updateForm.value.phone !== originalUser.value.phone ||
-         updateForm.value.website !== originalUser.value.website
+  return (
+    updateForm.value.name !== originalUser.value.name ||
+    updateForm.value.email !== originalUser.value.email ||
+    updateForm.value.phone !== originalUser.value.phone ||
+    updateForm.value.website !== originalUser.value.website
+  )
 })
 
 // 加载用户信息
 const loadUser = async () => {
   if (!selectedUserId.value) {
     originalUser.value = null
+    updatedUser.value = null
     return
   }
 
@@ -190,18 +215,18 @@ const loadUser = async () => {
   updatedUser.value = null
 
   try {
-    const user = await userApi.getUserInfo(selectedUserId.value)
+    const user = await apiClient.user.getUser(parseInt(selectedUserId.value))
     originalUser.value = user
-    
+
     // 填充更新表单
     updateForm.value = {
       name: user.name,
       email: user.email,
       phone: user.phone,
-      website: user.website
+      website: user.website,
     }
-  } catch (err) {
-    error.value = `加载用户失败: ${err.message}`
+  } catch (err: any) {
+    error.value = err.message || 'Failed to load user'
   } finally {
     loadingUser.value = false
   }
@@ -209,7 +234,7 @@ const loadUser = async () => {
 
 // 更新用户信息
 const updateUser = async () => {
-  if (!hasChanges.value) return
+  if (!hasChanges.value || !selectedUserId.value) return
 
   loading.value = true
   error.value = ''
@@ -221,13 +246,16 @@ const updateUser = async () => {
       name: updateForm.value.name,
       email: updateForm.value.email,
       phone: updateForm.value.phone,
-      website: updateForm.value.website
+      website: updateForm.value.website,
     }
-    
-    const updated = await userApi.updateUser(selectedUserId.value, userData)
+
+    const updated = await apiClient.user.updateUser(
+      parseInt(selectedUserId.value),
+      userData
+    )
     updatedUser.value = updated
-  } catch (err) {
-    error.value = `更新失败: ${err.message}`
+  } catch (err: any) {
+    error.value = err.message || 'Update failed'
   } finally {
     loading.value = false
   }
@@ -235,161 +263,220 @@ const updateUser = async () => {
 </script>
 
 <style scoped>
-.demo-container {
-  padding: 20px;
-  border: 1px solid #e1e5e9;
-  border-radius: 8px;
-  background: #fafbfc;
-}
-
-.demo-content {
-  margin-top: 15px;
-}
-
-.user-selector {
+.request-section {
+  padding: 15px;
+  background: #fff;
+  border: 1px solid #ddd;
   margin-bottom: 20px;
 }
+
+.url-display {
+  margin-bottom: 15px;
+  font-family: monospace;
+}
+
+.method-tag {
+  padding: 2px 8px;
+  color: white;
+  font-weight: bold;
+  background: #6f42c1;
+}
+
+code {
+  padding: 2px 8px;
+  background: #f5f5f5;
+  border: 1px solid #ddd;
+}
+
+/* .user-selector {
+  margin-bottom: 15px;
+} */
 
 .user-selector label {
   display: block;
   margin-bottom: 5px;
+  color: #333;
   font-weight: bold;
-  color: #24292e;
 }
 
-.user-section {
+.user-select {
+  padding: 5px 10px;
+  border: 1px solid #ccc;
+}
+
+.update-form {
+  background: #fff;
+  padding: 15px;
+  border: 1px solid #ddd;
+}
+
+.update-form h5 {
+  margin: 0 0 15px 0;
+  color: #333;
+}
+
+.form-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 20px;
-  margin-bottom: 20px;
-}
-
-.original-user,
-.update-form {
-  background: white;
-  padding: 15px;
-  border-radius: 6px;
-  box-shadow: 0 1px 3px rgba(0,0,0,0.1);
-}
-
-.user-info-display div {
-  margin: 8px 0;
-  padding: 5px 0;
-}
-
-.form-group {
+  gap: 15px;
   margin-bottom: 15px;
 }
 
-.form-group label {
+.form-field label {
   display: block;
   margin-bottom: 5px;
+  color: #333;
   font-weight: bold;
-  color: #24292e;
-  font-size: 14px;
 }
 
-.form-control {
+.form-input {
   width: 100%;
-  padding: 8px 12px;
-  border: 1px solid #d1d9e0;
-  border-radius: 4px;
-  font-size: 14px;
+  padding: 5px 10px;
+  border: 1px solid #ccc;
 }
 
 .update-btn {
-  padding: 10px 20px;
-  background: #ffc107;
-  color: #212529;
+  padding: 8px 16px;
+  background: #6f42c1;
+  color: white;
   border: none;
-  border-radius: 4px;
   cursor: pointer;
-  font-size: 14px;
-  font-weight: bold;
-}
-
-.update-btn:hover:not(:disabled) {
-  background: #e0a800;
 }
 
 .update-btn:disabled {
   background: #6c757d;
-  color: white;
   cursor: not-allowed;
 }
 
-.result-section {
-  min-height: 100px;
+.response-section {
+  border: 1px solid #ddd;
+}
+
+.response-section h4 {
+  margin: 0;
+  padding: 10px 15px;
+  background: #f8f9fa;
+  border-bottom: 1px solid #ddd;
+  color: #333;
 }
 
 .loading {
+  padding: 20px;
   color: #666;
-  font-style: italic;
 }
 
-.error {
-  color: #d73a49;
-  padding: 10px;
-  background: #ffeef0;
-  border-left: 4px solid #d73a49;
-  border-radius: 4px;
-}
-
-.success {
-  color: #28a745;
-}
-
-.comparison {
-  margin: 15px 0;
-}
-
-.before-after {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 20px;
-}
-
-.before h5,
-.after h5 {
-  margin: 0 0 10px 0;
-  color: #24292e;
-}
-
-.user-card {
-  background: white;
+.error-result,
+.success-result {
   padding: 15px;
-  border-radius: 6px;
-  box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+}
+
+.status-badge {
+  padding: 5px 10px;
+  margin-bottom: 10px;
+  font-size: 14px;
+}
+
+.status-badge.success {
+  background: #d4edda;
+  color: #155724;
+}
+
+.status-badge.error {
+  background: #f8d7da;
+  color: #721c24;
+}
+
+.error-message {
+  color: #dc3545;
+  background: #f8d7da;
+  padding: 10px;
+  border: 1px solid #f5c6cb;
+}
+
+.response-data {
+  margin-top: 15px;
+}
+
+.comparison-view {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  gap: 15px;
+  margin-bottom: 15px;
+}
+
+.before-card,
+.after-card {
+  background: #f8f9fa;
+  padding: 15px;
+  border: 1px solid #ddd;
+}
+
+.before-card {
   border-left: 4px solid #6c757d;
 }
 
-.user-card.updated {
-  border-left-color: #28a745;
-  background: #f8fff9;
+.after-card {
+  border-left: 4px solid #6f42c1;
 }
 
-.user-card div {
-  margin: 5px 0;
+.before-card h5,
+.after-card h5 {
+  margin: 0 0 10px 0;
+  color: #333;
 }
 
-.raw-data {
-  margin-top: 15px;
+.arrow {
+  font-size: 20px;
+  color: #6f42c1;
+  align-self: center;
+}
+
+.info-item {
+  display: flex;
+  justify-content: space-between;
+  padding: 5px 0;
+  border-bottom: 1px solid #ddd;
+}
+
+.info-item:last-child {
+  border-bottom: none;
+}
+
+.label {
+  font-weight: bold;
+  color: #666;
+}
+
+.value {
+  color: #333;
+}
+
+.value.highlight {
+  color: #6f42c1;
+  background: #e7e1f0;
+  padding: 2px 5px;
+}
+
+.raw-response {
+  background: #f8f9fa;
+  border: 1px solid #ddd;
+}
+
+.raw-response h5 {
+  margin: 0;
   padding: 10px;
-  background: #f6f8fa;
-  border-radius: 4px;
+  background: #e9ecef;
+  color: #333;
 }
 
-.raw-data pre {
-  margin: 10px 0 0 0;
+.json-data {
+  margin: 0;
+  padding: 10px;
+  background: #f8f9fa;
+  color: #333;
+  font-family: monospace;
   font-size: 12px;
-  color: #586069;
-  white-space: pre-wrap;
-}
-
-@media (max-width: 768px) {
-  .user-section,
-  .before-after {
-    grid-template-columns: 1fr;
-  }
+  white-space: pre;
+  overflow-x: auto;
 }
 </style>
