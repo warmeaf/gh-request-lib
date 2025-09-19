@@ -5,7 +5,7 @@ export class RetryFeature {
   constructor(private requestor: Requestor) {}
 
   private defaultShouldRetry(error: unknown, attempt: number): boolean {
-    if (attempt >= 5) return false
+    // 不在这里限制重试次数，由上层循环控制
 
     if (error instanceof RequestError) {
       if (error.status && error.status >= 500 && error.status < 600) {
@@ -67,7 +67,28 @@ export class RetryFeature {
         const isLastAttempt = attempt === maxAttempts - 1
         const remainingRetries = maxAttempts - attempt - 1
 
-        if (isLastAttempt || !shouldRetry(error, attempt)) {
+        // 如果是最后一次尝试，直接抛出错误，不需要调用shouldRetry
+        if (isLastAttempt) {
+          const finalMessage = `❌ [Retry] Request failed after ${attempt + 1} attempts`
+          console.error(
+            `${finalMessage}\n  URL: ${config.url}\n  Error: ${error instanceof Error ? error.message : String(error)}`
+          )
+          throw error
+        }
+
+        let shouldRetryResult: boolean
+        try {
+          shouldRetryResult = shouldRetry(error, attempt)
+        } catch (shouldRetryError) {
+          // 如果shouldRetry函数抛出异常，停止重试并抛出原始错误
+          const finalMessage = `❌ [Retry] Request failed after ${attempt + 1} attempts`
+          console.error(
+            `${finalMessage}\n  URL: ${config.url}\n  Error: ${error instanceof Error ? error.message : String(error)}`
+          )
+          throw error
+        }
+
+        if (!shouldRetryResult) {
           const finalMessage = `❌ [Retry] Request failed after ${attempt + 1} attempts`
           console.error(
             `${finalMessage}\n  URL: ${config.url}\n  Error: ${error instanceof Error ? error.message : String(error)}`
