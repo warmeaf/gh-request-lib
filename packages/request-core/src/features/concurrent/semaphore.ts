@@ -10,10 +10,11 @@ export class Semaphore {
     timestamp: number
   }> = []
   private cleanupInterval: NodeJS.Timeout | null = null
-  private readonly maxWaitTime = 30000
+  private readonly maxWaitTime: number
 
-  constructor(permits: number) {
+  constructor(permits: number, maxWaitTime: number = 30000) {
     this.permits = permits
+    this.maxWaitTime = maxWaitTime
     this.startPeriodicCleanup()
   }
 
@@ -25,13 +26,23 @@ export class Semaphore {
 
     return new Promise<void>((resolve, reject) => {
       const timestamp = Date.now()
+      
+      // 先创建item对象占位
+      const item = { 
+        resolve, 
+        reject, 
+        timeout: null as NodeJS.Timeout | null, 
+        timestamp 
+      }
 
+      // 然后设置超时，现在可以正确引用item了
       const timeout = setTimeout(() => {
         this.removeFromQueue(item)
         reject(new Error(`Semaphore acquire timeout after ${this.maxWaitTime}ms`))
       }, this.maxWaitTime)
 
-      const item = { resolve, reject, timeout, timestamp }
+      // 更新timeout引用
+      item.timeout = timeout
       this.waitingQueue.push(item)
     })
   }

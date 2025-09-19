@@ -22,7 +22,14 @@ export class ConcurrentFeature {
     configs: RequestConfig[],
     concurrentConfig: ConcurrentConfig = {}
   ): Promise<ConcurrentResult<T>[]> {
-    const { maxConcurrency, failFast = false, timeout } = concurrentConfig
+    // 处理 null 和 undefined 的边界情况
+    const config = concurrentConfig || {}
+    const { maxConcurrency, failFast = false, timeout } = config
+
+    // 验证 maxConcurrency 配置
+    if (maxConcurrency !== undefined && maxConcurrency <= 0) {
+      throw new RequestError('Max concurrency must be positive')
+    }
 
     if (maxConcurrency && maxConcurrency > 0) {
       return this.requestWithConcurrencyLimit<T>(
@@ -117,6 +124,10 @@ export class ConcurrentFeature {
         }
       }
     } catch (error) {
+      if (timeout && timeout > 0 && error instanceof Error && error.message.includes('timeout')) {
+        // 对于超时错误，总是抛出，不管 failFast 设置
+        throw error
+      }
       if (failFast) {
         throw error
       }
@@ -146,16 +157,32 @@ export class ConcurrentFeature {
     const startTime = Date.now()
 
     const tasks = configs.map((config, index) =>
-      this.executeRequestWithSemaphore<T>(config, index, semaphore, collector, failFast)
+      this.executeRequestWithSemaphore<T>(config, index, semaphore, collector, failFast, maxConcurrency)
     )
 
     try {
       if (timeout && timeout > 0) {
-        await this.awaitWithTimeout(Promise.allSettled(tasks), timeout)
+        if (failFast) {
+          await this.awaitWithTimeout(Promise.all(tasks), timeout)
+        } else {
+          await this.awaitWithTimeout(Promise.allSettled(tasks), timeout)
+        }
       } else {
-        await Promise.allSettled(tasks)
+        if (failFast) {
+          await Promise.all(tasks)
+        } else {
+          await Promise.allSettled(tasks)
+        }
       }
     } catch (error) {
+      // 在failFast模式下发生错误时，立即清理资源
+      this.activeSemaphores.delete(semaphore)
+      semaphore.destroy()
+      
+      if (timeout && timeout > 0 && error instanceof Error && error.message.includes('timeout')) {
+        // 对于超时错误，总是抛出，不管 failFast 设置
+        throw error
+      }
       if (failFast) {
         throw error
       }
@@ -174,14 +201,16 @@ export class ConcurrentFeature {
     index: number,
     semaphore: Semaphore,
     collector: ResultCollector<T>,
-    failFast: boolean
+    failFast: boolean,
+    maxConcurrency: number
   ): Promise<void> {
-    const requestStartTime = Date.now()
-
+    let requestStartTime: number | undefined
+    
     try {
       await semaphore.acquire()
 
-      const currentConcurrency = this.stats.total - semaphore.available()
+      // 正确计算当前并发数：最大许可数 - 当前可用许可数
+      const currentConcurrency = maxConcurrency - semaphore.available()
       this.stats.maxConcurrencyUsed = Math.max(
         this.stats.maxConcurrencyUsed,
         currentConcurrency
@@ -194,6 +223,8 @@ export class ConcurrentFeature {
         })
       )
 
+      // 在获取信号量后才开始计时，只计算实际请求执行时间
+      requestStartTime = Date.now()
       const data = await this.requestor.request<T>(config)
       const duration = Date.now() - requestStartTime
 
@@ -216,7 +247,11 @@ export class ConcurrentFeature {
 
       this.updateSuccessStats(duration)
     } catch (error) {
-      const duration = Date.now() - requestStartTime
+      // 如果在请求执行过程中出错，计算从请求开始到出错的时间
+      // 如果在获取信号量阶段出错，则requestStartTime未初始化，duration设为0
+      const duration = requestStartTime 
+        ? Date.now() - requestStartTime 
+        : 0
 
       console.error(
         LogFormatter.formatConcurrentLog('failed', index, this.stats.total, config.url, {
@@ -226,7 +261,7 @@ export class ConcurrentFeature {
       )
 
       if (failFast) {
-        semaphore.release()
+        // failFast模式下，直接抛出错误，信号量会在finally中释放
         throw error
       }
 
@@ -242,13 +277,15 @@ export class ConcurrentFeature {
 
       this.updateFailureStats(duration)
     } finally {
-      if (!failFast || collector.getResults()[index]?.success !== false) {
-        semaphore.release()
-      }
+      // 所有请求完成后都需要释放信号量，包括成功和失败的
+      semaphore.release()
     }
   }
 
   private awaitWithTimeout<T>(promise: Promise<T>, timeout: number): Promise<T> {
+    // 处理极大的超时值，避免Node.js溢出警告
+    const safeTimeout = timeout > 2147483647 ? 2147483647 : timeout
+    
     return new Promise<T>((resolve, reject) => {
       let settled = false
       const onResolve = (value: T) => {
@@ -264,8 +301,8 @@ export class ConcurrentFeature {
         reject(err)
       }
       const timer = setTimeout(
-        () => onReject(new Error(`Concurrent request timeout: ${timeout}ms`)),
-        timeout
+        () => onReject(new Error(`Concurrent request timeout after ${timeout}ms`)),
+        safeTimeout
       )
       promise.then(onResolve, onReject)
     })
@@ -372,7 +409,8 @@ export class ConcurrentFeature {
   } {
     const successful = results.filter((r) => r.success)
     const failed = results.filter((r) => !r.success)
-    const durations = results.map((r) => r.duration || 0).filter((d) => d > 0)
+    // 只统计成功请求的执行时间，失败请求的时间不计入统计
+    const durations = successful.map((r) => r.duration || 0).filter((d) => d > 0)
 
     return {
       total: results.length,
