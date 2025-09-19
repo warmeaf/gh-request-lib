@@ -266,6 +266,99 @@ export class RequestCore implements ConvenienceExecutor {
     return this.featureManager.hasConcurrentFailures(results)
   }
 
+  // ==================== 串行功能委托 ====================
+
+  /**
+   * 串行请求 - 处理带有 serialKey 的请求
+   */
+  async requestSerial<T>(config: RequestConfig, queueConfig?: any): Promise<T> {
+    return this.featureManager.requestSerial<T>(config, queueConfig)
+  }
+
+  /**
+   * 串行 GET 请求
+   */
+  async getSerial<T>(
+    url: string,
+    serialKey: string,
+    config?: Partial<RequestConfig>,
+    queueConfig?: any
+  ): Promise<T> {
+    return this.featureManager.getSerial<T>(url, serialKey, config, queueConfig)
+  }
+
+  /**
+   * 串行 POST 请求
+   */
+  async postSerial<T>(
+    url: string,
+    serialKey: string,
+    data?: any,
+    config?: Partial<RequestConfig>,
+    queueConfig?: any
+  ): Promise<T> {
+    return this.featureManager.postSerial<T>(url, serialKey, data, config, queueConfig)
+  }
+
+  /**
+   * 串行 PUT 请求
+   */
+  async putSerial<T>(
+    url: string,
+    serialKey: string,
+    data?: any,
+    config?: Partial<RequestConfig>,
+    queueConfig?: any
+  ): Promise<T> {
+    return this.featureManager.putSerial<T>(url, serialKey, data, config, queueConfig)
+  }
+
+  /**
+   * 串行 DELETE 请求
+   */
+  async deleteSerial<T>(
+    url: string,
+    serialKey: string,
+    config?: Partial<RequestConfig>,
+    queueConfig?: any
+  ): Promise<T> {
+    return this.featureManager.deleteSerial<T>(url, serialKey, config, queueConfig)
+  }
+
+  /**
+   * 串行 PATCH 请求
+   */
+  async patchSerial<T>(
+    url: string,
+    serialKey: string,
+    data?: any,
+    config?: Partial<RequestConfig>,
+    queueConfig?: any
+  ): Promise<T> {
+    return this.featureManager.patchSerial<T>(url, serialKey, data, config, queueConfig)
+  }
+
+  /**
+   * 清空指定串行队列
+   */
+  clearSerialQueue(serialKey: string): boolean {
+    return this.featureManager.clearSerialQueue(serialKey)
+  }
+
+  /**
+   * 清空所有串行队列
+   */
+  clearAllSerialQueues(): void {
+    this.featureManager.clearAllSerialQueues()
+  }
+
+  /**
+   * 获取串行请求统计信息
+   */
+  getSerialStats() {
+    return this.featureManager.getSerialStats()
+  }
+
   // ==================== 扩展便利方法委托 ====================
   
   // 内容类型特定方法

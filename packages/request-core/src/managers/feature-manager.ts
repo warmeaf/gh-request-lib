@@ -4,6 +4,7 @@ import { CacheFeature, CacheConfig } from '../features/cache'
 import { ConcurrentFeature, ConcurrentConfig, ConcurrentResult } from '../features/concurrent'
 import { IdempotentFeature } from '../features/idempotent'
 import { IdempotentConfig, IdempotentStats } from '../interface'
+import { SerialFeature, SerialConfig, SerialManagerStats } from '../features/serial'
 
 /**
  * @description 功能特性管理器
@@ -16,12 +17,14 @@ export class FeatureManager {
   private cacheFeature: CacheFeature
   private concurrentFeature: ConcurrentFeature
   private idempotentFeature: IdempotentFeature
+  private serialFeature: SerialFeature
 
   constructor(requestor: Requestor) {
     this.retryFeature = new RetryFeature(requestor)
     this.cacheFeature = new CacheFeature(requestor)
     this.concurrentFeature = new ConcurrentFeature(requestor)
     this.idempotentFeature = new IdempotentFeature(requestor)
+    this.serialFeature = new SerialFeature(requestor)
   }
 
   // ==================== 重试功能 ====================
@@ -219,6 +222,113 @@ export class FeatureManager {
     return this.idempotentFeature.getIdempotentStats()
   }
 
+  // ==================== 串行功能 ====================
+
+  /**
+   * 串行请求 - 处理带有 serialKey 的请求
+   */
+  async requestSerial<T>(config: RequestConfig, queueConfig?: SerialConfig): Promise<T> {
+    return this.serialFeature.requestSerial<T>(config, queueConfig)
+  }
+
+  /**
+   * 串行 GET 请求
+   */
+  async getSerial<T>(
+    url: string,
+    serialKey: string,
+    config?: Partial<RequestConfig>,
+    queueConfig?: SerialConfig
+  ): Promise<T> {
+    return this.serialFeature.getSerial<T>(url, serialKey, config, queueConfig)
+  }
+
+  /**
+   * 串行 POST 请求
+   */
+  async postSerial<T>(
+    url: string,
+    serialKey: string,
+    data?: any,
+    config?: Partial<RequestConfig>,
+    queueConfig?: SerialConfig
+  ): Promise<T> {
+    return this.serialFeature.postSerial<T>(url, serialKey, data, config, queueConfig)
+  }
+
+  /**
+   * 串行 PUT 请求
+   */
+  async putSerial<T>(
+    url: string,
+    serialKey: string,
+    data?: any,
+    config?: Partial<RequestConfig>,
+    queueConfig?: SerialConfig
+  ): Promise<T> {
+    return this.serialFeature.putSerial<T>(url, serialKey, data, config, queueConfig)
+  }
+
+  /**
+   * 串行 DELETE 请求
+   */
+  async deleteSerial<T>(
+    url: string,
+    serialKey: string,
+    config?: Partial<RequestConfig>,
+    queueConfig?: SerialConfig
+  ): Promise<T> {
+    return this.serialFeature.deleteSerial<T>(url, serialKey, config, queueConfig)
+  }
+
+  /**
+   * 串行 PATCH 请求
+   */
+  async patchSerial<T>(
+    url: string,
+    serialKey: string,
+    data?: any,
+    config?: Partial<RequestConfig>,
+    queueConfig?: SerialConfig
+  ): Promise<T> {
+    return this.serialFeature.patchSerial<T>(url, serialKey, data, config, queueConfig)
+  }
+
+  /**
+   * 获取串行请求统计信息
+   */
+  getSerialStats(): SerialManagerStats {
+    return this.serialFeature.getStats()
+  }
+
+  /**
+   * 获取指定队列的统计信息
+   */
+  getSerialQueueStats(serialKey: string) {
+    return this.serialFeature.getQueueStats(serialKey)
+  }
+
+  /**
+   * 清空指定串行队列
+   */
+  clearSerialQueue(serialKey: string): boolean {
+    return this.serialFeature.clearQueue(serialKey)
+  }
+
+  /**
+   * 清空所有串行队列
+   */
+  clearAllSerialQueues(): void {
+    this.serialFeature.clearAllQueues()
+  }
+
+  /**
+   * 获取串行功能实例 - 用于高级操作
+   */
+  getSerialFeature(): SerialFeature {
+    return this.serialFeature
+  }
+
   // ==================== 并发结果处理 ====================
 
   /**
@@ -319,7 +429,8 @@ export class FeatureManager {
     return {
       cache: await this.getCacheStats(),
       concurrent: this.getConcurrentStats(),
-      idempotent: this.getIdempotentStats()
+      idempotent: this.getIdempotentStats(),
+      serial: this.getSerialStats()
     }
   }
 
@@ -328,6 +439,7 @@ export class FeatureManager {
    */
   resetAll(): void {
     this.cacheFeature.clearCache()
+    this.serialFeature.clearAllQueues()
     // 重试功能无需重置
     // 并发功能会自动清理
   }
@@ -339,7 +451,8 @@ export class FeatureManager {
     await Promise.all([
       this.cacheFeature.destroy(),
       this.concurrentFeature.destroy(),
-      this.idempotentFeature.destroy()  // 新增这一行
+      this.idempotentFeature.destroy(),
+      Promise.resolve(this.serialFeature.destroy())
     ])
     // retryFeature 无需特殊销毁
   }
@@ -352,19 +465,24 @@ export class FeatureManager {
     hasCache: boolean
     hasConcurrent: boolean
     hasIdempotent: boolean
+    hasSerial: boolean
     cacheSize: number
     maxConcurrency?: number
+    serialQueues: number
   }> {
     const cacheStats = await this.getCacheStats()
     const concurrentStats = this.getConcurrentStats()
+    const serialStats = this.getSerialStats()
 
     return {
       hasRetry: !!this.retryFeature,
       hasCache: !!this.cacheFeature,
       hasConcurrent: !!this.concurrentFeature,
       hasIdempotent: !!this.idempotentFeature,
+      hasSerial: !!this.serialFeature,
       cacheSize: cacheStats.size,
-      maxConcurrency: concurrentStats.maxConcurrencyUsed
+      maxConcurrency: concurrentStats.maxConcurrencyUsed,
+      serialQueues: serialStats.totalQueues
     }
   }
 }

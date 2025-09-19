@@ -73,6 +73,8 @@ export interface RequestConfig {
   debug?: boolean // 启用调试模式
   tag?: string // 请求标签，便于调试和日志
   metadata?: Record<string, unknown> // 自定义元数据
+  // 串行请求
+  serialKey?: string // 串行请求标识，相同serialKey的请求将串行执行
 }
 
 /**
