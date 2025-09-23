@@ -273,7 +273,9 @@ export class CacheKeyGenerator {
 
     for (const key in headers) {
       const lowerKey = key.toLowerCase()
-      if (whitelist.includes(lowerKey)) {
+      // 如果没有白名单（includeAllHeaders=true），包含所有头部
+      // 如果有白名单，只包含在白名单中的头部
+      if (!whitelist || whitelist.includes(lowerKey)) {
         relevantHeaders.push(`${lowerKey}:${headers[key]}`)
       }
     }

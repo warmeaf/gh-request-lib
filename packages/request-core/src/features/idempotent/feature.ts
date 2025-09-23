@@ -48,9 +48,14 @@ export class IdempotentFeature {
     idempotentConfig: IdempotentConfig = {}
   ): Promise<T> {
     const startTime = Date.now()
-    this.stats.totalRequests++
 
     try {
+      // 验证配置
+      this.validateIdempotentConfig(idempotentConfig)
+
+      // 配置验证通过后才增加统计计数
+      this.stats.totalRequests++
+
       return await this.processIdempotentRequest<T>(config, idempotentConfig, startTime)
     } catch (error) {
       const responseTime = Date.now() - startTime
@@ -67,7 +72,6 @@ export class IdempotentFeature {
     idempotentConfig: IdempotentConfig,
     startTime: number
   ): Promise<T> {
-    this.validateIdempotentConfig(idempotentConfig)
     const processedConfig = this.prepareIdempotentConfig(idempotentConfig)
 
     const { idempotentKey, keyGenTime } = this.generateIdempotentKeyWithStats(
@@ -113,15 +117,21 @@ export class IdempotentFeature {
     const {
       ttl = DEFAULT_IDEMPOTENT_CONFIG.TTL,
       key,
-      includeHeaders = DEFAULT_IDEMPOTENT_CONFIG.DEFAULT_INCLUDE_HEADERS,
+      includeHeaders, // 不设置默认值，让后面逻辑处理
       includeAllHeaders = false,
       hashAlgorithm = 'fnv1a',
       onDuplicate,
     } = idempotentConfig
 
+    // 如果请求没有指定includeHeaders，则使用实例配置的headersWhitelist
+    let effectiveHeadersWhitelist = includeAllHeaders ? undefined : includeHeaders
+    if (!includeHeaders && !includeAllHeaders) {
+      effectiveHeadersWhitelist = this.cacheKeyConfig.headersWhitelist
+    }
+
     const keyGeneratorConfig: CacheKeyConfig = {
-      includeHeaders: includeAllHeaders || includeHeaders.length > 0,
-      headersWhitelist: includeAllHeaders ? undefined : includeHeaders,
+      includeHeaders: includeAllHeaders || (effectiveHeadersWhitelist?.length ?? 0) > 0,
+      headersWhitelist: effectiveHeadersWhitelist,
       hashAlgorithm,
     }
 
@@ -141,19 +151,20 @@ export class IdempotentFeature {
     keyConfig: CacheKeyConfig,
     customKey?: string
   ): { idempotentKey: string; keyGenTime: number } {
-    const keyGenStartTime = Date.now()
+    const keyGenStartTime = performance.now()
 
     try {
       const idempotentKey = customKey || generateIdempotentKey(config, this.cacheKeyConfig, keyConfig)
-      const keyGenTime = Date.now() - keyGenStartTime
+      const keyGenTime = performance.now() - keyGenStartTime
       return { idempotentKey, keyGenTime }
     } catch (_error) {
-      const keyGenTime = Date.now() - keyGenStartTime
+      const keyGenTime = performance.now() - keyGenStartTime
       const fallbackKey = generateFallbackKey(config)
       console.warn(
         `⚠️ [Idempotent] Key generation failed for ${config.method} ${config.url}, using fallback:`,
         {
           fallbackKey,
+          customKey,
         }
       )
       return { idempotentKey: fallbackKey, keyGenTime }
@@ -188,6 +199,9 @@ export class IdempotentFeature {
   ): Promise<T> {
     const existing = this.pendingRequests.get(execConfig.idempotentKey)
     if (existing) {
+      // 发现重复的并发请求，增加统计计数
+      this.updateStats({ incrementDuplicates: true, incrementPendingReused: true })
+
       const result = (await existing) as T
       const responseTime = Date.now() - execConfig.startTime
       this.updateStats({ responseTime })
@@ -206,16 +220,19 @@ export class IdempotentFeature {
 
     this.updateStats({ incrementNetworkRequests: true })
 
-    try {
-      const result = await requestPromise
-      deferred.resolve(result)
-      const responseTime = Date.now() - execConfig.startTime
-      this.updateStats({ responseTime })
-      return result
-    } catch (error) {
-      deferred.reject(error)
-      throw error
-    }
+  try {
+    const result = await requestPromise
+    deferred.resolve(result)
+    const responseTime = Date.now() - execConfig.startTime
+    this.updateStats({ responseTime })
+    return result
+  } catch (error) {
+    deferred.reject(error)
+    throw error
+  } finally {
+    // 确保无论成功还是失败都清理pending request
+    this.pendingRequests.delete(execConfig.idempotentKey)
+  }
   }
 
   /**
@@ -441,17 +458,20 @@ export class IdempotentFeature {
     ttl: number,
     keyGeneratorConfig: CacheKeyConfig
   ): Promise<T> {
-    try {
-      const result = await this.cacheFeature.requestWithCache<T>(config, {
-        ttl,
-        key: idempotentKey,
-        keyGenerator: keyGeneratorConfig,
-        clone: 'deep',
-      })
-      return result
-    } finally {
-      this.pendingRequests.delete(idempotentKey)
-    }
+    // 直接执行网络请求（缓存检查已在幂等层完成）
+    const result = await this.requestor.request<T>(config)
+
+    // 手动设置缓存
+    await this.cacheFeature.setCacheItem({
+      key: idempotentKey,
+      data: result,
+      ttl,
+      timestamp: Date.now(),
+      accessTime: Date.now(),
+      accessCount: 1,
+    })
+
+    return result
   }
 
   private enhanceError(error: unknown, config: RequestConfig, responseTime: number): RequestError {
