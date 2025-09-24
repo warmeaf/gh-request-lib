@@ -56,7 +56,20 @@ export class CacheFeature {
   private async incrementalCleanupIfNeeded(): Promise<void> {
     // 清理逻辑适用于所有存储类型，不仅仅是内存存储
     const now = Date.now()
-    const keys = await this.storageAdapter.getKeys()
+    let keys: string[] = []
+    try {
+      keys = await this.storageAdapter.getKeys()
+    } catch (error) {
+      // 获取键列表失败时，记录警告并跳过清理
+      console.warn(
+        LogFormatter.formatCacheLog('error', 'cleanup', {
+          'operation': 'get keys for cleanup',
+          'error': error instanceof Error ? error.message : 'Unknown error',
+          'status': 'cleanup skipped'
+        })
+      )
+      return
+    }
     
     // 对于很小的maxEntries，更积极地执行清理，不受时间间隔限制
     const isSmallMaxEntries = this.maxEntries <= 10
@@ -86,7 +99,20 @@ export class CacheFeature {
         })
       )
     }
-    const currentKeys = await this.storageAdapter.getKeys()
+    let currentKeys: string[] = []
+    try {
+      currentKeys = await this.storageAdapter.getKeys()
+    } catch (error) {
+      // 获取键列表失败时，记录警告并跳过LRU清理
+      console.warn(
+        LogFormatter.formatCacheLog('error', 'LRU cleanup', {
+          'operation': 'get keys for LRU',
+          'error': error instanceof Error ? error.message : 'Unknown error',
+          'status': 'LRU cleanup skipped'
+        })
+      )
+      return
+    }
     if (currentKeys.length > this.maxEntries) {
       const items = [] as any[]
       for (const key of currentKeys) {

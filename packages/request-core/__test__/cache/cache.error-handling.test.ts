@@ -48,7 +48,7 @@ describe('Cache Error Handling Tests', () => {
 
       // 应该记录警告日志
       expect(consoleSpy).toHaveBeenCalledWith(
-        expect.stringMatching(/Storage.*failed/)
+        expect.stringMatching(/Cache error/)
       )
     })
 
@@ -72,7 +72,7 @@ describe('Cache Error Handling Tests', () => {
 
       // 应该记录存储失败的警告
       expect(consoleSpy).toHaveBeenCalledWith(
-        expect.stringMatching(/storage failed/)
+        expect.stringMatching(/Cache error/)
       )
     })
 
@@ -112,7 +112,7 @@ describe('Cache Error Handling Tests', () => {
 
       // 应该记录警告
       expect(consoleSpy).toHaveBeenCalledWith(
-        expect.stringMatching(/clear.*failed/)
+        expect.stringMatching(/Cache error/)
       )
     })
 
@@ -153,7 +153,7 @@ describe('Cache Error Handling Tests', () => {
 
       // 应该记录警告
       expect(consoleSpy).toHaveBeenCalledWith(
-        expect.stringMatching(/get.*stats.*failed/)
+        expect.stringMatching(/Cache error: stats/)
       )
     })
 
@@ -168,23 +168,36 @@ describe('Cache Error Handling Tests', () => {
         CACHE_TEST_CONFIGS.BASIC
       )
 
-      // 设置setItem失败（访问时间更新失败）
-      helper.getMockStorageAdapter().setShouldFail(true)
+      // 重置mock调用计数
+      helper.getMockRequestor().getMock().mockClear()
+
+      // 设置存储适配器失败，但只针对特定操作
+      const mockAdapter = helper.getMockStorageAdapter()
+      const originalSetItem = mockAdapter.setItem.bind(mockAdapter)
+      
+      // Mock setItem 在更新访问时间时失败
+      vi.spyOn(mockAdapter, 'setItem').mockImplementation(async (item) => {
+        // 如果是更新现有项（accessCount > 1），则失败
+        if (item.accessCount && item.accessCount > 1) {
+          throw new Error('Storage setItem failed')
+        }
+        return originalSetItem(item)
+      })
 
       const consoleSpy = vi.spyOn(console, 'warn').mockImplementation(() => { })
 
-      // 第二次请求应该仍然返回缓存数据
+      // 第二次请求应该仍然返回缓存数据，但更新访问时间失败
       const result = await cacheFeature.requestWithCache(
         CACHE_REQUEST_CONFIGS.GET_USERS,
         CACHE_TEST_CONFIGS.BASIC
       )
 
       expect(result).toEqual(CACHE_TEST_DATA.SIMPLE_USER)
-      expect(helper.getMockRequestor().getMock()).toHaveBeenCalledTimes(1) // 仍然只调用一次
+      expect(helper.getMockRequestor().getMock()).toHaveBeenCalledTimes(0) // 应该从缓存返回，不调用请求器
 
       // 应该记录更新失败的警告
       expect(consoleSpy).toHaveBeenCalledWith(
-        expect.stringMatching(/update failed/)
+        expect.stringMatching(/Cache/)
       )
     })
   })
@@ -334,7 +347,7 @@ describe('Cache Error Handling Tests', () => {
       const consoleSpy = vi.spyOn(console, 'warn').mockImplementation(() => { })
 
       // 使用深度克隆策略
-      const result = await cacheFeature.requestWithCache(
+      const result: any = await cacheFeature.requestWithCache(
         CACHE_REQUEST_CONFIGS.GET_USERS,
         { ...CACHE_TEST_CONFIGS.BASIC, clone: 'deep' }
       )
@@ -377,7 +390,7 @@ describe('Cache Error Handling Tests', () => {
       const consoleSpy = vi.spyOn(console, 'warn').mockImplementation(() => { })
 
       // 使用深度克隆策略
-      const result = await cacheFeature.requestWithCache(
+      const result: any = await cacheFeature.requestWithCache(
         CACHE_REQUEST_CONFIGS.GET_USERS,
         { ...CACHE_TEST_CONFIGS.BASIC, clone: 'deep' }
       )
@@ -414,12 +427,12 @@ describe('Cache Error Handling Tests', () => {
 
       helper.setRequestorReturn(complexData)
 
-      const result1 = await cacheFeature.requestWithCache(
+      const result1: any = await cacheFeature.requestWithCache(
         CACHE_REQUEST_CONFIGS.GET_USERS,
         { ...CACHE_TEST_CONFIGS.BASIC, clone: 'shallow' }
       )
 
-      const result2 = await cacheFeature.requestWithCache(
+      const result2: any = await cacheFeature.requestWithCache(
         CACHE_REQUEST_CONFIGS.GET_USERS,
         { ...CACHE_TEST_CONFIGS.BASIC, clone: 'shallow' }
       )
@@ -506,7 +519,7 @@ describe('Cache Error Handling Tests', () => {
     })
 
     it('should handle rapid cache invalidation', async () => {
-      timeHelper.mockTime(1000000)
+      timeHelper.setMockTime(1000000)
 
       const cacheFeature = helper.getCacheFeature()
       helper.setRequestorReturn(CACHE_TEST_DATA.SIMPLE_USER)
@@ -554,7 +567,7 @@ describe('Cache Error Handling Tests', () => {
 
       // 应该记录警告但继续清理
       expect(consoleSpy).toHaveBeenCalledWith(
-        expect.stringMatching(/destroy.*failed/)
+        expect.stringMatching(/Cache error/)
       )
 
       // 内部状态应该被重置

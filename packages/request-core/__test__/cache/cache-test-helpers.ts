@@ -316,6 +316,13 @@ export class TimeTestHelper {
   }
 
   /**
+   * 模拟时间 (别名方法，为了兼容性)
+   */
+  mockTime(time?: number) {
+    this.setMockTime(time)
+  }
+
+  /**
    * 前进时间
    */
   advanceTime(ms: number) {
