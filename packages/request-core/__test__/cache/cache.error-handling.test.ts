@@ -29,13 +29,13 @@ describe('Cache Error Handling Tests', () => {
     it('should handle storage getItem failures gracefully', async () => {
       const cacheFeature = helper.getCacheFeature()
       helper.setRequestorReturn(CACHE_TEST_DATA.SIMPLE_USER)
-      
+
       // 设置存储适配器getItem失败
       const mockAdapter = helper.getMockStorageAdapter()
       mockAdapter.setShouldFail(true)
-      
+
       // Mock console.warn to verify warning is logged
-      const consoleSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+      const consoleSpy = vi.spyOn(console, 'warn').mockImplementation(() => { })
 
       // 请求应该仍然成功，但会记录警告并视为缓存未命中
       const result = await cacheFeature.requestWithCache(
@@ -45,7 +45,7 @@ describe('Cache Error Handling Tests', () => {
 
       expect(result).toEqual(CACHE_TEST_DATA.SIMPLE_USER)
       expect(helper.getMockRequestor().getMock()).toHaveBeenCalledTimes(1)
-      
+
       // 应该记录警告日志
       expect(consoleSpy).toHaveBeenCalledWith(
         expect.stringMatching(/Storage.*failed/)
@@ -55,12 +55,12 @@ describe('Cache Error Handling Tests', () => {
     it('should handle storage setItem failures gracefully', async () => {
       const cacheFeature = helper.getCacheFeature()
       helper.setRequestorReturn(CACHE_TEST_DATA.SIMPLE_USER)
-      
+
       // 设置存储适配器setItem失败
       const mockAdapter = helper.getMockStorageAdapter()
       mockAdapter.setShouldFail(true)
-      
-      const consoleSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+
+      const consoleSpy = vi.spyOn(console, 'warn').mockImplementation(() => { })
 
       // 请求应该成功，但缓存存储失败
       const result = await cacheFeature.requestWithCache(
@@ -69,7 +69,7 @@ describe('Cache Error Handling Tests', () => {
       )
 
       expect(result).toEqual(CACHE_TEST_DATA.SIMPLE_USER)
-      
+
       // 应该记录存储失败的警告
       expect(consoleSpy).toHaveBeenCalledWith(
         expect.stringMatching(/storage failed/)
@@ -79,7 +79,7 @@ describe('Cache Error Handling Tests', () => {
     it('should handle storage removeItem failures during clearCache', async () => {
       const cacheFeature = helper.getCacheFeature()
       helper.setRequestorReturn(CACHE_TEST_DATA.SIMPLE_USER)
-      
+
       // 先添加缓存项
       helper.getMockStorageAdapter().setShouldFail(false)
       await cacheFeature.requestWithCache(
@@ -89,27 +89,27 @@ describe('Cache Error Handling Tests', () => {
 
       // 设置removeItem失败
       helper.getMockStorageAdapter().setShouldFail(true)
-      
-      const consoleSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+
+      const consoleSpy = vi.spyOn(console, 'warn').mockImplementation(() => { })
 
       // 清除缓存操作应该不抛出错误
       await expect(cacheFeature.clearCache()).resolves.toBeUndefined()
-      
+
       // 应该记录警告
       expect(consoleSpy).toHaveBeenCalled()
     })
 
     it('should handle storage clear failures', async () => {
       const cacheFeature = helper.getCacheFeature()
-      
+
       // 设置clear失败
       helper.getMockStorageAdapter().setShouldFail(true)
-      
-      const consoleSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+
+      const consoleSpy = vi.spyOn(console, 'warn').mockImplementation(() => { })
 
       // 清除所有缓存应该不抛出错误
       await expect(cacheFeature.clearCache()).resolves.toBeUndefined()
-      
+
       // 应该记录警告
       expect(consoleSpy).toHaveBeenCalledWith(
         expect.stringMatching(/clear.*failed/)
@@ -119,11 +119,11 @@ describe('Cache Error Handling Tests', () => {
     it('should handle storage getKeys failures during cleanup', async () => {
       const cacheFeature = helper.getCacheFeature()
       helper.setRequestorReturn(CACHE_TEST_DATA.SIMPLE_USER)
-      
+
       // 设置getKeys失败
       helper.getMockStorageAdapter().setShouldFail(true)
-      
-      const consoleSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+
+      const consoleSpy = vi.spyOn(console, 'warn').mockImplementation(() => { })
 
       // 请求应该仍然成功
       const result = await cacheFeature.requestWithCache(
@@ -132,25 +132,25 @@ describe('Cache Error Handling Tests', () => {
       )
 
       expect(result).toEqual(CACHE_TEST_DATA.SIMPLE_USER)
-      
+
       // 可能会记录关于获取键失败的警告
       // 具体行为取决于实现细节
     })
 
     it('should handle storage getStats failures', async () => {
       const cacheFeature = helper.getCacheFeature()
-      
+
       // 设置getStats失败
       helper.getMockStorageAdapter().setShouldFail(true)
-      
-      const consoleSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+
+      const consoleSpy = vi.spyOn(console, 'warn').mockImplementation(() => { })
 
       // 获取统计信息应该返回默认值
       const stats = await cacheFeature.getCacheStats()
-      
+
       expect(stats).toBeDefined()
       expect(stats.size).toBe(0) // 默认值
-      
+
       // 应该记录警告
       expect(consoleSpy).toHaveBeenCalledWith(
         expect.stringMatching(/get.*stats.*failed/)
@@ -160,7 +160,7 @@ describe('Cache Error Handling Tests', () => {
     it('should continue operation after storage access time update failure', async () => {
       const cacheFeature = helper.getCacheFeature()
       helper.setRequestorReturn(CACHE_TEST_DATA.SIMPLE_USER)
-      
+
       // 先成功添加缓存项
       helper.getMockStorageAdapter().setShouldFail(false)
       await cacheFeature.requestWithCache(
@@ -170,8 +170,8 @@ describe('Cache Error Handling Tests', () => {
 
       // 设置setItem失败（访问时间更新失败）
       helper.getMockStorageAdapter().setShouldFail(true)
-      
-      const consoleSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+
+      const consoleSpy = vi.spyOn(console, 'warn').mockImplementation(() => { })
 
       // 第二次请求应该仍然返回缓存数据
       const result = await cacheFeature.requestWithCache(
@@ -181,7 +181,7 @@ describe('Cache Error Handling Tests', () => {
 
       expect(result).toEqual(CACHE_TEST_DATA.SIMPLE_USER)
       expect(helper.getMockRequestor().getMock()).toHaveBeenCalledTimes(1) // 仍然只调用一次
-      
+
       // 应该记录更新失败的警告
       expect(consoleSpy).toHaveBeenCalledWith(
         expect.stringMatching(/update failed/)
@@ -194,17 +194,17 @@ describe('Cache Error Handling Tests', () => {
       const cacheFeature = helper.getCacheFeature()
       helper.setRequestorReturn(CACHE_TEST_DATA.SIMPLE_USER)
 
-      // 创建会导致键生成失败的配置
-      const badKeyConfig = {
-        maxKeyLength: -1, // 无效的最大长度
-        includeHeaders: true
+      // 创建会导致键生成失败的配置 - 使用无效的自定义键
+      const configWithInvalidKey = {
+        ...CACHE_TEST_CONFIGS.BASIC,
+        key: null as any // 无效的自定义键
       }
 
       // 应该抛出RequestError
       await expect(
         cacheFeature.requestWithCache(
           CACHE_REQUEST_CONFIGS.GET_USERS,
-          { ...CACHE_TEST_CONFIGS.BASIC, keyGenerator: badKeyConfig }
+          configWithInvalidKey
         )
       ).rejects.toThrow(RequestError)
     })
@@ -255,7 +255,7 @@ describe('Cache Error Handling Tests', () => {
   describe('网络请求失败场景', () => {
     it('should not cache failed requests', async () => {
       const cacheFeature = helper.getCacheFeature()
-      
+
       const requestError = new Error('Network request failed')
       helper.setRequestorError(requestError)
 
@@ -282,7 +282,7 @@ describe('Cache Error Handling Tests', () => {
 
     it('should handle timeout errors', async () => {
       const cacheFeature = helper.getCacheFeature()
-      
+
       const timeoutError = new Error('Request timeout')
       helper.setRequestorError(timeoutError)
 
@@ -300,7 +300,7 @@ describe('Cache Error Handling Tests', () => {
 
     it('should handle request cancellation', async () => {
       const cacheFeature = helper.getCacheFeature()
-      
+
       const cancelError = new Error('Request cancelled')
       cancelError.name = 'AbortError'
       helper.setRequestorError(cancelError)
@@ -321,17 +321,17 @@ describe('Cache Error Handling Tests', () => {
   describe('数据克隆错误处理', () => {
     it('should handle structuredClone failures gracefully', async () => {
       const cacheFeature = helper.getCacheFeature()
-      
+
       // 创建不能被structuredClone处理的数据
       const unclonableData = {
         user: CACHE_TEST_DATA.SIMPLE_USER,
-        func: () => {}, // 函数不能被structuredClone
+        func: () => { }, // 函数不能被structuredClone
         symbol: Symbol('test') // Symbol也不能被克隆
       }
 
       helper.setRequestorReturn(unclonableData)
 
-      const consoleSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+      const consoleSpy = vi.spyOn(console, 'warn').mockImplementation(() => { })
 
       // 使用深度克隆策略
       const result = await cacheFeature.requestWithCache(
@@ -342,7 +342,7 @@ describe('Cache Error Handling Tests', () => {
       // 应该回退到JSON克隆或返回原始数据
       expect(result).toBeDefined()
       expect(result.user).toEqual(CACHE_TEST_DATA.SIMPLE_USER)
-      
+
       // 可能会记录克隆失败的警告
       // expect(consoleSpy).toHaveBeenCalledWith(
       //   expect.stringMatching(/structuredClone failed/)
@@ -351,7 +351,7 @@ describe('Cache Error Handling Tests', () => {
 
     it('should handle JSON clone failures gracefully', async () => {
       const cacheFeature = helper.getCacheFeature()
-      
+
       // 创建不能JSON序列化的数据
       const unjsonableData = {
         user: CACHE_TEST_DATA.SIMPLE_USER,
@@ -360,15 +360,21 @@ describe('Cache Error Handling Tests', () => {
         undefined: undefined
       }
 
-      // Mock JSON.stringify to fail
+      // Mock structuredClone to fail first, then JSON.stringify to fail
+      const originalStructuredClone = global.structuredClone
       const originalStringify = JSON.stringify
+
+      vi.spyOn(global, 'structuredClone' as any).mockImplementation(() => {
+        throw new Error('structuredClone failed')
+      })
+
       vi.spyOn(JSON, 'stringify').mockImplementation(() => {
         throw new Error('JSON stringify failed')
       })
 
       helper.setRequestorReturn(unjsonableData)
-      
-      const consoleSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+
+      const consoleSpy = vi.spyOn(console, 'warn').mockImplementation(() => { })
 
       // 使用深度克隆策略
       const result = await cacheFeature.requestWithCache(
@@ -378,19 +384,21 @@ describe('Cache Error Handling Tests', () => {
 
       // 应该返回原始数据
       expect(result).toBe(unjsonableData)
-      
+
       // 应该记录JSON克隆失败的警告
       expect(consoleSpy).toHaveBeenCalledWith(
-        expect.stringMatching(/JSON clone failed/)
+        expect.stringMatching(/JSON clone failed/),
+        expect.any(Error)
       )
 
-      // 恢复原始JSON.stringify
+      // 恢复原始函数
+      global.structuredClone = originalStructuredClone
       JSON.stringify = originalStringify
     })
 
     it('should handle edge cases in shallow clone', async () => {
       const cacheFeature = helper.getCacheFeature()
-      
+
       // 测试各种数据类型的浅克隆
       const complexData = {
         null: null,
@@ -431,7 +439,7 @@ describe('Cache Error Handling Tests', () => {
 
       // 创建非常长的URL
       const longUrl = 'https://api.example.com/users?' + 'a'.repeat(10000)
-      
+
       const configWithLongUrl = {
         ...CACHE_REQUEST_CONFIGS.GET_USERS,
         url: longUrl
@@ -460,7 +468,7 @@ describe('Cache Error Handling Tests', () => {
 
       // 立即再次请求，由于TTL为0，应该重新请求
       helper.setRequestorReturn({ ...CACHE_TEST_DATA.SIMPLE_USER, name: 'Updated' })
-      
+
       const result2 = await cacheFeature.requestWithCache(
         CACHE_REQUEST_CONFIGS.GET_USERS,
         { ...CACHE_TEST_CONFIGS.BASIC, ttl: 0 }
@@ -481,13 +489,13 @@ describe('Cache Error Handling Tests', () => {
       }))
 
       // 并发添加大量缓存项
-      const promises = requests.map(request => 
+      const promises = requests.map(request =>
         cacheFeature.requestWithCache(request, CACHE_TEST_CONFIGS.BASIC)
       )
 
       // 所有请求都应该成功完成
       const results = await Promise.all(promises)
-      
+
       results.forEach(result => {
         expect(result).toEqual(CACHE_TEST_DATA.LARGE_ARRAY)
       })
@@ -499,7 +507,7 @@ describe('Cache Error Handling Tests', () => {
 
     it('should handle rapid cache invalidation', async () => {
       timeHelper.mockTime(1000000)
-      
+
       const cacheFeature = helper.getCacheFeature()
       helper.setRequestorReturn(CACHE_TEST_DATA.SIMPLE_USER)
 
@@ -512,7 +520,7 @@ describe('Cache Error Handling Tests', () => {
       // 快速推进时间多次
       for (let i = 0; i < 10; i++) {
         timeHelper.advanceTime(200)
-        
+
         await cacheFeature.requestWithCache(
           CACHE_REQUEST_CONFIGS.GET_USERS,
           CACHE_TEST_CONFIGS.SHORT_TTL
@@ -538,12 +546,12 @@ describe('Cache Error Handling Tests', () => {
 
       // 设置destroy失败
       helper.getMockStorageAdapter().setShouldFail(true)
-      
-      const consoleSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+
+      const consoleSpy = vi.spyOn(console, 'warn').mockImplementation(() => { })
 
       // destroy应该不抛出错误并重置状态
       await expect(cacheFeature.destroy()).resolves.toBeUndefined()
-      
+
       // 应该记录警告但继续清理
       expect(consoleSpy).toHaveBeenCalledWith(
         expect.stringMatching(/destroy.*failed/)
@@ -556,11 +564,11 @@ describe('Cache Error Handling Tests', () => {
 
     it('should ensure cleanup even with multiple failures', async () => {
       const cacheFeature = helper.getCacheFeature()
-      
+
       // 设置所有存储操作都失败
       helper.getMockStorageAdapter().setShouldFail(true)
-      
-      const consoleSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+
+      const consoleSpy = vi.spyOn(console, 'warn').mockImplementation(() => { })
 
       // 多次尝试各种操作
       await expect(cacheFeature.clearCache('some-key')).resolves.toBeUndefined()
