@@ -17,6 +17,9 @@
     "sourceMap": true,
     "outDir": "./dist",
 
+    /* Build optimization */
+    "incremental": true,
+
     /* Browser compatibility */
     "esModuleInterop": true,
     "allowSyntheticDefaultImports": true,

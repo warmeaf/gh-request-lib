@@ -10,16 +10,24 @@ export default defineConfig({
       formats: ['es', 'umd', 'iife']
     },
     rollupOptions: {
-      // 确保外部化处理那些你不想打包进库的依赖
-      external: [],
+      // 外部化处理不想打包进库的依赖
+      external: ['axios'],
       output: {
-        // 在 UMD 构建模式下为这些外部化的依赖提供一个全局变量
-        globals: {}
+        // 为外部化的依赖提供全局变量
+        globals: {
+          'axios': 'axios'
+        },
+        // 优化分包策略
+        manualChunks: undefined
       }
     },
     sourcemap: true,
     minify: 'terser',
-    target: 'es2020'
+    target: 'es2020',
+    // 构建优化
+    chunkSizeWarningLimit: 500,
+    reportCompressedSize: false, // 提升构建速度
+    emptyOutDir: true
   },
   resolve: {
     alias: {

@@ -5,10 +5,16 @@
   "description": "分层架构的前端请求库 - Monorepo",
   "type": "module",
   "scripts": {
-    "build": "pnpm -r run build",
-    "build:browser": "pnpm -r run build && vite build",
-    "dev": "pnpm -r run dev",
-    "clean": "pnpm -r run clean",
+    "build": "pnpm run build:packages && pnpm run build:browser",
+    "build:clean": "pnpm run clean && pnpm run build",
+    "build:packages": "pnpm exec tsc -b --verbose",
+    "build:incremental": "pnpm exec tsc -b",
+    "build:browser": "pnpm exec vite build",
+    "build:analyze": "pnpm run build:browser -- --mode analyze",
+    "dev": "pnpm exec tsc -b --watch",
+    "dev:packages": "pnpm -r --parallel run dev",
+    "clean": "pnpm -r run clean && rimraf tsconfig.tsbuildinfo",
+    "preinstall": "npx only-allow pnpm",
     "install-deps": "pnpm install",
     "test": "vitest",
     "test:run": "vitest run",
@@ -18,9 +24,10 @@
   },
   "devDependencies": {
     "@types/node": "^24.3.0",
-    "rimraf": "^5.0.0",
+    "only-allow": "^1.2.1",
+    "rimraf": "^6.0.1",
     "typescript": "~5.9.2",
-    "vite": "^5.0.0",
+    "vite": "^7.1.7",
     "vitest": "^3.2.4"
   },
   "engines": {
