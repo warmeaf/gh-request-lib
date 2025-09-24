@@ -98,7 +98,7 @@ export interface CacheKeyStrategy {
    * @returns 缓存键
    */
   generateKey(config: any): string
-  
+
   /**
    * 验证缓存键
    * @param key 缓存键
@@ -116,7 +116,7 @@ export class UrlPathKeyStrategy implements CacheKeyStrategy {
     if (!config || !config.url) {
       throw new Error('URL is required for UrlPathKeyStrategy')
     }
-    
+
     // 提取URL路径部分
     try {
       const url = new URL(config.url, typeof window !== 'undefined' ? window.location.origin : 'http://localhost')
@@ -127,7 +127,7 @@ export class UrlPathKeyStrategy implements CacheKeyStrategy {
       return `path:${path}`
     }
   }
-  
+
   validateKey(key: string): boolean {
     return key.startsWith('path:')
   }
@@ -142,10 +142,10 @@ export class FullUrlKeyStrategy implements CacheKeyStrategy {
     if (!config || !config.url) {
       throw new Error('URL is required for FullUrlKeyStrategy')
     }
-    
+
     return `url:${config.url}`
   }
-  
+
   validateKey(key: string): boolean {
     return key.startsWith('url:')
   }
@@ -160,23 +160,23 @@ export class ParameterizedKeyStrategy implements CacheKeyStrategy {
     if (!config || !config.url) {
       throw new Error('URL is required for ParameterizedKeyStrategy')
     }
-    
+
     const { url, params } = config
     const baseKey = `param:${url}`
-    
+
     if (!params || Object.keys(params).length === 0) {
       return baseKey
     }
-    
+
     // 对参数进行排序以确保一致性
     const sortedParams = Object.keys(params)
       .sort()
       .map(key => `${key}=${params[key]}`)
       .join('&')
-    
+
     return `${baseKey}?${sortedParams}`
   }
-  
+
   validateKey(key: string): boolean {
     return key.startsWith('param:')
   }
@@ -192,11 +192,11 @@ export class CustomKeyStrategy implements CacheKeyStrategy {
       throw new Error('keyGenerator must be a function')
     }
   }
-  
+
   generateKey(config: any): string {
     return this.keyGenerator(config)
   }
-  
+
   validateKey(key: string): boolean {
     return typeof key === 'string' && key.length > 0
   }
@@ -213,7 +213,7 @@ export interface CacheInvalidationPolicy {
    * @returns 是否应该失效
    */
   shouldInvalidate(item: any, now: number): boolean
-  
+
   /**
    * 在访问缓存项时更新其状态
    * @param item 缓存项
@@ -228,12 +228,27 @@ export interface CacheInvalidationPolicy {
  */
 export class LRUInvalidationPolicy implements CacheInvalidationPolicy {
   shouldInvalidate(item: any, now: number): boolean {
+    // 空值检查：null 或 undefined 的项目应该被认为是无效的
+    if (!item) {
+      return true
+    }
+
+    // 检查必要属性是否存在
+    if (typeof item.timestamp !== 'number' || typeof item.ttl !== 'number') {
+      return true
+    }
+
     // LRU策略本身不主动失效项，只在容量满时淘汰最久未使用的项
     // 这里检查是否超过TTL
     return now - item.timestamp >= item.ttl
   }
-  
+
   updateItemOnAccess(item: any, now: number): void {
+    // 空值检查：如果项目为空，直接返回
+    if (!item) {
+      return
+    }
+
     // 更新最后访问时间
     item.accessTime = now
     // 增加访问计数
@@ -251,7 +266,7 @@ export class FIFOInvalidationPolicy implements CacheInvalidationPolicy {
     // 这里检查是否超过TTL
     return now - item.timestamp >= item.ttl
   }
-  
+
   updateItemOnAccess(item: any, now: number): void {
     // FIFO策略在访问时不需要更新状态
     // 保持原有的加入时间
@@ -267,7 +282,7 @@ export class TimeBasedInvalidationPolicy implements CacheInvalidationPolicy {
     // 检查是否超过TTL
     return now - item.timestamp >= item.ttl
   }
-  
+
   updateItemOnAccess(item: any, now: number): void {
     // 基于时间的策略在访问时不需要更新状态
   }
@@ -286,11 +301,11 @@ export class CustomInvalidationPolicy implements CacheInvalidationPolicy {
       throw new Error('invalidationChecker must be a function')
     }
   }
-  
+
   shouldInvalidate(item: any, now: number): boolean {
     return this.invalidationChecker(item, now)
   }
-  
+
   updateItemOnAccess(item: any, now: number): void {
     if (this.accessUpdater) {
       this.accessUpdater(item, now)
