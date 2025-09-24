@@ -1,8 +1,8 @@
 import { vi, expect } from 'vitest'
 import { CacheFeature } from '../../src/features/cache'
 import { CacheConfig } from '../../src/features/cache/types'
-import { StorageAdapter, MemoryStorageAdapter, StorageType } from '../../src/cache'
-import { createMockRequestor, MockRequestor, TEST_URLS, MOCK_RESPONSES } from '../test-helpers'
+import { StorageAdapter, StorageType } from '../../src/cache'
+import { createMockRequestor, MockRequestor, TEST_URLS } from '../test-helpers'
 import { RequestConfig } from '../../src/interface'
 
 /**
@@ -21,7 +21,7 @@ export class MockStorageAdapter implements StorageAdapter {
     isAvailable: vi.fn()
   }
 
-  constructor(private shouldFail = false) {}
+  constructor(private shouldFail = false) { }
 
   async getItem(key: string): Promise<any | null> {
     this.mockFunctions.getItem(key)
@@ -215,12 +215,12 @@ export const CACHE_TEST_DATA = {
     { id: 2, name: 'Jane', email: 'jane@example.com' }
   ],
   NESTED_OBJECT: {
-    user: { 
-      id: 1, 
-      profile: { 
-        name: 'John', 
-        settings: { theme: 'dark', lang: 'en' } 
-      } 
+    user: {
+      id: 1,
+      profile: {
+        name: 'John',
+        settings: { theme: 'dark', lang: 'en' }
+      }
     },
     meta: { created: new Date('2024-01-01'), version: 1.0 }
   },
@@ -236,26 +236,26 @@ export const CACHE_TEST_CONFIGS = {
     ttl: 300000, // 5分钟
     clone: 'none' as const
   } satisfies CacheConfig,
-  
+
   // 短时间TTL
   SHORT_TTL: {
     ttl: 1000, // 1秒
     clone: 'shallow' as const
   } satisfies CacheConfig,
-  
+
   // 深度克隆
   DEEP_CLONE: {
     ttl: 300000,
     clone: 'deep' as const
   } satisfies CacheConfig,
-  
+
   // 自定义键
   CUSTOM_KEY: {
     ttl: 300000,
     key: 'custom-test-key',
     clone: 'none' as const
   } satisfies CacheConfig,
-  
+
   // 内存存储
   MEMORY_STORAGE: {
     ttl: 300000,
@@ -272,18 +272,18 @@ export const CACHE_REQUEST_CONFIGS = {
     url: TEST_URLS.USERS,
     method: 'GET' as const
   } satisfies RequestConfig,
-  
+
   GET_USER_BY_ID: {
     url: `${TEST_URLS.USERS}/1`,
     method: 'GET' as const
   } satisfies RequestConfig,
-  
+
   POST_USER: {
     url: TEST_URLS.USERS,
     method: 'POST' as const,
     data: { name: 'New User', email: 'new@example.com' }
   } satisfies RequestConfig,
-  
+
   GET_WITH_HEADERS: {
     url: TEST_URLS.USERS,
     method: 'GET' as const,
@@ -292,7 +292,7 @@ export const CACHE_REQUEST_CONFIGS = {
       'Content-Type': 'application/json'
     }
   } satisfies RequestConfig,
-  
+
   GET_WITH_PARAMS: {
     url: TEST_URLS.USERS,
     method: 'GET' as const,
@@ -313,13 +313,6 @@ export class TimeTestHelper {
   setMockTime(time?: number) {
     this.mockTime = time || Date.now()
     global.Date.now = vi.fn(() => this.mockTime)
-  }
-
-  /**
-   * 模拟时间 (别名方法，为了兼容性)
-   */
-  mockTime(time?: number) {
-    this.setMockTime(time)
   }
 
   /**
@@ -393,7 +386,7 @@ export function sleep(ms: number): Promise<void> {
 /**
  * 验证控制台日志的断言函数
  */
-export function expectConsoleLog(type: 'log' | 'warn' | 'error', expectedPattern: string | RegExp) {
+export function expectConsoleLog(type: 'log' | 'warn' | 'error') {
   const spy = vi.spyOn(console, type)
   return {
     toHaveBeenCalledWith: (expectedMessage?: string | RegExp) => {

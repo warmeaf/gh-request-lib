@@ -5,8 +5,7 @@ import {
   CACHE_TEST_DATA,
   CACHE_TEST_CONFIGS,
   CACHE_REQUEST_CONFIGS,
-  expectCacheStats,
-  sleep
+  expectCacheStats
 } from './cache-test-helpers'
 
 describe('Cache Basic Functionality', () => {
@@ -228,7 +227,7 @@ describe('Cache Basic Functionality', () => {
       // 浅克隆：顶层对象不同，但嵌套对象相同
       expect(result1).not.toBe(result2)
       expect(result1).toEqual(result2)
-        expect((result1 as any).user).toBe((result2 as any).user) // 嵌套对象应该是同一个引用
+      expect((result1 as any).user).toBe((result2 as any).user) // 嵌套对象应该是同一个引用
     })
 
     it('should return deep cloned data with deep clone strategy', async () => {
@@ -248,8 +247,8 @@ describe('Cache Basic Functionality', () => {
       // 深克隆：所有层级都应该是不同的对象
       expect(result1).not.toBe(result2)
       expect(result1).toEqual(result2)
-        expect((result1 as any).user).not.toBe((result2 as any).user) // 嵌套对象也应该是不同的引用
-        expect((result1 as any).user.profile).not.toBe((result2 as any).user.profile)
+      expect((result1 as any).user).not.toBe((result2 as any).user) // 嵌套对象也应该是不同的引用
+      expect((result1 as any).user.profile).not.toBe((result2 as any).user.profile)
     })
 
     it('should handle array data correctly with different clone strategies', async () => {
@@ -268,7 +267,7 @@ describe('Cache Basic Functionality', () => {
       )
 
       expect(result1).not.toBe(result2) // 不同的数组实例
-      expect(result1[0]).toBe(result2[0]) // 但数组元素是相同的引用
+      expect((result1 as any)[0]).toBe((result2 as any)[0]) // 但数组元素是相同的引用
     })
   })
 

@@ -2,11 +2,9 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import {
   createCacheTestHelper,
   createTimeTestHelper,
-  MockStorageAdapter,
   CACHE_TEST_DATA,
   CACHE_TEST_CONFIGS,
-  CACHE_REQUEST_CONFIGS,
-  expectConsoleLog
+  CACHE_REQUEST_CONFIGS
 } from './cache-test-helpers'
 import { RequestError } from '../../src/interface'
 
@@ -199,6 +197,8 @@ describe('Cache Error Handling Tests', () => {
       expect(consoleSpy).toHaveBeenCalledWith(
         expect.stringMatching(/Cache/)
       )
+      
+      consoleSpy.mockRestore()
     })
   })
 
@@ -403,6 +403,8 @@ describe('Cache Error Handling Tests', () => {
         expect.stringMatching(/JSON clone failed/),
         expect.any(Error)
       )
+      
+      consoleSpy.mockRestore()
 
       // 恢复原始函数
       global.structuredClone = originalStructuredClone
