@@ -172,7 +172,7 @@ describe('Cache Error Handling Tests', () => {
       // 设置存储适配器失败，但只针对特定操作
       const mockAdapter = helper.getMockStorageAdapter()
       const originalSetItem = mockAdapter.setItem.bind(mockAdapter)
-      
+
       // Mock setItem 在更新访问时间时失败
       vi.spyOn(mockAdapter, 'setItem').mockImplementation(async (item) => {
         // 如果是更新现有项（accessCount > 1），则失败
@@ -197,7 +197,7 @@ describe('Cache Error Handling Tests', () => {
       expect(consoleSpy).toHaveBeenCalledWith(
         expect.stringMatching(/Cache/)
       )
-      
+
       consoleSpy.mockRestore()
     })
   })
@@ -403,7 +403,7 @@ describe('Cache Error Handling Tests', () => {
         expect.stringMatching(/JSON clone failed/),
         expect.any(Error)
       )
-      
+
       consoleSpy.mockRestore()
 
       // 恢复原始函数
@@ -490,7 +490,7 @@ describe('Cache Error Handling Tests', () => {
       )
 
       // 应该是更新后的数据
-      expect(result2.name).toBe('Updated')
+      expect((result2 as any).name).toBe('Updated')
     })
 
     it('should handle memory pressure scenarios', async () => {

@@ -16,8 +16,8 @@ describe('Cache Basic Functionality', () => {
     helper = createCacheTestHelper()
     timeHelper = createTimeTestHelper()
     // Mock console methods to avoid test noise
-    vi.spyOn(console, 'log').mockImplementation(() => {})
-    vi.spyOn(console, 'warn').mockImplementation(() => {})
+    vi.spyOn(console, 'log').mockImplementation(() => { })
+    vi.spyOn(console, 'warn').mockImplementation(() => { })
   })
 
   afterEach(() => {
@@ -67,7 +67,7 @@ describe('Cache Basic Functionality', () => {
 
     it('should handle different request URLs separately', async () => {
       const cacheFeature = helper.getCacheFeature()
-      
+
       // 设置不同URL的返回值
       helper.getMockRequestor().getMock()
         .mockResolvedValueOnce(CACHE_TEST_DATA.SIMPLE_USER)
@@ -106,7 +106,7 @@ describe('Cache Basic Functionality', () => {
   describe('TTL过期机制', () => {
     it('should expire cache after TTL', async () => {
       timeHelper.setMockTime(1000000) // 设置初始时间
-      
+
       helper.setRequestorReturn(CACHE_TEST_DATA.SIMPLE_USER)
       const cacheFeature = helper.getCacheFeature()
 
@@ -131,11 +131,11 @@ describe('Cache Basic Functionality', () => {
 
       // 时间前进超过TTL
       timeHelper.advanceTime(600) // 总共前进1.1秒，超过1秒TTL
-      
+
       // 设置新的返回值验证是否重新请求
       const updatedUser = { ...CACHE_TEST_DATA.SIMPLE_USER, name: 'Updated John' }
       helper.setRequestorReturn(updatedUser)
-      
+
       const result3 = await cacheFeature.requestWithCache(
         CACHE_REQUEST_CONFIGS.GET_USERS,
         CACHE_TEST_CONFIGS.SHORT_TTL
@@ -147,9 +147,9 @@ describe('Cache Basic Functionality', () => {
 
     it('should handle cache items with different TTLs', async () => {
       timeHelper.setMockTime(1000000)
-      
+
       const cacheFeature = helper.getCacheFeature()
-      
+
       // 使用不同TTL缓存不同请求
       helper.getMockRequestor().getMock()
         .mockResolvedValueOnce(CACHE_TEST_DATA.SIMPLE_USER)
@@ -185,7 +185,7 @@ describe('Cache Basic Functionality', () => {
         CACHE_TEST_CONFIGS.BASIC
       )
 
-      expect(result1.name).toBe('New User') // 新请求的结果
+      expect((result1 as any).name).toBe('New User') // 新请求的结果
       expect(result2).toEqual(CACHE_TEST_DATA.USERS_LIST) // 缓存的结果
       expect(helper.getMockRequestor().getMock()).toHaveBeenCalledTimes(3) // 初始2次 + 1次重新请求
     })
@@ -321,7 +321,7 @@ describe('Cache Basic Functionality', () => {
       // 预先添加一些缓存项
       helper.setRequestorReturn(CACHE_TEST_DATA.SIMPLE_USER)
       const cacheFeature = helper.getCacheFeature()
-      
+
       await cacheFeature.requestWithCache(
         CACHE_REQUEST_CONFIGS.GET_USERS,
         CACHE_TEST_CONFIGS.BASIC
@@ -334,7 +334,7 @@ describe('Cache Basic Functionality', () => {
 
     it('should clear specific cache item by key', async () => {
       const cacheFeature = helper.getCacheFeature()
-      
+
       // 验证缓存存在
       let keys = await helper.getAllCacheKeys()
       expect(keys.length).toBeGreaterThan(0)
@@ -354,7 +354,7 @@ describe('Cache Basic Functionality', () => {
 
     it('should clear all cache items when no key provided', async () => {
       const cacheFeature = helper.getCacheFeature()
-      
+
       // 验证缓存存在
       let keys = await helper.getAllCacheKeys()
       expect(keys.length).toBeGreaterThan(0)
@@ -369,7 +369,7 @@ describe('Cache Basic Functionality', () => {
 
     it('should handle clearing non-existent key gracefully', async () => {
       const cacheFeature = helper.getCacheFeature()
-      
+
       // 尝试清除不存在的键，不应该抛出错误
       await expect(cacheFeature.clearCache('non-existent-key')).resolves.toBeUndefined()
     })
@@ -418,7 +418,7 @@ describe('Cache Basic Functionality', () => {
 
       // 清除缓存
       await cacheFeature.clearCache()
-      
+
       stats = await cacheFeature.getCacheStats()
       expectCacheStats(stats, { size: 0 })
     })
