@@ -252,11 +252,11 @@ export class LogFormatter {
    * 格式化缓存相关日志
    */
   static formatCacheLog(
-    action: 'hit' | 'miss' | 'set' | 'clear',
+    action: 'hit' | 'miss' | 'set' | 'clear' | 'error',
     key: string,
     extra?: Record<string, unknown>
   ): string {
-    const emoji = action === 'hit' ? '🎯' : action === 'miss' ? '❌' : action === 'set' ? '💾' : '🗑️'
+    const emoji = action === 'hit' ? '🎯' : action === 'miss' ? '❌' : action === 'set' ? '💾' : action === 'clear' ? '🗑️' : '⚠️'
     let message = `${emoji} [Cache] Cache ${action}: ${key.substring(0, 50)}`
     
     if (key.length > 50) {

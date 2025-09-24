@@ -32,6 +32,8 @@ interface HashContext {
     cacheHits: number
     cacheMisses: number
     totalGenerations: number
+    totalGenerationTime: number
+    lastCleanupTime: number
   }
 }
 
@@ -72,7 +74,9 @@ export class CacheKeyGenerator {
       stats: {
         cacheHits: 0,
         cacheMisses: 0,
-        totalGenerations: 0
+        totalGenerations: 0,
+        totalGenerationTime: 0,
+        lastCleanupTime: 0
       }
     }
   }
@@ -81,25 +85,27 @@ export class CacheKeyGenerator {
    * 生成缓存键
    */
   generateCacheKey(config: RequestConfig, customKey?: string): string {
+    const startTime = performance.now()
     this.context.stats.totalGenerations++
 
     // 使用自定义键
     if (customKey !== undefined) {
-      return this.validateAndNormalizeKey(customKey)
+      const result = this.validateAndNormalizeKey(customKey)
+      this.context.stats.totalGenerationTime += performance.now() - startTime
+      return result
     }
 
     // 构建键组件
     const components = this.buildKeyComponents(config)
-    
+
     // 生成最终键
     const key = this.combineComponents(components)
-    
-    // 长度检查和哈希缩短
-    if (key.length > this.config.maxKeyLength) {
-      return this.hashLongKey(key, config)
-    }
 
-    return key
+    // 长度检查和哈希缩短
+    const finalKey = key.length > this.config.maxKeyLength ? this.hashLongKey(key, config) : key
+
+    this.context.stats.totalGenerationTime += performance.now() - startTime
+    return finalKey
   }
 
   /**
@@ -534,25 +540,34 @@ export class CacheKeyGenerator {
   private cleanupCache(): void {
     const cache = this.context.cache
     const entries = Array.from(cache.entries())
-    
+
     // 保留最近使用的一半
     cache.clear()
     const keepCount = Math.floor(entries.length / 2)
-    
+
     for (let i = entries.length - keepCount; i < entries.length; i++) {
       cache.set(entries[i][0], entries[i][1])
     }
+
+    this.context.stats.lastCleanupTime = Date.now()
   }
 
   /**
    * 获取统计信息
    */
   getStats() {
+    const baseStats = this.context.stats
     return {
-      ...this.context.stats,
+      totalGenerations: baseStats.totalGenerations,
+      cacheHits: baseStats.cacheHits,
+      cacheMisses: baseStats.cacheMisses,
+      averageGenerationTime: baseStats.totalGenerations > 0
+        ? baseStats.totalGenerationTime / baseStats.totalGenerations
+        : 0,
       cacheSize: this.context.cache.size,
-      hitRate: this.context.stats.totalGenerations > 0 
-        ? (this.context.stats.cacheHits / this.context.stats.totalGenerations * 100).toFixed(2)
+      lastCleanupTime: baseStats.lastCleanupTime,
+      hitRate: baseStats.totalGenerations > 0
+        ? (baseStats.cacheHits / baseStats.totalGenerations * 100).toFixed(2)
         : '0.00'
     }
   }
@@ -564,7 +579,9 @@ export class CacheKeyGenerator {
     this.context.stats = {
       cacheHits: 0,
       cacheMisses: 0,
-      totalGenerations: 0
+      totalGenerations: 0,
+      totalGenerationTime: 0,
+      lastCleanupTime: 0
     }
   }
 
