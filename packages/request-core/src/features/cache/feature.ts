@@ -31,6 +31,7 @@ export class CacheFeature {
   private keyGenerator: CacheKeyGenerator
   private invalidationPolicy: CacheInvalidationPolicy
   private keyStrategy?: CacheKeyStrategy
+  private pendingRequests: Map<string, Promise<unknown>> = new Map()
 
   constructor(
     private requestor: Requestor,
@@ -241,9 +242,43 @@ export class CacheFeature {
       await this.storageAdapter.removeItem(cacheKey)
     }
 
+    // 并发控制：检查是否已有相同请求正在进行
+    const existingRequest = this.pendingRequests.get(cacheKey)
+    if (existingRequest) {
+      console.log(
+        LogFormatter.formatCacheLog('miss', cacheKey, {
+          'status': 'waiting for existing request',
+          'url': config.url,
+        })
+      )
+      return (await existingRequest) as T
+    }
+
+    // 创建并缓存请求Promise
+    const requestPromise = this.executeRequestAndCache<T>(config, cacheKey, ttl, clone)
+    this.pendingRequests.set(cacheKey, requestPromise)
+
+    try {
+      const result = await requestPromise
+      return result
+    } finally {
+      // 无论成功还是失败，都要清理pending request
+      this.pendingRequests.delete(cacheKey)
+    }
+  }
+
+  /**
+   * 执行网络请求并缓存结果（私有方法，用于并发控制）
+   */
+  private async executeRequestAndCache<T>(
+    config: RequestConfig,
+    cacheKey: string,
+    ttl: number,
+    clone: 'deep' | 'shallow' | 'none'
+  ): Promise<T> {
     console.log(
       LogFormatter.formatCacheLog('miss', cacheKey, {
-        reason: cachedItem ? 'expired' : 'not found',
+        reason: 'not found',
         'will fetch': config.url,
       })
     )
