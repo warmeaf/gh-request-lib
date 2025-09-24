@@ -198,6 +198,31 @@ export class CacheKeyGenerator {
   }
 
   /**
+   * 深度克隆对象
+   */
+  private deepClone(obj: any): any {
+    if (obj === null || typeof obj !== 'object') {
+      return obj
+    }
+    
+    if (obj instanceof Date) {
+      return new Date(obj.getTime())
+    }
+    
+    if (Array.isArray(obj)) {
+      return obj.map(item => this.deepClone(item))
+    }
+    
+    const cloned: any = {}
+    for (const key in obj) {
+      if (Object.prototype.hasOwnProperty.call(obj, key)) {
+        cloned[key] = this.deepClone(obj[key])
+      }
+    }
+    return cloned
+  }
+
+  /**
    * 高效数据哈希
    */
   private hashData(data: unknown): string {
@@ -234,9 +259,10 @@ export class CacheKeyGenerator {
       return this.quickHash(`buffer:${(data as ArrayBuffer).byteLength}`)
     }
 
-    // 对象和数组
+    // 对象和数组 - 深度克隆以确保我们处理的是不同的对象
     if (dataType === 'object') {
-      return this.hashObjectStructure(data, 'data')
+      const clonedData = this.deepClone(data)
+      return this.hashObjectStructure(clonedData, 'data')
     }
 
     return CacheKeyGenerator.EMPTY_STRING
@@ -426,15 +452,38 @@ export class CacheKeyGenerator {
     if (obj === null || obj === undefined) return String(obj)
     
     if (Array.isArray(obj)) {
-      return `arr:${obj.length}:${typeof obj[0]}`
+      // 对于数组，包含所有元素的特征信息
+      const elementSignatures = obj.map((item, index) => {
+        if (item === null) return `${index}:null`
+        if (item === undefined) return `${index}:undefined`
+        if (typeof item === 'object') {
+          // 对于嵌套对象，递归获取签名
+          return `${index}:${this.getObjectSignature(item)}`
+        }
+        return `${index}:${typeof item}:${String(item).substring(0, 30)}`
+      })
+      return `arr:${obj.length}:[${elementSignatures.join(',')}]`
     }
     
     if (typeof obj === 'object') {
-      const keys = Object.keys(obj as object)
-      return `obj:${keys.length}:${keys.slice(0, 3).join(',')}`
+      const keys = Object.keys(obj as object).sort() // 排序确保一致性
+      if (keys.length === 0) return 'obj:0:{}'
+      
+      // 对于对象，包含所有键值对的特征信息
+      const valueSignature = keys.map(key => {
+        const value = (obj as any)[key]
+        if (value === null) return `${key}:null`
+        if (value === undefined) return `${key}:undefined`
+        if (typeof value === 'object') {
+          // 对于嵌套对象，递归获取签名
+          return `${key}:${this.getObjectSignature(value)}`
+        }
+        return `${key}:${typeof value}:${String(value).substring(0, 30)}`
+      }).join('|')
+      return `obj:${keys.length}:{${valueSignature}}`
     }
     
-    return `${typeof obj}:${String(obj).length}`
+    return `${typeof obj}:${String(obj).substring(0, 30)}`
   }
 
   /**
@@ -502,8 +551,25 @@ export class CacheKeyGenerator {
    */
   private hashLongKey(key: string, config: RequestConfig): string {
     const hash = this.quickHash(key)
-    const shortUrl = config.url.substring(0, 50)
-    return `${config.method}:${shortUrl}:${hash}`
+    const method = config.method
+    const maxKeyLength = this.config.maxKeyLength
+    
+    // 计算可用于URL的字符数：总长度 - 方法长度 - 分隔符长度 - 哈希长度 - 安全余量
+    const methodLength = method.length
+    const separators = 2 // 两个":"分隔符
+    const hashLength = hash.length
+    const safety = 2 // 安全余量
+    const availableForUrl = Math.max(0, maxKeyLength - methodLength - separators - hashLength - safety)
+    
+    const shortUrl = availableForUrl > 0 ? config.url.substring(0, availableForUrl) : ''
+    const result = shortUrl ? `${method}:${shortUrl}:${hash}` : `${method}:${hash}`
+    
+    // 如果结果仍然太长，进一步截断
+    if (result.length > maxKeyLength) {
+      return hash.substring(0, maxKeyLength)
+    }
+    
+    return result
   }
 
   /**
