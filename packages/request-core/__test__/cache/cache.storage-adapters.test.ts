@@ -253,10 +253,10 @@ describe('Storage Adapters Tests', () => {
     it('should serialize and deserialize data correctly', async () => {
       const testItem = {
         key: 'local-test',
-        data: { 
-          number: 42, 
-          string: 'test', 
-          boolean: true, 
+        data: {
+          number: 42,
+          string: 'test',
+          boolean: true,
           array: [1, 2, 3],
           nested: { a: 1, b: 2 }
         },
@@ -268,21 +268,21 @@ describe('Storage Adapters Tests', () => {
 
       await localStorageAdapter.setItem(testItem)
 
-      // Verify localStorage.setItem was called
+      // Verify localStorage.setItem was called with prefixed key
       expect(localStorage.setItem).toHaveBeenCalledWith(
-        'local-test',
+        'request_cache_local-test',
         JSON.stringify(testItem)
       )
 
       const retrieved = await localStorageAdapter.getItem('local-test')
       expect(retrieved).toEqual(testItem)
 
-      // Verify localStorage.getItem was called
-      expect(localStorage.getItem).toHaveBeenCalledWith('local-test')
+      // Verify localStorage.getItem was called with prefixed key
+      expect(localStorage.getItem).toHaveBeenCalledWith('request_cache_local-test')
     })
 
     it('should handle JSON serialization errors', async () => {
-      const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+      const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => { })
 
       // Create an object that can't be JSON serialized
       const unserializableItem: any = {
@@ -296,28 +296,39 @@ describe('Storage Adapters Tests', () => {
       // Add circular reference
       unserializableItem.data.self = unserializableItem.data
 
-      await localStorageAdapter.setItem(unserializableItem)
+      // This should throw an error due to circular reference
+      await expect(localStorageAdapter.setItem(unserializableItem)).rejects.toThrow()
 
-      // Should handle the error gracefully
+      // Should log the error
       expect(consoleSpy).toHaveBeenCalled()
+
+      consoleSpy.mockRestore()
     })
 
     it('should handle JSON parsing errors', async () => {
-      const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+      const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => { })
 
       // Mock localStorage to return invalid JSON
-      (localStorage.getItem as any).mockReturnValueOnce('invalid json{')
+      vi.mocked(localStorage.getItem).mockReturnValueOnce('invalid json{')
 
       const result = await localStorageAdapter.getItem('invalid-json')
       expect(result).toBeNull()
       expect(consoleSpy).toHaveBeenCalled()
+
+      consoleSpy.mockRestore()
     })
 
     it('should handle localStorage quota exceeded error', async () => {
-      const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+      const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => { })
 
-      // Mock localStorage to throw QuotaExceededError
-      (localStorage.setItem as any).mockImplementation(() => {
+      // Mock localStorage to throw QuotaExceededError only for specific calls
+      const originalSetItem = vi.mocked(localStorage.setItem)
+      vi.mocked(localStorage.setItem).mockImplementation((key: string, value: string) => {
+        // Allow isAvailable() test to pass
+        if (key === '__request_cache_test__') {
+          return
+        }
+        // Throw error for actual cache operations
         const error = new Error('QuotaExceededError')
         error.name = 'QuotaExceededError'
         throw error
@@ -332,12 +343,17 @@ describe('Storage Adapters Tests', () => {
         accessCount: 1
       }
 
-      await localStorageAdapter.setItem(testItem)
+      // This should throw an error due to quota exceeded
+      await expect(localStorageAdapter.setItem(testItem)).rejects.toThrow()
 
       expect(consoleSpy).toHaveBeenCalledWith(
-        expect.stringMatching(/quota.*exceeded/i),
+        expect.stringMatching(/Failed to set item in LocalStorage/),
         expect.any(Error)
       )
+
+      // Restore mocks
+      consoleSpy.mockRestore()
+      originalSetItem.mockRestore()
     })
   })
 
@@ -538,6 +554,16 @@ describe('Storage Adapters Tests', () => {
   })
 
   describe('Storage Adapter Error Handling', () => {
+    // 定义测试数据，用于批量操作测试
+    const testData = Array.from({ length: 20 }, (_, i) => ({
+      key: `error-test-${i}`,
+      data: { id: i, value: `data-${i}`, timestamp: Date.now() },
+      timestamp: Date.now(),
+      ttl: 300000,
+      accessTime: Date.now(),
+      accessCount: 1
+    }))
+
     it('should handle storage adapter failures gracefully', async () => {
       const failingAdapter = new MockStorageAdapter(true) // Set to fail
 
