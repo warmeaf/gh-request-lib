@@ -53,53 +53,57 @@ export class CacheFeature {
   }
 
   private async incrementalCleanupIfNeeded(): Promise<void> {
-    if (this.storageAdapter.getType() === StorageType.MEMORY) {
-      const now = Date.now()
-      const keys = await this.storageAdapter.getKeys()
-      if (now - this.lastCleanupTime < this.cleanupInterval && keys.length < this.maxEntries * 0.9) {
-        return
+    // 清理逻辑适用于所有存储类型，不仅仅是内存存储
+    const now = Date.now()
+    const keys = await this.storageAdapter.getKeys()
+    
+    // 对于很小的maxEntries，更积极地执行清理，不受时间间隔限制
+    const isSmallMaxEntries = this.maxEntries <= 10
+    const shouldBypassTimeCheck = isSmallMaxEntries && keys.length >= this.maxEntries
+    
+    if (!shouldBypassTimeCheck && now - this.lastCleanupTime < this.cleanupInterval && keys.length < this.maxEntries * 0.9) {
+      return
+    }
+    this.lastCleanupTime = now
+    const maxCheckCount = Math.min(100, keys.length)
+    const startIndex = Math.floor(Math.random() * Math.max(1, keys.length - maxCheckCount))
+    const expiredKeys: string[] = []
+    for (let i = startIndex; i < Math.min(startIndex + maxCheckCount, keys.length); i++) {
+      const key = keys[i]
+      const item = await this.storageAdapter.getItem(key)
+      if (item && now - item.timestamp >= item.ttl) {
+        expiredKeys.push(key)
       }
-      this.lastCleanupTime = now
-      const maxCheckCount = Math.min(100, keys.length)
-      const startIndex = Math.floor(Math.random() * Math.max(1, keys.length - maxCheckCount))
-      const expiredKeys: string[] = []
-      for (let i = startIndex; i < Math.min(startIndex + maxCheckCount, keys.length); i++) {
-        const key = keys[i]
+    }
+    if (expiredKeys.length > 0) {
+      for (const key of expiredKeys) {
+        await this.storageAdapter.removeItem(key)
+      }
+      console.log(
+        LogFormatter.formatCacheLog('clear', `${expiredKeys.length} expired items`, {
+          'remaining items': keys.length - expiredKeys.length,
+        })
+      )
+    }
+    const currentKeys = await this.storageAdapter.getKeys()
+    if (currentKeys.length > this.maxEntries) {
+      const items = [] as any[]
+      for (const key of currentKeys) {
         const item = await this.storageAdapter.getItem(key)
-        if (item && now - item.timestamp >= item.ttl) {
-          expiredKeys.push(key)
-        }
+        if (item) items.push(item)
       }
-      if (expiredKeys.length > 0) {
-        for (const key of expiredKeys) {
-          await this.storageAdapter.removeItem(key)
-        }
+      items.sort((a, b) => a.accessTime - b.accessTime)
+      const toEvict = Math.min(50, currentKeys.length - this.maxEntries)
+      for (let i = 0; i < toEvict; i++) {
+        await this.storageAdapter.removeItem(items[i].key)
+      }
+      if (toEvict > 0) {
         console.log(
-          LogFormatter.formatCacheLog('clear', `${expiredKeys.length} expired items`, {
-            'remaining items': keys.length - expiredKeys.length,
+          LogFormatter.formatCacheLog('clear', `${toEvict} LRU items`, {
+            'remaining items': currentKeys.length - toEvict,
+            'max entries': this.maxEntries,
           })
         )
-      }
-      const currentKeys = await this.storageAdapter.getKeys()
-      if (currentKeys.length > this.maxEntries) {
-        const items = [] as any[]
-        for (const key of currentKeys) {
-          const item = await this.storageAdapter.getItem(key)
-          if (item) items.push(item)
-        }
-        items.sort((a, b) => a.accessTime - b.accessTime)
-        const toEvict = Math.min(50, currentKeys.length - this.maxEntries)
-        for (let i = 0; i < toEvict; i++) {
-          await this.storageAdapter.removeItem(items[i].key)
-        }
-        if (toEvict > 0) {
-          console.log(
-            LogFormatter.formatCacheLog('clear', `${toEvict} LRU items`, {
-              'remaining items': currentKeys.length - toEvict,
-              'max entries': this.maxEntries,
-            })
-          )
-        }
       }
     }
   }
@@ -255,6 +259,9 @@ export class CacheFeature {
         accessTime: now,
         accessCount: 1,
       })
+
+      // 在添加新缓存项后立即检查是否需要清理
+      await this.incrementalCleanupIfNeeded()
 
       const stats = await this.storageAdapter.getStats()
       console.log(
