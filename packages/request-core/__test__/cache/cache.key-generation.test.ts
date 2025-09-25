@@ -290,14 +290,14 @@ describe('Cache Key Generation Tests', () => {
 
       // 第一次生成
       const key1 = keyGenWithCache.generateCacheKey(config)
-      
+
       // 获取统计信息
       const stats1 = keyGenWithCache.getStats()
       const initialCacheHits = stats1.cacheHits
 
       // 第二次生成相同配置
       const key2 = keyGenWithCache.generateCacheKey(config)
-      
+
       const stats2 = keyGenWithCache.getStats()
 
       expect(key1).toBe(key2)
@@ -314,7 +314,7 @@ describe('Cache Key Generation Tests', () => {
 
       keyGenWithoutCache.generateCacheKey(config)
       keyGenWithoutCache.generateCacheKey(config)
-      
+
       const stats = keyGenWithoutCache.getStats()
 
       expect(stats.cacheHits).toBe(0) // 应该没有缓存命中
@@ -362,13 +362,13 @@ describe('Cache Key Generation Tests', () => {
 
       // 第一次生成 - 应该是缓存未命中
       keyGenWithCache.generateCacheKey(config)
-      
+
       let stats = keyGenWithCache.getStats()
       expect(stats.cacheMisses).toBeGreaterThan(0)
-      
+
       // 第二次生成相同配置 - 应该是缓存命中
       keyGenWithCache.generateCacheKey(config)
-      
+
       stats = keyGenWithCache.getStats()
       expect(stats.cacheHits).toBeGreaterThan(0)
     })
