@@ -147,7 +147,7 @@ export class ErrorHandler {
     }
     
     // 超时错误
-    if (message.includes('timeout') || error.name === 'AbortError') {
+    if (message.includes('timeout') || message.includes('timed out') || error.name === 'AbortError') {
       return RequestErrorType.TIMEOUT_ERROR
     }
     
