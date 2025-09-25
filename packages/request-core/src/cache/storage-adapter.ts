@@ -118,12 +118,21 @@ export class UrlPathKeyStrategy implements CacheKeyStrategy {
     }
 
     // 提取URL路径部分
-    try {
-      const url = new URL(config.url, typeof window !== 'undefined' ? window.location.origin : 'http://localhost')
-      return `path:${url.pathname}`
-    } catch (error) {
-      // 如果URL解析失败，直接使用路径
-      const path = config.url.split('?')[0].split('#')[0]
+    const urlString = config.url
+    
+    // 检查是否是绝对URL或相对路径（以/开头）
+    if (urlString.includes('://') || urlString.startsWith('/')) {
+      try {
+        const url = new URL(urlString, typeof window !== 'undefined' ? window.location.origin : 'http://localhost')
+        return `path:${url.pathname}`
+      } catch (error) {
+        // 如果URL解析失败，直接使用路径
+        const path = urlString.split('?')[0].split('#')[0]
+        return `path:${path}`
+      }
+    } else {
+      // 对于不是绝对URL也不以/开头的字符串，直接处理为路径
+      const path = urlString.split('?')[0].split('#')[0]
       return `path:${path}`
     }
   }

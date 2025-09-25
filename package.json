@@ -20,7 +20,6 @@
     "test:run": "vitest run",
     "test:coverage": "vitest run --coverage",
     "test:coverage:watch": "vitest --coverage",
-    "test:coverage:report": "vitest run --coverage --reporter=html",
     "docs:dev": "pnpm --filter request-lib-docs run docs:dev",
     "docs:build": "pnpm --filter request-lib-docs run docs:build",
     "docs:preview": "pnpm --filter request-lib-docs run docs:preview"
