@@ -1,5 +1,6 @@
 import { RequestConfig, Requestor, RequestError, RequestErrorType } from '../../interface'
-import { SerialTask, SerialConfig, SerialQueueStats, TaskResult } from './types'
+import { SerialTask, SerialConfig, SerialQueueStats } from './types'
+import { safeCloneData } from '../idempotent/utils'
 
 /**
  * @description 串行队列类 - 管理单个串行队列的任务执行
@@ -48,7 +49,7 @@ export class SerialQueue {
     return new Promise((resolve, reject) => {
       // 检查队列大小限制 (包括等待中的任务 + 正在处理的任务)
       const totalTasks = this.tasks.length + (this.isProcessing ? 1 : 0)
-      
+
       if (typeof this.config.maxQueueSize === 'number' && totalTasks >= this.config.maxQueueSize) {
         const error = new RequestError('Serial queue is full', {
           type: RequestErrorType.VALIDATION_ERROR,
@@ -73,7 +74,7 @@ export class SerialQueue {
       // 创建任务
       const task: SerialTask = {
         id: this.generateTaskId(),
-        config: { ...config }, // 浅拷贝配置避免被修改
+        config: safeCloneData(config, 'deep'), // 深拷贝配置避免被修改
         resolve,
         reject,
         createdAt: Date.now()
@@ -111,7 +112,6 @@ export class SerialQueue {
     // 设置处理状态
     this.isProcessing = true
     this.stats.isProcessing = true
-    this.stats.pendingTasks--
 
     const startTime = Date.now()
 
@@ -119,6 +119,7 @@ export class SerialQueue {
       console.log(`[SerialQueue] Processing task: ${task.id}`)
     }
 
+    let requestStarted = false
     try {
       // 检查任务是否超时（基于创建时间）
       if (this.config.timeout && (startTime - task.createdAt) > this.config.timeout) {
@@ -129,8 +130,8 @@ export class SerialQueue {
             url: task.config.url,
             method: task.config.method,
             tag: task.config.tag,
-            metadata: { 
-              serialKey: this.serialKey, 
+            metadata: {
+              serialKey: this.serialKey,
               taskId: task.id,
               waitTime: startTime - task.createdAt
             }
@@ -138,8 +139,11 @@ export class SerialQueue {
         })
       }
 
-      // 执行请求
+      // 执行请求 - 这里可能会因为暂停而等待
       const result = await this.requestor.request(task.config)
+
+      // 请求成功执行，标记为已开始
+      requestStarted = true
       const endTime = Date.now()
       const executionTime = endTime - startTime
 
@@ -159,6 +163,9 @@ export class SerialQueue {
     } catch (error) {
       const endTime = Date.now()
       const executionTime = endTime - startTime
+
+      // 标记请求已开始（即使失败了）
+      requestStarted = true
 
       // 更新统计信息
       this.stats.failedTasks++
@@ -183,6 +190,10 @@ export class SerialQueue {
       // 拒绝Promise
       task.reject(error)
     } finally {
+      // 无论成功还是失败，只要请求开始了就减少待处理任务数
+      if (requestStarted) {
+        this.stats.pendingTasks--
+      }
       // 重置处理状态
       this.isProcessing = false
       this.stats.isProcessing = false
@@ -253,7 +264,7 @@ export class SerialQueue {
    * 生成任务唯一标识
    */
   private generateTaskId(): string {
-    return `${this.serialKey}-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
+    return `${this.serialKey}-${Date.now()}-${Math.random().toString(36).substring(2, 11)}`
   }
 
   /**

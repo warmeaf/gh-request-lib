@@ -359,6 +359,27 @@ export class RequestCore implements ConvenienceExecutor {
     return this.featureManager.getSerialStats()
   }
 
+  /**
+   * 检查串行队列是否存在
+   */
+  hasSerialQueue(serialKey: string): boolean {
+    return this.featureManager.getSerialFeature().hasQueue(serialKey)
+  }
+
+  /**
+   * 移除指定串行队列
+   */
+  removeSerialQueue(serialKey: string): boolean {
+    return this.featureManager.getSerialFeature().removeQueue(serialKey)
+  }
+
+  /**
+   * 移除所有串行队列
+   */
+  removeAllSerialQueues(): void {
+    this.featureManager.getSerialFeature().removeAllQueues()
+  }
+
   // ==================== 扩展便利方法委托 ====================
   
   // 内容类型特定方法

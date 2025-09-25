@@ -161,5 +161,5 @@ export class SerialInterceptedException extends Error {
  * @description 检查是否为串行拦截异常
  */
 export function isSerialInterceptedException(error: any): error is SerialInterceptedException {
-  return error && error.isSerialIntercepted === true
+  return !!(error && error.isSerialIntercepted === true)
 }
