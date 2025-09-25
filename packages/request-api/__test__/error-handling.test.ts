@@ -16,10 +16,12 @@ vi.mock('request-core', () => ({
     })),
     RequestError: class MockRequestError extends Error {
         type: string
-        constructor(message: string, type: string) {
+        status?: number
+        constructor(message: string, options: any = {}) {
             super(message)
             this.name = 'RequestError'
-            this.type = type
+            this.type = options.type || options
+            this.status = options.status
         }
     },
     RequestErrorType: {
