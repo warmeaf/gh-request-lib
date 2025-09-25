@@ -18,12 +18,16 @@
     "install-deps": "pnpm install",
     "test": "vitest",
     "test:run": "vitest run",
+    "test:coverage": "vitest run --coverage",
+    "test:coverage:watch": "vitest --coverage",
+    "test:coverage:report": "vitest run --coverage --reporter=html",
     "docs:dev": "pnpm --filter request-lib-docs run docs:dev",
     "docs:build": "pnpm --filter request-lib-docs run docs:build",
     "docs:preview": "pnpm --filter request-lib-docs run docs:preview"
   },
   "devDependencies": {
     "@types/node": "^24.3.0",
+    "@vitest/coverage-v8": "^3.2.4",
     "only-allow": "^1.2.1",
     "rimraf": "^6.0.1",
     "typescript": "~5.9.2",
