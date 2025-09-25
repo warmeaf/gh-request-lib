@@ -426,6 +426,10 @@ export class CacheKeyGenerator {
     if (value === null) return CacheKeyGenerator.NULL_STRING
     if (value === undefined) return CacheKeyGenerator.UNDEFINED_STRING
     if (typeof value === 'string') return value
+    if (typeof value === 'object') {
+      // 对于复杂对象，使用递归签名而不是 String(value)
+      return this.getObjectSignature(value)
+    }
     return String(value)
   }
 

@@ -481,7 +481,7 @@ describe('Cache Key Generation Tests', () => {
   })
 
   describe('复杂数据结构处理', () => {
-    it.skip('should handle nested objects in request data', () => {
+    it('should handle nested objects in request data', () => {
       const config1 = {
         url: 'https://api.example.com/users',
         method: 'POST' as const,
