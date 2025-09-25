@@ -23,7 +23,9 @@ describe('Integration Tests', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     
-    mockRequestor = vi.fn() as any
+    mockRequestor = {
+      request: vi.fn()
+    } as any
     mockRequestCore = {
       setGlobalConfig: vi.fn(),
       addInterceptor: vi.fn(),
@@ -200,9 +202,362 @@ describe('Integration Tests', () => {
       // 在真实环境中，这些会是不同的实例
       expect(RequestCore).toHaveBeenCalledTimes(2)
     })
+
+    it('should handle complex API interactions', async () => {
+      // 创建更复杂的API类，模拟真实场景
+      class ComplexUserApi implements ApiInstance {
+        requestCore: RequestCore
+        private cache = new Map<string, any>()
+
+        constructor(requestCore: RequestCore) {
+          this.requestCore = requestCore
+        }
+
+        async getUser(id: string, useCache = true): Promise<{ id: string; name: string; email: string }> {
+          if (useCache && this.cache.has(id)) {
+            console.log(`Returning cached user: ${id}`)
+            return this.cache.get(id)
+          }
+
+          console.log(`Fetching user from API: ${id}`)
+          const user = { id, name: `User ${id}`, email: `user${id}@example.com` }
+          this.cache.set(id, user)
+          return user
+        }
+
+        async createUser(userData: { name: string; email: string }): Promise<{ id: string; name: string; email: string }> {
+          const id = `user-${Date.now()}`
+          const user = { id, ...userData }
+          this.cache.set(id, user)
+          console.log(`Created user:`, user)
+          return user
+        }
+
+        async updateUser(id: string, updates: Partial<{ name: string; email: string }>): Promise<{ id: string; name: string; email: string }> {
+          const existing = await this.getUser(id)
+          const updated = { ...existing, ...updates }
+          this.cache.set(id, updated)
+          console.log(`Updated user ${id}:`, updated)
+          return updated
+        }
+
+        clearCache(): void {
+          this.cache.clear()
+        }
+
+        getCacheSize(): number {
+          return this.cache.size
+        }
+      }
+
+      const globalConfig: GlobalConfig = {
+        baseURL: 'https://api.complex.com',
+        timeout: 8000,
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Client-Version': '2.0'
+        }
+      }
+
+      const loggingInterceptor: RequestInterceptor = {
+        onRequest: vi.fn((config) => {
+          console.log('Complex request interceptor:', config)
+          return config
+        }),
+        onResponse: vi.fn((response) => {
+          console.log('Complex response interceptor:', response)
+          return response
+        }),
+      }
+
+      const client = createApiClient(
+        { user: ComplexUserApi },
+        {
+          requestor: mockRequestor,
+          globalConfig,
+          interceptors: [loggingInterceptor]
+        }
+      )
+
+      // 测试复杂的API交互流程
+      const user1 = await client.user.createUser({ name: 'John Doe', email: 'john@example.com' })
+      expect(user1.name).toBe('John Doe')
+      expect(user1.email).toBe('john@example.com')
+      expect(client.user.getCacheSize()).toBe(1)
+
+      const user2 = await client.user.getUser(user1.id)
+      expect(user2).toEqual(user1) // 应该从缓存返回
+
+      const updatedUser = await client.user.updateUser(user1.id, { name: 'John Smith' })
+      expect(updatedUser.name).toBe('John Smith')
+      expect(updatedUser.email).toBe('john@example.com')
+
+      // 测试缓存管理
+      client.user.clearCache()
+      expect(client.user.getCacheSize()).toBe(0)
+
+      // 验证RequestCore配置
+      expect(mockRequestCore.setGlobalConfig).toHaveBeenCalledWith(globalConfig)
+      expect(mockRequestCore.addInterceptor).toHaveBeenCalledWith(loggingInterceptor)
+    })
+
+    it('should handle real-world API patterns', async () => {
+      // 模拟真实的REST API模式
+      class RestfulUserApi implements ApiInstance {
+        requestCore: RequestCore
+        private readonly basePath = '/users'
+
+        constructor(requestCore: RequestCore) {
+          this.requestCore = requestCore
+        }
+
+        async list(params?: { page?: number; limit?: number; search?: string }): Promise<{ users: any[]; total: number }> {
+          console.log(`GET ${this.basePath}`, params)
+          const users = Array.from({ length: params?.limit || 10 }, (_, i) => ({
+            id: `user-${i + 1}`,
+            name: `User ${i + 1}`,
+            email: `user${i + 1}@example.com`
+          }))
+          return { users, total: 100 }
+        }
+
+        async get(id: string): Promise<{ id: string; name: string; email: string; profile: any }> {
+          console.log(`GET ${this.basePath}/${id}`)
+          return {
+            id,
+            name: `User ${id}`,
+            email: `user${id}@example.com`,
+            profile: { avatar: `https://avatar.com/${id}`, bio: `Bio for ${id}` }
+          }
+        }
+
+        async create(data: { name: string; email: string }): Promise<{ id: string; name: string; email: string }> {
+          console.log(`POST ${this.basePath}`, data)
+          return { id: `user-${Date.now()}`, ...data }
+        }
+
+        async update(id: string, data: Partial<{ name: string; email: string }>): Promise<{ id: string; name: string; email: string }> {
+          console.log(`PUT ${this.basePath}/${id}`, data)
+          const existing = await this.get(id)
+          return { ...existing, ...data }
+        }
+
+        async delete(id: string): Promise<{ success: boolean; message: string }> {
+          console.log(`DELETE ${this.basePath}/${id}`)
+          return { success: true, message: `User ${id} deleted successfully` }
+        }
+      }
+
+      class AuthApi implements ApiInstance {
+        requestCore: RequestCore
+
+        constructor(requestCore: RequestCore) {
+          this.requestCore = requestCore
+        }
+
+        async login(credentials: { email: string; password: string }): Promise<{ token: string; user: any }> {
+          console.log('POST /auth/login', { email: credentials.email, password: '[REDACTED]' })
+          return {
+            token: 'jwt-token-example',
+            user: { id: 'user-1', email: credentials.email, name: 'John Doe' }
+          }
+        }
+
+        async logout(): Promise<{ success: boolean }> {
+          console.log('POST /auth/logout')
+          return { success: true }
+        }
+
+        async refreshToken(token: string): Promise<{ token: string }> {
+          console.log('POST /auth/refresh')
+          return { token: 'new-jwt-token-example' }
+        }
+      }
+
+      // 创建带有认证拦截器的客户端
+      const authInterceptor: RequestInterceptor = {
+        onRequest: vi.fn((config) => {
+          console.log('Adding auth header to request')
+          return {
+            ...config,
+            headers: {
+              ...config.headers,
+              'Authorization': 'Bearer jwt-token-example'
+            }
+          }
+        }),
+        onResponse: vi.fn((response) => {
+          console.log('Processing auth response')
+          return response
+        })
+      }
+
+      const client = createApiClient(
+        {
+          users: RestfulUserApi,
+          auth: AuthApi
+        },
+        {
+          requestor: mockRequestor,
+          globalConfig: {
+            baseURL: 'https://api.myapp.com',
+            timeout: 10000,
+            headers: {
+              'Content-Type': 'application/json',
+              'X-Client-Version': '1.0.0'
+            }
+          },
+          interceptors: [authInterceptor]
+        }
+      )
+
+      // 测试完整的认证流程
+      const loginResult = await client.auth.login({
+        email: 'john@example.com',
+        password: 'password123'
+      })
+      expect(loginResult.token).toBe('jwt-token-example')
+      expect(loginResult.user.email).toBe('john@example.com')
+
+      // 测试用户CRUD操作
+      const usersList = await client.users.list({ page: 1, limit: 5 })
+      expect(usersList.users).toHaveLength(5)
+      expect(usersList.total).toBe(100)
+
+      const newUser = await client.users.create({
+        name: 'Jane Doe',
+        email: 'jane@example.com'
+      })
+      expect(newUser.name).toBe('Jane Doe')
+      expect(newUser.email).toBe('jane@example.com')
+
+      const userDetail = await client.users.get(newUser.id)
+      expect(userDetail.id).toBe(newUser.id)
+      expect(userDetail.profile).toBeDefined()
+
+      const updatedUser = await client.users.update(newUser.id, { name: 'Jane Smith' })
+      expect(updatedUser.name).toBe('Jane Smith')
+
+      const deleteResult = await client.users.delete(newUser.id)
+      expect(deleteResult.success).toBe(true)
+
+      // 测试token刷新
+      const refreshResult = await client.auth.refreshToken('old-token')
+      expect(refreshResult.token).toBe('new-jwt-token-example')
+
+      // 验证拦截器被正确添加到RequestCore
+      expect(mockRequestCore.addInterceptor).toHaveBeenCalledWith(authInterceptor)
+    })
+
+    it('should handle microservices architecture pattern', async () => {
+      // 模拟微服务架构中的多个服务API
+      class UserServiceApi implements ApiInstance {
+        requestCore: RequestCore
+        constructor(requestCore: RequestCore) { this.requestCore = requestCore }
+        
+        async getProfile(userId: string) {
+          console.log(`UserService: Getting profile for ${userId}`)
+          return { userId, service: 'user-service', data: { name: 'John', email: 'john@example.com' } }
+        }
+      }
+
+      class OrderServiceApi implements ApiInstance {
+        requestCore: RequestCore
+        constructor(requestCore: RequestCore) { this.requestCore = requestCore }
+        
+        async getOrders(userId: string) {
+          console.log(`OrderService: Getting orders for ${userId}`)
+          return { userId, service: 'order-service', orders: [{ id: 'order-1', amount: 100 }] }
+        }
+      }
+
+      class PaymentServiceApi implements ApiInstance {
+        requestCore: RequestCore
+        constructor(requestCore: RequestCore) { this.requestCore = requestCore }
+        
+        async processPayment(orderId: string, amount: number) {
+          console.log(`PaymentService: Processing payment for order ${orderId}, amount ${amount}`)
+          return { orderId, amount, service: 'payment-service', status: 'completed' }
+        }
+      }
+
+      class NotificationServiceApi implements ApiInstance {
+        requestCore: RequestCore
+        constructor(requestCore: RequestCore) { this.requestCore = requestCore }
+        
+        async sendNotification(userId: string, message: string) {
+          console.log(`NotificationService: Sending notification to ${userId}: ${message}`)
+          return { userId, message, service: 'notification-service', sent: true }
+        }
+      }
+
+      // 为每个服务创建独立的客户端（模拟不同的服务端点）
+      const userServiceClient = createApiClient(
+        { users: UserServiceApi },
+        {
+          requestor: mockRequestor,
+          globalConfig: { baseURL: 'https://user-service.myapp.com' }
+        }
+      )
+
+      const orderServiceClient = createApiClient(
+        { orders: OrderServiceApi },
+        {
+          requestor: mockRequestor,
+          globalConfig: { baseURL: 'https://order-service.myapp.com' }
+        }
+      )
+
+      const paymentServiceClient = createApiClient(
+        { payments: PaymentServiceApi },
+        {
+          requestor: mockRequestor,
+          globalConfig: { baseURL: 'https://payment-service.myapp.com' }
+        }
+      )
+
+      const notificationServiceClient = createApiClient(
+        { notifications: NotificationServiceApi },
+        {
+          requestor: mockRequestor,
+          globalConfig: { baseURL: 'https://notification-service.myapp.com' }
+        }
+      )
+
+      // 模拟跨服务的业务流程
+      const userId = 'user-123'
+      
+      // 1. 获取用户信息
+      const userProfile = await userServiceClient.users.getProfile(userId)
+      expect(userProfile.service).toBe('user-service')
+      
+      // 2. 获取用户订单
+      const userOrders = await orderServiceClient.orders.getOrders(userId)
+      expect(userOrders.service).toBe('order-service')
+      expect(userOrders.orders).toHaveLength(1)
+      
+      // 3. 处理支付
+      const paymentResult = await paymentServiceClient.payments.processPayment(
+        userOrders.orders[0].id,
+        userOrders.orders[0].amount
+      )
+      expect(paymentResult.service).toBe('payment-service')
+      expect(paymentResult.status).toBe('completed')
+      
+      // 4. 发送通知
+      const notificationResult = await notificationServiceClient.notifications.sendNotification(
+        userId,
+        `Payment of $${paymentResult.amount} completed successfully`
+      )
+      expect(notificationResult.service).toBe('notification-service')
+      expect(notificationResult.sent).toBe(true)
+
+      // 验证每个服务都有独立的RequestCore实例
+      expect(RequestCore).toHaveBeenCalledTimes(4)
+    })
   })
 
-  describe('Error handling', () => {
+  describe('Error handling and edge cases', () => {
     it('should throw error when no requestor or requestCore provided', () => {
       expect(() => {
         createApiClient({ user: UserApi }, {})
@@ -228,6 +583,106 @@ describe('Integration Tests', () => {
           { requestCore: mockRequestCore }
         )
       }).not.toThrow()
+    })
+
+    it('should handle requestor errors', async () => {
+      const errorRequestor: Requestor = {
+        request: vi.fn().mockRejectedValue(new Error('Network error'))
+      }
+      
+      const client = createApiClient(
+        { user: UserApi },
+        { requestor: errorRequestor }
+      )
+
+      // 模拟API方法调用requestor时的错误
+      class ErrorProneApi implements ApiInstance {
+        requestCore: RequestCore
+
+        constructor(requestCore: RequestCore) {
+          this.requestCore = requestCore
+        }
+
+        async makeRequest(): Promise<any> {
+          // 这里会调用requestor，可能抛出错误
+          return this.requestCore
+        }
+      }
+
+      const errorClient = createApiClient(
+        { error: ErrorProneApi },
+        { requestor: errorRequestor }
+      )
+
+      // 验证错误处理
+      expect(errorClient.error).toBeInstanceOf(ErrorProneApi)
+    })
+
+    it('should handle interceptor errors', async () => {
+      const faultyInterceptor: RequestInterceptor = {
+        onRequest: vi.fn().mockImplementation(() => {
+          throw new Error('Interceptor error')
+        }),
+        onResponse: vi.fn(),
+      }
+
+      // 创建客户端时不应该抛出错误
+      expect(() => {
+        createApiClient(
+          { user: UserApi },
+          {
+            requestor: mockRequestor,
+            interceptors: [faultyInterceptor]
+          }
+        )
+      }).not.toThrow()
+
+      // 验证拦截器被正确添加
+      expect(mockRequestCore.addInterceptor).toHaveBeenCalledWith(faultyInterceptor)
+    })
+
+    it('should handle cache operation errors', () => {
+      // 模拟缓存操作错误
+      const errorRequestCore = {
+        ...mockRequestCore,
+        clearCache: vi.fn().mockImplementation(() => {
+          throw new Error('Cache clear error')
+        }),
+        getCacheStats: vi.fn().mockImplementation(() => {
+          throw new Error('Cache stats error')
+        })
+      } as any
+
+      const client = createApiClient(
+        { user: UserApi },
+        { requestCore: errorRequestCore }
+      )
+
+      // 缓存操作错误应该被传播
+      expect(() => client.clearCache()).toThrow('Cache clear error')
+      expect(() => client.getCacheStats()).toThrow('Cache stats error')
+    })
+
+    it('should handle large number of APIs', () => {
+      // 创建大量API类
+      const manyApis: Record<string, any> = {}
+      for (let i = 0; i < 100; i++) {
+        manyApis[`api${i}`] = class implements ApiInstance {
+          requestCore: RequestCore
+          constructor(requestCore: RequestCore) {
+            this.requestCore = requestCore
+          }
+          getIndex() { return i }
+        }
+      }
+
+      const client = createApiClient(manyApis, { requestCore: mockRequestCore })
+
+      // 验证所有API都被正确创建
+      expect(Object.keys(client)).toContain('api0')
+      expect(Object.keys(client)).toContain('api99')
+      expect(client.api0.getIndex()).toBe(0)
+      expect(client.api99.getIndex()).toBe(99)
     })
   })
 })
