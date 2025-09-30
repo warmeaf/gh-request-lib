@@ -39,6 +39,8 @@ export interface PaginationParams {
   limit?: number
   offset?: number
   size?: number
+  sort?: string
+  order?: 'asc' | 'desc'
 }
 
 /**

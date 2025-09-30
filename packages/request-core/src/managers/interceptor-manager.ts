@@ -93,13 +93,18 @@ export class InterceptorManager {
       processedConfig = await this.executeRequestInterceptors(processedConfig)
     } catch (error) {
       // 如果请求拦截器出错，也要执行错误拦截器
-      const processedError = await this.executeErrorInterceptors(
+      const errorResult = await this.executeErrorInterceptors(
         error instanceof RequestError ? error : new RequestError(
           error instanceof Error ? error.message : 'Request interceptor failed'
         ),
         processedConfig
       )
-      throw processedError
+      
+      // 如果错误被恢复，返回恢复的值；否则抛出错误
+      if (errorResult.recovered) {
+        return errorResult.value as T
+      }
+      throw errorResult.value
     }
 
     try {
@@ -112,7 +117,7 @@ export class InterceptorManager {
       return result
     } catch (error) {
       // 执行错误拦截器
-      const processedError = await this.executeErrorInterceptors(
+      const errorResult = await this.executeErrorInterceptors(
         error instanceof RequestError ? error : new RequestError(
           error instanceof Error ? error.message : 'Unknown error',
           { 
@@ -126,7 +131,12 @@ export class InterceptorManager {
         ),
         processedConfig
       )
-      throw processedError
+      
+      // 如果错误被恢复，返回恢复的值；否则抛出错误
+      if (errorResult.recovered) {
+        return errorResult.value
+      }
+      throw errorResult.value
     }
   }
 
@@ -147,13 +157,21 @@ export class InterceptorManager {
             throw new RequestError('Request interceptor must return a valid config object')
           }
         } catch (error) {
-          throw new RequestError('Request interceptor execution failed', {
-            originalError: error,
-            context: { 
-              url: processedConfig.url, 
-              method: processedConfig.method 
+          // 如果已经是 RequestError，直接抛出
+          if (error instanceof RequestError) {
+            throw error
+          }
+          // 对于普通 Error，保留其消息
+          throw new RequestError(
+            error instanceof Error ? error.message : 'Request interceptor execution failed',
+            {
+              originalError: error,
+              context: { 
+                url: processedConfig.url, 
+                method: processedConfig.method 
+              }
             }
-          })
+          )
         }
       }
     }
@@ -176,13 +194,21 @@ export class InterceptorManager {
           const result = interceptor.onResponse(processedResponse, config)
           processedResponse = await Promise.resolve(result)
         } catch (error) {
-          throw new RequestError('Response interceptor execution failed', {
-            originalError: error,
-            context: { 
-              url: config.url, 
-              method: config.method 
+          // 如果已经是 RequestError，直接抛出
+          if (error instanceof RequestError) {
+            throw error
+          }
+          // 对于普通 Error，保留其消息
+          throw new RequestError(
+            error instanceof Error ? error.message : 'Response interceptor execution failed',
+            {
+              originalError: error,
+              context: { 
+                url: config.url, 
+                method: config.method 
+              }
             }
-          })
+          )
         }
       }
     }
@@ -192,32 +218,46 @@ export class InterceptorManager {
 
   /**
    * 执行错误拦截器
+   * @returns 返回 { recovered: boolean, value: any }，recovered 表示错误是否被恢复
    */
   private async executeErrorInterceptors(
     error: RequestError, 
     config: RequestConfig
-  ): Promise<RequestError> {
-    let processedError = error
+  ): Promise<{ recovered: boolean; value: any }> {
+    let processedError: any = error
+    let recovered = false
 
     for (const interceptor of this.interceptors) {
       if (interceptor.onError) {
         try {
           const result = interceptor.onError(processedError, config)
           processedError = await Promise.resolve(result)
-          
-          // 验证拦截器返回的错误对象
-          if (!(processedError instanceof RequestError)) {
-            throw new RequestError('Error interceptor must return a RequestError instance')
-          }
+          // 如果 onError 正常返回（没有 reject），说明错误被恢复
+          // 停止执行后续的错误拦截器
+          recovered = true
+          break
         } catch (interceptorError) {
-          // 如果错误拦截器本身出错，返回原始错误
-          console.error('Error interceptor execution failed:', interceptorError)
-          return error
+          // 如果错误拦截器抛出新错误，使用新错误替换
+          if (interceptorError instanceof RequestError) {
+            processedError = interceptorError
+          } else {
+            processedError = new RequestError(
+              interceptorError instanceof Error ? interceptorError.message : 'Error interceptor execution failed',
+              {
+                originalError: interceptorError,
+                context: { 
+                  url: config.url, 
+                  method: config.method 
+                }
+              }
+            )
+          }
+          // 错误继续传播，不设置 recovered
         }
       }
     }
 
-    return processedError
+    return { recovered, value: processedError }
   }
 
   /**

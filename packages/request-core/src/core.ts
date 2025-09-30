@@ -67,9 +67,9 @@ export class RequestCore implements ConvenienceExecutor {
   setGlobalConfig(config: GlobalConfig): void {
     this.configManager.setGlobalConfig(config)
     
-    // 处理拦截器
+    // 处理拦截器 - 总是清除现有拦截器，然后添加新的（如果有）
+    this.interceptorManager.clear()
     if (config.interceptors) {
-      this.interceptorManager.clear()
       config.interceptors.forEach(interceptor => {
         this.interceptorManager.add(interceptor)
       })

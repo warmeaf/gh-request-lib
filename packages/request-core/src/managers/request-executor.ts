@@ -106,23 +106,22 @@ export class RequestExecutor {
     duration: number
   ): RequestError {
     if (error instanceof RequestError) {
-      // 如果已经是RequestError，添加执行上下文
-      return new RequestError(error.message, {
-        ...error,
-        context: {
-          ...error.context,
-          duration,
-          timestamp: Date.now(),
-          metadata: {
-            ...error.context?.metadata,
-            requestId: context.requestId
-          }
-        }
-      })
+      // 如果已经是RequestError，直接修改其context而不创建新对象，保持对象引用不变
+      // 使用类型断言绕过readonly限制，因为我们需要添加执行上下文信息
+      const errorContext = error.context as any
+      errorContext.duration = duration
+      errorContext.url = errorContext.url || context.config.url
+      errorContext.method = errorContext.method || context.config.method
+      errorContext.tag = errorContext.tag || context.config.tag
+      errorContext.metadata = {
+        ...errorContext.metadata,
+        requestId: context.requestId
+      }
+      return error
     }
 
     // 创建新的RequestError
-    const message = error instanceof Error ? error.message : 'Unknown error occurred'
+    const message = error instanceof Error ? error.message : 'Unknown error'
     
     return new RequestError(message, {
       originalError: error,

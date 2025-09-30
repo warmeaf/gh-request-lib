@@ -54,7 +54,7 @@ export class ErrorHandler {
     }
 
     // 处理其他类型的错误
-    return new RequestError(message || 'Unknown error occurred', {
+    return new RequestError(message || 'Unknown error', {
       originalError: error,
       type: RequestErrorType.UNKNOWN_ERROR,
       context: errorContext

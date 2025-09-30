@@ -62,7 +62,7 @@ describe('ErrorHandler', () => {
             const result = ErrorHandler.wrapError(unknownError, mockContext)
 
             expect(result).toBeInstanceOf(RequestError)
-            expect(result.message).toBe('Unknown error occurred')
+            expect(result.message).toBe('Unknown error')
             expect(result.originalError).toBe(unknownError)
             expect(result.type).toBe(RequestErrorType.UNKNOWN_ERROR)
         })
@@ -74,7 +74,7 @@ describe('ErrorHandler', () => {
             const result = ErrorHandler.wrapError(stringError, mockContext)
 
             expect(result).toBeInstanceOf(RequestError)
-            expect(result.message).toBe('Unknown error occurred')
+            expect(result.message).toBe('Unknown error')
             expect(result.originalError).toBe(stringError)
             expect(result.type).toBe(RequestErrorType.UNKNOWN_ERROR)
         })
@@ -84,9 +84,9 @@ describe('ErrorHandler', () => {
             const result1 = ErrorHandler.wrapError(null, mockContext)
             const result2 = ErrorHandler.wrapError(undefined, mockContext)
 
-            expect(result1.message).toBe('Unknown error occurred')
+            expect(result1.message).toBe('Unknown error')
             expect(result1.type).toBe(RequestErrorType.UNKNOWN_ERROR)
-            expect(result2.message).toBe('Unknown error occurred')
+            expect(result2.message).toBe('Unknown error')
             expect(result2.type).toBe(RequestErrorType.UNKNOWN_ERROR)
         })
     })
