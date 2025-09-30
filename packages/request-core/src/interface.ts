@@ -278,7 +278,7 @@ export interface Requestor {
 export interface RequestInterceptor {
   onRequest?: (config: RequestConfig) => RequestConfig | Promise<RequestConfig>
   onResponse?: <T>(response: T, config: RequestConfig) => T | Promise<T>
-  onError?: (error: RequestError, config: RequestConfig) => RequestError | Promise<RequestError>
+  onError?: (error: RequestError, config: RequestConfig) => any
 }
 
 /**

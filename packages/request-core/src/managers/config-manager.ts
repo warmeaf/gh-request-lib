@@ -60,8 +60,8 @@ export class ConfigManager {
         suggestion: this.getValidationSuggestion(config, validation),
         code: this.getValidationCode(validation),
         context: { 
-          url: config.url, 
-          method: config.method,
+          url: config?.url, 
+          method: config?.method,
           timestamp: Date.now(),
           metadata: { 
             allErrors: validation.errors,

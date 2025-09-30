@@ -115,14 +115,14 @@ export class ConvenienceMethods {
    */
   async postJson<T>(url: string, data: any, config?: Partial<RequestConfig>): Promise<T> {
     return this.executor.execute<T>({
+      ...config,
       url,
       method: 'POST',
       data,
       headers: {
         'Content-Type': 'application/json',
         ...config?.headers
-      },
-      ...config
+      }
     })
   }
 
@@ -131,14 +131,14 @@ export class ConvenienceMethods {
    */
   async putJson<T>(url: string, data: any, config?: Partial<RequestConfig>): Promise<T> {
     return this.executor.execute<T>({
+      ...config,
       url,
       method: 'PUT',
       data,
       headers: {
         'Content-Type': 'application/json',
         ...config?.headers
-      },
-      ...config
+      }
     })
   }
 
@@ -156,14 +156,14 @@ export class ConvenienceMethods {
     })
 
     return this.executor.execute<T>({
+      ...config,
       url,
       method: 'POST',
       data: formData,
       headers: {
         'Content-Type': 'application/x-www-form-urlencoded',
         ...config?.headers
-      },
-      ...config
+      }
     })
   }
 
@@ -297,10 +297,10 @@ export class ConvenienceMethods {
     }
 
     return this.executor.execute<PaginatedResponse<T>>({
+      ...config,
       url,
       method: 'GET',
-      params,
-      ...config
+      params
     })
   }
 
