@@ -23,17 +23,19 @@ request-core (抽象层) ← 定义 Requestor 接口
 ## 关键接口
 
 ### Requestor 接口
+
 ```typescript
 export interface Requestor {
   request<T = unknown>(config: RequestConfig): Promise<T>
 }
 ```
 
-这是整个架构的核心抽象，所有HTTP客户端实现都必须实现此接口。
+这是整个架构的核心抽象，所有 HTTP 客户端实现都必须实现此接口。
 
 ## 实际应用
 
 ### 具体实现依赖抽象
+
 ```typescript
 // request-imp-axios 和 request-imp-fetch 都依赖 request-core 的抽象
 import { Requestor, RequestConfig } from 'request-core'
@@ -48,6 +50,7 @@ export class FetchRequestor implements Requestor {
 ```
 
 ### 依赖注入和面向接口编程
+
 ```typescript
 // RequestCore 通过构造函数接收 Requestor 实现
 const axiosClient = new RequestCore(new AxiosRequestor())
@@ -59,7 +62,7 @@ const client = createRequestCore(new AxiosRequestor())
 
 ## 收益
 
-- **可扩展性**：轻松添加新的HTTP客户端实现（如XHR、Node.js原生等）
-- **可测试性**：可以轻松创建Mock实现进行单元测试
-- **可维护性**：修改具体实现不影响使用方代码
-- **灵活性**：运行时动态切换不同实现
+- **可扩展性**: 轻松添加新的 HTTP 客户端实现（如 XHR、Node.js 原生等）
+- **可测试性**: 可以轻松创建 Mock 实现进行单元测试
+- **可维护性**: 修改具体实现不影响使用方代码
+- **灵活性**: 运行时动态切换不同实现
