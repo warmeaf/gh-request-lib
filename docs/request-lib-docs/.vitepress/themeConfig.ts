@@ -25,7 +25,6 @@ const themeConfig: DefaultTheme.Config = {
           { text: '架构设计', link: '/concepts/architecture' },
           { text: '依赖倒置', link: '/concepts/dip' },
           { text: '请求生命周期', link: '/concepts/request-lifecycle' },
-          { text: '错误处理', link: '/concepts/error-handling' },
         ],
       },
     ],
