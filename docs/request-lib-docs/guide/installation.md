@@ -35,24 +35,6 @@ yarn add request-core request-api request-imp-axios
 
 :::
 
-### 最小化安装
-
-::: code-group
-
-```bash [pnpm]
-pnpm add request-core request-imp-axios
-```
-
-```bash [npm]
-npm install request-core request-imp-axios
-```
-
-```bash [yarn]
-yarn add request-core request-imp-axios
-```
-
-:::
-
 ## 包说明
 
 ### 核心包（必需）

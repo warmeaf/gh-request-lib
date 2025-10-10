@@ -40,8 +40,6 @@ const themeConfig: DefaultTheme.Config = {
           { text: '并发请求示例', link: '/examples/concurrent-requests' },
           { text: '幂等请求示例', link: '/examples/idempotent-requests' },
           { text: '串行请求示例', link: '/examples/serial-requests' },
-          { text: '自定义API示例', link: '/examples/custom-apis' },
-          { text: '框架集成示例', link: '/examples/integration' },
         ],
       },
     ],
