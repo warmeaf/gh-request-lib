@@ -1,247 +1,345 @@
-# request-imp-fetch
+# Request-Imp-Fetch
 
-基于浏览器 Fetch API 的请求实现层，为 `request-core` 提供具体的请求能力实现。
+基于 Fetch API 的 HTTP 请求实现层。
 
-## 特性
+## 📖 简介
 
-- 基于现代浏览器的 Fetch API 实现
-- 完整的请求/响应处理能力
-- 智能参数过滤（自动过滤 `null` 和 `undefined` 值）
-- 统一的超时和取消控制（基于 AbortController）
-- 支持多种数据格式（JSON、FormData、Blob、ArrayBuffer、URLSearchParams、ReadableStream 等）
-- 智能 Content-Type 设置（仅在必要时添加）
-- JSON 解析容错（失败时自动回退到 text）
-- 详细的错误分类处理（超时、取消、HTTP、网络错误）
-- 自动的请求日志输出
-- 默认安全配置（不发送凭据）
-- 提供默认实例，开箱即用
-- 统一的错误处理机制
-- 与 request-core 完美集成
+`request-imp-fetch` 实现了 `Requestor` 接口，提供基于浏览器原生 [Fetch API](https://developer.mozilla.org/en-US/docs/Web/API/Fetch_API) 的 HTTP 请求能力。
 
-## 安装
+### 主要职责
+
+- 🔌 **实现 Requestor 接口**：提供标准化的请求执行能力
+- 🌐 **URL 构建**：将参数对象转换为查询字符串并附加到 URL
+- 📦 **请求体构建**：处理不同类型的请求体（JSON、FormData、Blob 等）
+- ⚡ **超时控制**：使用 `AbortController` 统一处理超时和取消
+- 📄 **响应解析**：根据类型解析响应（json、text、blob、arraybuffer）
+- 🎯 **错误转换**：将 Fetch 错误转换为统一的 `RequestError` 格式
+- 🔧 **请求头管理**：提供大小写无关的请求头操作
+
+## 📦 安装
 
 ```bash
-npm install request-imp-fetch
+pnpm add request-imp-fetch
 ```
 
-## 使用方法
-
-### 基本使用
-
-#### 使用默认实例（推荐）
+## 🚀 快速开始
 
 ```typescript
-import { fetchRequestor } from 'request-imp-fetch'
+import { FetchRequestor, fetchRequestor } from 'request-imp-fetch'
 
-// 发送 GET 请求
-const data = await fetchRequestor.request({
+// 使用默认实例（推荐）
+const requestor = fetchRequestor
+
+// 或创建新实例
+const customRequestor = new FetchRequestor()
+
+// 发送请求
+const response = await requestor.request({
   url: 'https://api.example.com/users',
-  method: 'GET'
-})
-
-console.log(data)
-```
-
-#### 创建自定义实例
-
-```typescript
-import { FetchRequestor } from 'request-imp-fetch'
-
-const requestor = new FetchRequestor()
-
-// 发送 GET 请求
-const data = await requestor.request({
-  url: 'https://api.example.com/users',
-  method: 'GET'
-})
-
-console.log(data)
-```
-
-### 高级配置
-
-```typescript
-import { fetchRequestor } from 'request-imp-fetch'
-
-// 发送 POST 请求
-const result = await fetchRequestor.request({
-  url: 'https://api.example.com/users',
-  method: 'POST',
-  data: {
-    name: 'John Doe',
-    email: 'john@example.com'
-  },
-  params: {
-    page: 1,
-    size: 10,
-    filter: null // 会被自动过滤掉
-  },
-  headers: {
-    'Authorization': 'Bearer your-token'
-  },
-  timeout: 5000, // 5秒超时（默认10秒）
-  responseType: 'json', // 响应类型（默认 'json'）
-  signal: controller.signal // 支持外部取消控制
-})
-
-console.log(result)
-```
-
-### 多种数据格式支持
-
-```typescript
-import { fetchRequestor } from 'request-imp-fetch'
-
-// 发送 FormData
-const formData = new FormData()
-formData.append('file', file)
-formData.append('name', 'example')
-
-await fetchRequestor.request({
-  url: 'https://api.example.com/upload',
-  method: 'POST',
-  data: formData // 自动保留 FormData，不设置 Content-Type
-})
-
-// 发送 Blob
-await fetchRequestor.request({
-  url: 'https://api.example.com/upload',
-  method: 'POST',
-  data: blob // 自动处理 Blob 数据
-})
-
-// 发送 URLSearchParams
-const params = new URLSearchParams()
-params.append('key1', 'value1')
-params.append('key2', 'value2')
-
-await fetchRequestor.request({
-  url: 'https://api.example.com/form',
-  method: 'POST',
-  data: params // 自动设置合适的 Content-Type
+  method: 'GET',
+  params: { page: 1 },
+  timeout: 5000,
 })
 ```
 
-### 默认配置
-
-- **超时时间**: 10000ms (10秒)
-- **响应类型**: 'json'（失败时自动回退到 'text'）
-- **凭据设置**: `credentials: 'omit'`（不发送 cookies 等凭据）
-- **参数处理**: 自动过滤 `params` 中的 `null` 和 `undefined` 值
-- **Content-Type**: 仅在发送 JSON 数据时自动添加 `application/json`
-
-### 与 request-core 集成
-
-```typescript
-import { RequestCore } from 'request-core'
-import { fetchRequestor } from 'request-imp-fetch'
-
-const client = new RequestCore(fetchRequestor)
-
-// 使用缓存功能
-const data = await client.get('https://api.example.com/data', {
-  cache: {
-    ttl: 300000 // 5分钟缓存
-  }
-})
-
-console.log(data)
-```
-
-### 错误处理
-
-该实现提供了详细的错误分类：
-
-```typescript
-import { fetchRequestor } from 'request-imp-fetch'
-
-try {
-  const data = await fetchRequestor.request({
-    url: 'https://api.example.com/data',
-    method: 'GET',
-    timeout: 5000
-  })
-  console.log(data)
-} catch (error) {
-  if (error.type === 'timeout') {
-    console.error('Request timeout:', error.message)
-  } else if (error.type === 'http') {
-    console.error('HTTP error:', error.status, error.message)
-  } else if (error.type === 'network') {
-    console.error('Network error:', error.message)
-  } else {
-    console.error('Unknown error:', error)
-  }
-}
-```
-
-## API
+## 🔧 核心模块
 
 ### FetchRequestor
 
-主要的请求实现类，实现了 `Requestor` 接口。
-
-#### 构造函数
+请求执行器类，实现 `Requestor` 接口。
 
 ```typescript
-new FetchRequestor()
+export class FetchRequestor implements Requestor {
+  async request<T>(config: RequestConfig): Promise<T>
+}
 ```
 
-#### 默认实例
+**功能**：
+
+- 执行 HTTP 请求
+- 处理超时控制
+- 转换错误为统一格式
+- 记录性能日志
+
+### url-builder.ts
+
+构建带查询参数的 URL。
+
+```typescript
+export function buildUrlWithParams(
+  url: string,
+  params?: Record<string, any>
+): string
+
+// 示例
+buildUrlWithParams('/api/users', { page: 1, limit: 10 })
+// => '/api/users?page=1&limit=10'
+```
+
+**功能**：
+- 自动过滤 `null` 和 `undefined` 值
+- 使用 `URLSearchParams` 进行参数编码
+- 支持相对和绝对 URL
+
+### body-builder.ts
+
+构建请求体并自动设置 `Content-Type`。
+
+```typescript
+export function buildRequestBody(
+  data: any,
+  method: string,
+  headers: Record<string, string>
+): BodyInit | undefined
+```
+
+**支持的数据类型**：
+- **对象**：自动转换为 JSON，设置 `Content-Type: application/json`
+- **字符串**：直接使用，设置 `Content-Type: application/json`
+- **FormData**：直接使用，浏览器自动设置 Content-Type
+- **Blob**：直接使用
+- **ArrayBuffer**：直接使用
+- **URLSearchParams**：直接使用
+- **ReadableStream**：直接使用（流式上传）
+
+### error-transformer.ts
+
+将 Fetch 错误转换为统一的 `RequestError`。
+
+```typescript
+export function transformFetchError(
+  error: unknown,
+  config: RequestConfig,
+  timeout: number,
+  isTimedOut: boolean
+): RequestError
+```
+
+**处理的错误类型**：
+
+- **超时错误**：`AbortError` (超时)
+- **HTTP 错误**：`response.ok === false`
+- **网络错误**：连接失败、CORS 错误等
+
+### response-parser.ts
+
+根据指定类型解析响应数据。
+
+```typescript
+export async function parseResponse<T>(
+  response: Response,
+  responseType: ResponseType = 'json'
+): Promise<T>
+```
+
+**支持的响应类型**：
+- `'json'`：解析为 JSON（默认，失败时降级为 text）
+- `'text'`：解析为文本
+- `'blob'`：解析为 Blob
+- `'arraybuffer'`：解析为 ArrayBuffer
+
+### headers-utils.ts
+
+大小写无关的请求头操作工具。
+
+```typescript
+export function hasHeaderIgnoreCase(
+  headers: Record<string, string>,
+  key: string
+): boolean
+
+export function setHeaderIfAbsent(
+  headers: Record<string, string>,
+  key: string,
+  value: string
+): void
+```
+
+**功能**：
+- 检查请求头是否存在（忽略大小写）
+- 仅在不存在时设置请求头
+
+### timeout-controller.ts
+
+使用 `AbortController` 统一处理超时和取消。
+
+```typescript
+export function createTimeoutController(
+  timeout: number,
+  externalSignal?: AbortSignal
+): TimeoutControllerResult
+```
+
+**功能**：
+
+- 创建超时控制器
+- 合并外部 `AbortSignal`
+- 区分超时和手动取消
+
+## 📚 API 参考
+
+### FetchRequestor
+
+```typescript
+class FetchRequestor implements Requestor {
+  async request<T>(config: RequestConfig): Promise<T>
+}
+```
+
+**参数**：
+
+- `config: RequestConfig` - 请求配置对象
+
+**返回值**：
+
+- `Promise<T>` - 响应数据
+
+**异常**：
+
+- `RequestError` - 请求失败时抛出
+
+### fetchRequestor
+
+预创建的默认实例，可直接使用：
 
 ```typescript
 import { fetchRequestor } from 'request-imp-fetch'
-// fetchRequestor 是预创建的 FetchRequestor 实例，可直接使用
 ```
 
-#### 方法
+## 🛠️ 配置选项
 
-##### request<T>(config: RequestConfig): Promise<T>
+支持的 `RequestConfig` 选项：
 
-发送 HTTP 请求。
+```typescript
+interface RequestConfig {
+  url: string                    // 请求 URL
+  method: 'GET' | 'POST' | ...  // HTTP 方法
+  data?: RequestData            // 请求体
+  params?: RequestParams        // URL 参数
+  headers?: Record<string, string> // 请求头
+  timeout?: number              // 超时时间（毫秒）
+  signal?: AbortSignal          // 取消信号
+  responseType?: 'json' | 'text' | 'blob' | 'arraybuffer'
+}
+```
 
-**参数:**
+**内部 Fetch 配置**：
 
-- `config`: 请求配置对象
-  - `url`: 请求地址
-  - `method`: HTTP 方法 (GET, POST, PUT, DELETE 等)
-  - `data`: 请求体数据（支持 JSON、FormData、Blob、ArrayBuffer、URLSearchParams、ReadableStream、string）
-  - `params`: URL 查询参数（`null` 和 `undefined` 值会被自动过滤）
-  - `headers`: 请求头（大小写无关检测，避免重复设置）
-  - `timeout`: 超时时间（毫秒，默认 10000）
-  - `signal`: AbortSignal 用于取消请求（支持与内部超时机制合并）
-  - `responseType`: 响应类型（默认 'json'，支持 'text', 'blob', 'arraybuffer'）
+```typescript
+{
+  method: method.toUpperCase(),
+  headers: headers,
+  credentials: 'omit',          // 不发送凭据（与 Axios 对齐）
+  redirect: 'follow',
+  referrerPolicy: 'strict-origin-when-cross-origin',
+  signal: abortSignal,          // 统一的 AbortSignal
+  body: buildRequestBody(...)   // 自动构建请求体
+}
+```
 
-**返回值:**
+## 🐛 错误处理
 
-Promise<T> - 解析后的响应数据
+所有 Fetch 错误都会被转换为统一的 `RequestError`：
 
-**特殊行为:**
+### 错误类型
 
-- 自动过滤 `params` 中的 `null` 和 `undefined` 值
-- 使用 AbortController 统一处理超时和取消
-- 智能 Content-Type 设置（仅在发送 JSON 数据时添加）
-- JSON 解析容错（失败时自动回退到 text）
-- 默认不发送凭据（cookies 等）
-- 自动输出格式化的请求日志
-- 提供详细的错误分类（timeout、http、network 等）
-- 支持多种原生数据类型，保持其原始特性
+**1. 超时错误 (TIMEOUT_ERROR)**
 
-## 浏览器兼容性
+- 触发条件：`AbortError` + 超时标志
+- 包含建议信息
 
-需要支持以下特性的现代浏览器：
+**2. HTTP 错误 (HTTP_ERROR)**
 
-- Fetch API
-- Promise
-- async/await
+- 触发条件：`response.ok === false`
+- 包含状态码和建议
 
-| 浏览器 | 版本 |
-|--------|------|
-| Chrome | 42+ |
-| Firefox | 39+ |
-| Safari | 10.1+ |
-| Edge | 14+ |
+**3. 网络错误 (NETWORK_ERROR)**
 
-## 许可证
+- 触发条件：连接失败、CORS 错误等
+- 包含错误原因
 
-ISC
+### 错误信息
+
+```typescript
+interface RequestError {
+  message: string // 错误消息
+  type: RequestErrorType // 错误类型
+  status?: number // HTTP 状态码
+  suggestion?: string // 错误建议
+  originalError?: unknown // 原始 Fetch 错误
+}
+```
+
+## ⚡ 特性
+
+### 1. 自动 Content-Type 设置
+
+根据请求体类型自动设置 `Content-Type`：
+
+```typescript
+// 对象 → application/json
+await requestor.request({ 
+  url: '/api/users', 
+  method: 'POST',
+  data: { name: 'Alice' } 
+})
+
+// FormData → multipart/form-data（浏览器自动设置）
+const formData = new FormData()
+formData.append('file', file)
+await requestor.request({ 
+  url: '/api/upload', 
+  method: 'POST',
+  data: formData 
+})
+```
+
+### 2. 智能响应解析
+
+`json` 类型解析失败时自动降级为 `text`：
+
+```typescript
+// 如果响应不是有效的 JSON，返回原始文本
+const data = await requestor.request({
+  url: '/api/data',
+  method: 'GET',
+  responseType: 'json' // 失败时自动降级为 text
+})
+```
+
+### 3. 参数自动过滤
+
+自动过滤 `null` 和 `undefined` 参数：
+
+```typescript
+const params = {
+  name: 'Alice',
+  age: null,
+  city: undefined,
+  page: 1
+}
+
+// 实际 URL: /api/users?name=Alice&page=1
+await requestor.request({ url: '/api/users', method: 'GET', params })
+```
+
+### 4. 大小写无关的请求头
+
+避免重复设置相同的请求头（忽略大小写）：
+
+```typescript
+const headers = {
+  'content-type': 'application/json',
+  'Authorization': 'Bearer token'
+}
+
+// setHeaderIfAbsent 不会重复设置 Content-Type
+setHeaderIfAbsent(headers, 'Content-Type', 'text/plain')
+// headers 仍然是 'content-type': 'application/json'
+```
+
+## 🔗 相关链接
+
+- [Fetch API 文档](https://developer.mozilla.org/en-US/docs/Web/API/Fetch_API)
+- [request-core](../request-core)
+- [request-imp-axios](../request-imp-axios)

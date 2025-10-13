@@ -1,195 +1,223 @@
-# request-imp-axios
+# Request-Imp-Axios
 
-基于 Axios 的请求实现层，为 `request-core` 提供具体的请求能力实现。
+基于 Axios 的 HTTP 请求实现层。
 
-## 特性
+## 📖 简介
 
-- 基于成熟的 Axios 库实现
-- 完整的请求/响应处理能力
-- 智能参数过滤（自动过滤 `null` 和 `undefined` 值）
-- 统一的超时和取消控制（基于 AbortController）
-- 支持各种数据格式（JSON、FormData、Blob 等）
-- 详细的错误分类处理（超时、取消、HTTP、网络错误）
-- 自动的请求日志输出
-- 默认安全配置（不发送凭据）
-- 提供默认实例，开箱即用
-- 与 request-core 完美集成
-- 支持浏览器和 Node.js 环境
+`request-imp-axios` 实现了 `Requestor` 接口，提供基于 [Axios](https://axios-http.com/) 的 HTTP 请求能力。
 
-## 安装
+### 主要职责
+
+- 🔌 **实现 Requestor 接口**：提供标准化的请求执行能力
+- 🔄 **配置转换**：将通用 `RequestConfig` 转换为 Axios 配置
+- ⚡ **超时控制**：使用 `AbortController` 统一处理超时和取消
+- 🎯 **错误转换**：将 Axios 错误转换为统一的 `RequestError` 格式
+- 🧹 **参数过滤**：自动过滤请求参数中的 `null` 和 `undefined` 值
+
+## 📦 安装
 
 ```bash
-npm install request-imp-axios
+pnpm add request-imp-axios
 ```
 
-## 使用方法
-
-### 基本使用
-
-#### 使用默认实例（推荐）
+## 🚀 快速开始
 
 ```typescript
-import { axiosRequestor } from 'request-imp-axios'
+import { AxiosRequestor, axiosRequestor } from 'request-imp-axios'
 
-// 发送 GET 请求
-const data = await axiosRequestor.request({
+// 使用默认实例（推荐）
+const requestor = axiosRequestor
+
+// 或创建新实例
+const customRequestor = new AxiosRequestor()
+
+// 发送请求
+const response = await requestor.request({
   url: 'https://api.example.com/users',
-  method: 'GET'
+  method: 'GET',
+  params: { page: 1 },
+  timeout: 5000,
 })
-
-console.log(data)
 ```
 
-#### 创建自定义实例
-
-```typescript
-import { AxiosRequestor } from 'request-imp-axios'
-
-const requestor = new AxiosRequestor()
-
-// 发送 GET 请求
-const data = await requestor.request({
-  url: 'https://api.example.com/users',
-  method: 'GET'
-})
-
-console.log(data)
-```
-
-### 高级配置
-
-```typescript
-import { axiosRequestor } from 'request-imp-axios'
-
-// 发送 POST 请求
-const result = await axiosRequestor.request({
-  url: 'https://api.example.com/users',
-  method: 'POST',
-  data: {
-    name: 'John Doe',
-    email: 'john@example.com'
-  },
-  params: {
-    page: 1,
-    size: 10,
-    filter: null // 会被自动过滤掉
-  },
-  headers: {
-    'Authorization': 'Bearer your-token'
-  },
-  timeout: 5000, // 5秒超时（默认10秒）
-  responseType: 'json', // 响应类型（默认 'json'）
-  signal: controller.signal // 支持外部取消控制
-})
-
-console.log(result)
-```
-
-### 默认配置
-
-- **超时时间**: 10000ms (10秒)
-- **响应类型**: 'json'
-- **凭据设置**: `withCredentials: false`（不发送 cookies 等凭据）
-- **参数处理**: 自动过滤 `params` 中的 `null` 和 `undefined` 值
-
-### 与 request-core 集成
-
-```typescript
-import { RequestCore } from 'request-core'
-import { axiosRequestor } from 'request-imp-axios'
-
-const client = new RequestCore(axiosRequestor)
-
-// 使用缓存功能
-const data = await client.get('https://api.example.com/data', {
-  cache: {
-    ttl: 300000 // 5分钟缓存
-  }
-})
-
-console.log(data)
-```
-
-### 错误处理
-
-该实现提供了详细的错误分类：
-
-```typescript
-import { axiosRequestor } from 'request-imp-axios'
-
-try {
-  const data = await axiosRequestor.request({
-    url: 'https://api.example.com/data',
-    method: 'GET',
-    timeout: 5000
-  })
-  console.log(data)
-} catch (error) {
-  if (error.type === 'timeout') {
-    console.error('Request timeout:', error.message)
-  } else if (error.type === 'http') {
-    console.error('HTTP error:', error.status, error.message)
-  } else if (error.type === 'network') {
-    console.error('Network error:', error.message)
-  } else {
-    console.error('Unknown error:', error)
-  }
-}
-```
-
-## API
+## 🔧 核心模块
 
 ### AxiosRequestor
 
-主要的请求实现类，实现了 `Requestor` 接口。
-
-#### 构造函数
+请求执行器类，实现 `Requestor` 接口。
 
 ```typescript
-new AxiosRequestor()
+export class AxiosRequestor implements Requestor {
+  async request<T>(config: RequestConfig): Promise<T>
+}
 ```
 
-#### 默认实例
+**功能**：
+
+- 执行 HTTP 请求
+- 处理超时控制
+- 转换错误为统一格式
+- 记录性能日志
+
+### config-builder.ts
+
+将通用 `RequestConfig` 转换为 Axios 配置。
+
+```typescript
+export function buildAxiosConfig(
+  config: RequestConfig,
+  filteredParams: Record<string, any> | undefined,
+  signal: AbortSignal
+): AxiosRequestConfig
+```
+
+### error-transformer.ts
+
+将 Axios 错误转换为统一的 `RequestError`。
+
+```typescript
+export function transformAxiosError(
+  error: unknown,
+  config: RequestConfig,
+  timeout: number,
+  isTimedOut: boolean
+): RequestError
+```
+
+**处理的错误类型**：
+
+- **超时错误**：`ECONNABORTED`、`ERR_CANCELED` (超时)
+- **HTTP 错误**：4xx、5xx 响应
+- **网络错误**：连接失败、DNS 解析失败等
+
+### params-filter.ts
+
+过滤请求参数中的 `null` 和 `undefined` 值。
+
+```typescript
+export function filterParams(
+  params?: Record<string, any>
+): Record<string, string | number | boolean> | undefined
+
+// 示例
+filterParams({ name: 'Alice', age: null, count: 0 })
+// => { name: 'Alice', count: 0 }
+```
+
+### timeout-controller.ts
+
+使用 `AbortController` 统一处理超时和取消。
+
+```typescript
+export function createTimeoutController(
+  timeout: number,
+  externalSignal?: AbortSignal
+): TimeoutControllerResult
+```
+
+**功能**：
+
+- 创建超时控制器
+- 合并外部 `AbortSignal`
+- 区分超时和手动取消
+
+## 📚 API 参考
+
+### AxiosRequestor
+
+```typescript
+class AxiosRequestor implements Requestor {
+  async request<T>(config: RequestConfig): Promise<T>
+}
+```
+
+**参数**：
+
+- `config: RequestConfig` - 请求配置对象
+
+**返回值**：
+
+- `Promise<T>` - 响应数据
+
+**异常**：
+
+- `RequestError` - 请求失败时抛出
+
+### axiosRequestor
+
+预创建的默认实例，可直接使用：
 
 ```typescript
 import { axiosRequestor } from 'request-imp-axios'
-// axiosRequestor 是预创建的 AxiosRequestor 实例，可直接使用
 ```
 
-#### 方法
+## 🛠️ 配置选项
 
-##### request<T>(config: RequestConfig): Promise<T>
+支持的 `RequestConfig` 选项：
 
-发送 HTTP 请求。
+```typescript
+interface RequestConfig {
+  url: string                    // 请求 URL
+  method: 'GET' | 'POST' | ...  // HTTP 方法
+  data?: RequestData            // 请求体
+  params?: RequestParams        // URL 参数
+  headers?: Record<string, string> // 请求头
+  timeout?: number              // 超时时间（毫秒）
+  signal?: AbortSignal          // 取消信号
+  responseType?: 'json' | 'text' | 'blob' | 'arraybuffer'
+}
+```
 
-**参数:**
+**内部 Axios 配置**：
 
-- `config`: 请求配置对象
-  - `url`: 请求地址
-  - `method`: HTTP 方法 (GET, POST, PUT, DELETE 等)
-  - `data`: 请求体数据
-  - `params`: URL 查询参数（`null` 和 `undefined` 值会被自动过滤）
-  - `headers`: 请求头
-  - `timeout`: 超时时间（毫秒，默认 10000）
-  - `signal`: AbortSignal 用于取消请求（支持与内部超时机制合并）
-  - `responseType`: 响应类型（默认 'json'，支持 'text', 'blob', 'arraybuffer', 'document', 'stream'）
+```typescript
+{
+  url: config.url,
+  method: config.method,
+  data: config.data,
+  params: filteredParams,       // 自动过滤 null/undefined
+  headers: config.headers,
+  signal: abortSignal,          // 统一的 AbortSignal
+  responseType: 'json',
+  withCredentials: false
+}
+```
 
-**返回值:**
+## 🐛 错误处理
 
-Promise<T> - 解析后的响应数据
+所有 Axios 错误都会被转换为统一的 `RequestError`：
 
-**特殊行为:**
+### 错误类型
 
-- 自动过滤 `params` 中的 `null` 和 `undefined` 值
-- 使用 AbortController 统一处理超时和取消
-- 默认不发送凭据（cookies 等）
-- 自动输出格式化的请求日志
-- 提供详细的错误分类（timeout、http、network 等）
+**1. 超时错误 (TIMEOUT_ERROR)**
 
-## 依赖
+- 触发条件：`ECONNABORTED`、超时取消
+- 包含建议信息
 
-- [Axios](https://axios-http.com/) - 基于 promise 的 HTTP 库
+**2. HTTP 错误 (HTTP_ERROR)**
 
-## 许可证
+- 触发条件：4xx、5xx 状态码
+- 包含状态码和建议
 
-ISC
+**3. 网络错误 (NETWORK_ERROR)**
+
+- 触发条件：连接失败、DNS 解析失败等
+- 包含错误原因
+
+### 错误信息
+
+```typescript
+interface RequestError {
+  message: string // 错误消息
+  type: RequestErrorType // 错误类型
+  status?: number // HTTP 状态码
+  suggestion?: string // 错误建议
+  originalError?: unknown // 原始 Axios 错误
+}
+```
+
+## 🔗 相关链接
+
+- [Axios 官方文档](https://axios-http.com/)
+- [request-core](../request-core)
+- [request-imp-fetch](../request-imp-fetch)
