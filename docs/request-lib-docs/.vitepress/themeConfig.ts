@@ -4,6 +4,7 @@ const themeConfig: DefaultTheme.Config = {
   nav: [
     { text: '指南', link: '/guide/getting-started' },
     { text: '示例', link: '/examples/basic-requests' },
+    { text: 'API', link: '/api/basic-requests' },
     { text: '概念', link: '/concepts/architecture' },
   ],
 
@@ -33,12 +34,26 @@ const themeConfig: DefaultTheme.Config = {
       {
         text: '使用示例',
         items: [
-          { text: '基础请求示例', link: '/examples/basic-requests' },
-          { text: '缓存使用示例', link: '/examples/caching' },
-          { text: '重试机制示例', link: '/examples/retry-logic' },
-          { text: '并发请求示例', link: '/examples/concurrent-requests' },
-          { text: '幂等请求示例', link: '/examples/idempotent-requests' },
-          { text: '串行请求示例', link: '/examples/serial-requests' },
+          { text: '基础请求', link: '/examples/basic-requests' },
+          { text: '缓存请求', link: '/examples/caching' },
+          { text: '重试请求', link: '/examples/retry-logic' },
+          { text: '并发请求', link: '/examples/concurrent-requests' },
+          { text: '幂等请求', link: '/examples/idempotent-requests' },
+          { text: '串行请求', link: '/examples/serial-requests' },
+        ],
+      },
+    ],
+
+    '/api/': [
+      {
+        text: 'API',
+        items: [
+          { text: '基础请求', link: '/api/basic-requests' },
+          { text: '缓存请求', link: '/api/caching' },
+          { text: '重试请求', link: '/api/retry-logic' },
+          { text: '并发请求', link: '/api/concurrent-requests' },
+          { text: '幂等请求', link: '/api/idempotent-requests' },
+          { text: '串行请求', link: '/api/serial-requests' },
         ],
       },
     ],

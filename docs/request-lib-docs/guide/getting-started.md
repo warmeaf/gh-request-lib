@@ -4,12 +4,21 @@
 
 ## 安装
 
-```bash
-# 安装必需的包
-npm install request-core request-api request-imp-axios
-# or
-pnpm add request-core request-api request-imp-axios
+::: code-group
+
+```bash [pnpm]
+pnpm add request-api request-imp-axios
 ```
+
+```bash [npm]
+npm install request-api request-imp-axios
+```
+
+```bash [yarn]
+yarn add request-api request-imp-axios
+```
+
+:::
 
 > 更详细的安装选项请查看 [安装指南](/guide/installation)
 
@@ -57,11 +66,21 @@ console.log('User:', user)
 ## 使用 Fetch 实现
 
 如果更倾向于使用 Fetch API，可以轻松切换：
+::: code-group
 
-```bash
-# 安装 Fetch 实现
-npm install request-core request-api request-imp-fetch
+```bash [pnpm]
+pnpm add request-api request-imp-fetch
 ```
+
+```bash [npm]
+npm install request-api request-imp-fetch
+```
+
+```bash [yarn]
+yarn add request-api request-imp-fetch
+```
+
+:::
 
 ```typescript
 import { createApiClient } from 'request-api'
@@ -81,13 +100,3 @@ const apiClient = createApiClient(
   }
 )
 ```
-
-## 核心功能
-
-- **实现切换**: 支持 Axios、Fetch 等多种请求实现
-- **智能缓存**: 内置多种缓存策略
-- **重试机制**: 自动重试失败请求
-- **并发控制**: 智能管理并发请求数量
-- **链式调用**: 提供流畅的链式 API
-- **文件操作**: 支持文件上传下载
-- **分页处理**: 内置分页支持
