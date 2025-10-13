@@ -25,6 +25,35 @@ export type {
   GlobalConfig,
   RequestInterceptor,
   Requestor,
+  // 功能配置类型
+  CacheConfig,
+  RetryConfig,
+  ConcurrentConfig,
+  ConcurrentResult,
+  IdempotentConfig,
+  IdempotentStats,
+} from 'request-core'
+
+// 重导出缓存相关类型
+export type {
+  CacheKeyGenerator,
+  CacheKeyStrategy,
+  CacheInvalidationPolicy,
+  CacheKeyConfig,
+} from 'request-core'
+
+// 重导出策略类
+export {
+  StorageType,
+  CacheInvalidationStrategy,
+  UrlPathKeyStrategy,
+  FullUrlKeyStrategy,
+  ParameterizedKeyStrategy,
+  CustomKeyStrategy,
+  LRUInvalidationPolicy,
+  FIFOInvalidationPolicy,
+  TimeBasedInvalidationPolicy,
+  CustomInvalidationPolicy,
 } from 'request-core'
 
 // 重导出错误类型

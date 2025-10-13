@@ -13,6 +13,32 @@ export type {
   GlobalConfig,
   RequestInterceptor,
   Requestor,
+  // 功能配置类型
+  CacheConfig,
+  RetryConfig,
+  ConcurrentConfig,
+  ConcurrentResult,
+  IdempotentConfig,
+  IdempotentStats,
+  // 缓存相关类型
+  CacheKeyGenerator,
+  CacheKeyStrategy,
+  CacheInvalidationPolicy,
+  CacheKeyConfig,
+} from './types'
+
+// 导出策略类
+export {
+  StorageType,
+  CacheInvalidationStrategy,
+  UrlPathKeyStrategy,
+  FullUrlKeyStrategy,
+  ParameterizedKeyStrategy,
+  CustomKeyStrategy,
+  LRUInvalidationPolicy,
+  FIFOInvalidationPolicy,
+  TimeBasedInvalidationPolicy,
+  CustomInvalidationPolicy,
 } from './types'
 
 // 导出错误类型
