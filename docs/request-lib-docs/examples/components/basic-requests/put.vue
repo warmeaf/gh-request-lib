@@ -1,482 +1,277 @@
 <template>
-  <div class="demo-container">
+  <n-flex vertical>
     <!-- 请求操作区 -->
-    <div class="request-section">
-      <div class="url-display">
-        <span class="method-tag put">PUT</span>
-        <code
-          >https://jsonplaceholder.typicode.com/users/{{
-            selectedUserId || '{id}'
-          }}</code
-        >
-      </div>
+    <n-flex align="center">
+      <n-tag type="warning">PUT</n-tag>
+      <n-tag type="info"
+        >https://jsonplaceholder.typicode.com/posts/{{ postId }}</n-tag
+      >
+    </n-flex>
 
-      <!-- 用户选择 -->
-      <div class="user-selector">
-        <label>选择用户:</label>
-        <select v-model="selectedUserId" @change="loadUser" class="user-select">
-          <option value="">选择要更新的用户...</option>
-          <option v-for="i in 3" :key="i" :value="i">用户 {{ i }}</option>
-        </select>
-      </div>
+    <!-- 文章ID选择 -->
+    <n-flex vertical>
+      <n-flex vertical>
+        <n-text depth="3">选择要更新的文章 ID</n-text>
+        <n-select
+          v-model:value="postId"
+          :options="postOptions"
+          @update:value="loadPost"
+        />
+      </n-flex>
 
       <!-- 更新表单 -->
-      <div v-if="originalUser" class="update-form">
-        <h5>更新数据：</h5>
-        <div class="form-grid">
-          <div class="form-field">
-            <label>姓名</label>
-            <input v-model="updateForm.name" type="text" class="form-input" />
-          </div>
-          <div class="form-field">
-            <label>邮箱</label>
-            <input v-model="updateForm.email" type="email" class="form-input" />
-          </div>
-          <div class="form-field">
-            <label>电话</label>
-            <input v-model="updateForm.phone" type="text" class="form-input" />
-          </div>
-          <div class="form-field">
-            <label>网站</label>
-            <input
-              v-model="updateForm.website"
-              type="text"
-              class="form-input"
-            />
-          </div>
-        </div>
+      <n-flex v-if="originalPost" vertical>
+        <n-divider>编辑文章</n-divider>
 
-        <button
-          @click="updateUser"
-          :disabled="loading || !hasChanges"
-          class="update-btn"
+        <n-flex vertical>
+          <n-text depth="3">标题</n-text>
+          <n-input v-model:value="updateForm.title" placeholder="输入文章标题" />
+        </n-flex>
+
+        <n-flex vertical>
+          <n-text depth="3">作者 ID</n-text>
+          <n-select v-model:value="updateForm.userId" :options="userOptions" />
+        </n-flex>
+
+        <n-flex vertical>
+          <n-text depth="3">内容</n-text>
+          <n-input
+            v-model:value="updateForm.body"
+            type="textarea"
+            placeholder="输入文章内容..."
+            :rows="3"
+          />
+        </n-flex>
+
+        <n-button
+          type="primary"
+          @click="updatePost"
+          :disabled="!isFormValid || !hasChanges"
+          :loading="loading"
         >
-          {{ loading ? '更新中...' : '更新用户' }}
-        </button>
-      </div>
-    </div>
+          更新文章
+        </n-button>
+      </n-flex>
+    </n-flex>
 
     <!-- 响应结果区 -->
-    <div class="response-section">
-      <h4>响应结果</h4>
+    <n-alert v-if="error" type="error" title="请求失败">
+      {{ error }}
+    </n-alert>
 
-      <!-- 加载状态 -->
-      <div v-if="loadingUser || loading" class="loading">
-        <div class="spinner">⏳</div>
-        <span>{{ loadingUser ? '加载用户信息...' : '更新用户信息...' }}</span>
-      </div>
+    <!-- 对比展示 -->
+    <n-flex v-if="updatedPost && originalPost" vertical>
+      <n-divider>更新对比</n-divider>
 
-      <!-- 错误状态 -->
-      <div v-if="error" class="error-result">
-        <div class="status-badge error">❌ 请求失败</div>
-        <div class="error-message">{{ error }}</div>
-      </div>
+      <n-grid :cols="2" :x-gap="12">
+        <n-gi>
+          <n-card title="更新前" size="small" :bordered="true">
+            <n-flex vertical size="small">
+              <n-flex align="center">
+                <n-text strong>标题:</n-text>
+                <n-text>{{ originalPost.title }}</n-text>
+              </n-flex>
+              <n-flex align="center">
+                <n-text strong>作者ID:</n-text>
+                <n-text>{{ originalPost.userId }}</n-text>
+              </n-flex>
+              <n-flex vertical>
+                <n-text strong>内容:</n-text>
+                <n-text>{{ originalPost.body }}</n-text>
+              </n-flex>
+            </n-flex>
+          </n-card>
+        </n-gi>
 
-      <!-- 成功状态 -->
-      <div
-        v-if="updatedUser && !loading && !loadingUser"
-        class="success-result"
-      >
-        <div class="status-badge success">✅ 更新成功</div>
+        <n-gi>
+          <n-card title="更新后" size="small" :bordered="true">
+            <n-flex vertical size="small">
+              <n-flex align="center">
+                <n-text strong>标题:</n-text>
+                <n-text type="success">{{ updatedPost.title }}</n-text>
+              </n-flex>
+              <n-flex align="center">
+                <n-text strong>作者ID:</n-text>
+                <n-text type="success">{{ updatedPost.userId }}</n-text>
+              </n-flex>
+              <n-flex vertical>
+                <n-text strong>内容:</n-text>
+                <n-text type="success">{{ updatedPost.body }}</n-text>
+              </n-flex>
+            </n-flex>
+          </n-card>
+        </n-gi>
+      </n-grid>
 
-        <!-- 对比展示 -->
-        <div class="response-data">
-          <div class="comparison-view">
-            <div class="before-card">
-              <h5>更新前</h5>
-              <div class="user-info">
-                <div class="info-item">
-                  <span class="label">姓名</span>
-                  <span class="value">{{ originalUser.name }}</span>
-                </div>
-                <div class="info-item">
-                  <span class="label">邮箱</span>
-                  <span class="value">{{ originalUser.email }}</span>
-                </div>
-                <div class="info-item">
-                  <span class="label">电话</span>
-                  <span class="value">{{ originalUser.phone }}</span>
-                </div>
-                <div class="info-item">
-                  <span class="label">网站</span>
-                  <span class="value">{{ originalUser.website }}</span>
-                </div>
-              </div>
-            </div>
+      <n-divider>完整响应数据</n-divider>
 
-            <div class="arrow">→</div>
+      <n-code
+        :code="JSON.stringify(updatedPost, null, 2)"
+        :hljs="hljs"
+        language="json"
+      />
+    </n-flex>
 
-            <div class="after-card">
-              <h5>更新后</h5>
-              <div class="user-info">
-                <div class="info-item">
-                  <span class="label">姓名</span>
-                  <span class="value highlight">{{ updatedUser.name }}</span>
-                </div>
-                <div class="info-item">
-                  <span class="label">邮箱</span>
-                  <span class="value highlight">{{ updatedUser.email }}</span>
-                </div>
-                <div class="info-item">
-                  <span class="label">电话</span>
-                  <span class="value highlight">{{ updatedUser.phone }}</span>
-                </div>
-                <div class="info-item">
-                  <span class="label">网站</span>
-                  <span class="value highlight">{{ updatedUser.website }}</span>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <!-- 完整响应数据 -->
-          <div class="raw-response">
-            <h5>完整响应数据：</h5>
-            <pre class="json-data">{{
-              JSON.stringify(updatedUser, null, 2)
-            }}</pre>
-          </div>
-        </div>
-      </div>
-    </div>
-  </div>
+    <n-empty
+      v-if="!originalPost && !loadingPost && !error"
+      description="选择要更新的文章"
+    />
+  </n-flex>
 </template>
 
 <script setup lang="ts">
 import { ref, computed } from 'vue'
+import {
+  NFlex,
+  NTag,
+  NCode,
+  NButton,
+  NEmpty,
+  NInput,
+  NSelect,
+  NAlert,
+  NText,
+  NCard,
+  NGrid,
+  NGi,
+  NDivider,
+} from 'naive-ui'
 import { createApiClient } from 'request-api'
 import { fetchRequestor } from 'request-imp-fetch'
+import hljs from 'highlight.js/lib/core'
+import json from 'highlight.js/lib/languages/json'
 
-// 简化的用户API类
-class UserApi {
+hljs.registerLanguage('json', json)
+
+// 简化的文章API类
+class PostApi {
   requestCore: any
   constructor(requestCore: any) {
     this.requestCore = requestCore
   }
 
-  async getUser(userId: number) {
+  async getPost(postId: number) {
     return this.requestCore.get(
-      `https://jsonplaceholder.typicode.com/users/${userId}`
+      `https://jsonplaceholder.typicode.com/posts/${postId}`
     )
   }
 
-  async updateUser(userId: number, userData: any) {
+  async updatePost(postId: number, postData: any) {
     return this.requestCore.put(
-      `https://jsonplaceholder.typicode.com/users/${userId}`,
-      userData
+      `https://jsonplaceholder.typicode.com/posts/${postId}`,
+      postData
     )
   }
 }
 
 // 创建API客户端
 const apiClient = createApiClient(
-  { user: UserApi },
+  { post: PostApi },
   {
     requestor: fetchRequestor,
     globalConfig: { timeout: 10000 },
   }
 )
 
+// 文章选项
+const postOptions = [
+  { label: '文章 1', value: 1 },
+  { label: '文章 2', value: 2 },
+  { label: '文章 3', value: 3 },
+  { label: '文章 4', value: 4 },
+  { label: '文章 5', value: 5 },
+]
+
+// 用户选项
+const userOptions = [
+  { label: '用户 1', value: 1 },
+  { label: '用户 2', value: 2 },
+  { label: '用户 3', value: 3 },
+]
+
 // 状态管理
-const selectedUserId = ref('')
-const originalUser = ref<any>(null)
+const postId = ref(1)
+const originalPost = ref<any>(null)
 const updateForm = ref({
-  name: '',
-  email: '',
-  phone: '',
-  website: '',
+  title: '',
+  body: '',
+  userId: 1,
 })
-const loadingUser = ref(false)
+const loadingPost = ref(false)
 const loading = ref(false)
 const error = ref('')
-const updatedUser = ref<any>(null)
+const updatedPost = ref<any>(null)
+
+// 表单验证
+const isFormValid = computed(() => {
+  return updateForm.value.title.trim() && updateForm.value.body.trim()
+})
 
 // 检查是否有更改
 const hasChanges = computed(() => {
-  if (!originalUser.value) return false
+  if (!originalPost.value) return false
   return (
-    updateForm.value.name !== originalUser.value.name ||
-    updateForm.value.email !== originalUser.value.email ||
-    updateForm.value.phone !== originalUser.value.phone ||
-    updateForm.value.website !== originalUser.value.website
+    updateForm.value.title !== originalPost.value.title ||
+    updateForm.value.body !== originalPost.value.body ||
+    updateForm.value.userId !== originalPost.value.userId
   )
 })
 
-// 加载用户信息
-const loadUser = async () => {
-  if (!selectedUserId.value) {
-    originalUser.value = null
-    updatedUser.value = null
+// 加载文章详情
+const loadPost = async () => {
+  if (!postId.value) {
+    originalPost.value = null
     return
   }
 
-  loadingUser.value = true
+  loadingPost.value = true
   error.value = ''
-  updatedUser.value = null
+  updatedPost.value = null
 
   try {
-    const user = await apiClient.user.getUser(parseInt(selectedUserId.value))
-    originalUser.value = user
+    const result = await apiClient.post.getPost(postId.value)
+    originalPost.value = result
 
     // 填充更新表单
     updateForm.value = {
-      name: user.name,
-      email: user.email,
-      phone: user.phone,
-      website: user.website,
+      title: result.title,
+      body: result.body,
+      userId: result.userId,
     }
   } catch (err: any) {
-    error.value = err.message || 'Failed to load user'
+    error.value = err.message || 'Failed to load post'
+    originalPost.value = null
   } finally {
-    loadingUser.value = false
+    loadingPost.value = false
   }
 }
 
-// 更新用户信息
-const updateUser = async () => {
-  if (!hasChanges.value || !selectedUserId.value) return
+// 更新文章
+const updatePost = async () => {
+  if (!isFormValid.value || !hasChanges.value || !postId.value) {
+    return
+  }
 
   loading.value = true
   error.value = ''
-  updatedUser.value = null
+  updatedPost.value = null
 
   try {
-    const userData = {
-      ...originalUser.value,
-      name: updateForm.value.name,
-      email: updateForm.value.email,
-      phone: updateForm.value.phone,
-      website: updateForm.value.website,
-    }
-
-    const updated = await apiClient.user.updateUser(
-      parseInt(selectedUserId.value),
-      userData
-    )
-    updatedUser.value = updated
+    const result = await apiClient.post.updatePost(postId.value, {
+      title: updateForm.value.title,
+      body: updateForm.value.body,
+      userId: updateForm.value.userId,
+      id: postId.value,
+    })
+    updatedPost.value = result
   } catch (err: any) {
     error.value = err.message || 'Update failed'
   } finally {
     loading.value = false
   }
 }
+
+// 初始化加载第一个文章
+loadPost()
 </script>
 
-<style scoped>
-.request-section {
-  padding: 15px;
-  background: #fff;
-  border: 1px solid #ddd;
-  margin-bottom: 20px;
-}
-
-.url-display {
-  margin-bottom: 15px;
-  font-family: monospace;
-}
-
-.method-tag {
-  padding: 2px 8px;
-  color: white;
-  font-weight: bold;
-  background: #6f42c1;
-}
-
-code {
-  padding: 2px 8px;
-  background: #f5f5f5;
-  border: 1px solid #ddd;
-}
-
-/* .user-selector {
-  margin-bottom: 15px;
-} */
-
-.user-selector label {
-  display: block;
-  margin-bottom: 5px;
-  color: #333;
-  font-weight: bold;
-}
-
-.user-select {
-  padding: 5px 10px;
-  border: 1px solid #ccc;
-}
-
-.update-form {
-  background: #fff;
-  padding: 15px;
-  border: 1px solid #ddd;
-}
-
-.update-form h5 {
-  margin: 0 0 15px 0;
-  color: #333;
-}
-
-.form-grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 15px;
-  margin-bottom: 15px;
-}
-
-.form-field label {
-  display: block;
-  margin-bottom: 5px;
-  color: #333;
-  font-weight: bold;
-}
-
-.form-input {
-  width: 100%;
-  padding: 5px 10px;
-  border: 1px solid #ccc;
-}
-
-.update-btn {
-  padding: 8px 16px;
-  background: #6f42c1;
-  color: white;
-  border: none;
-  cursor: pointer;
-}
-
-.update-btn:disabled {
-  background: #6c757d;
-  cursor: not-allowed;
-}
-
-.response-section {
-  border: 1px solid #ddd;
-}
-
-.response-section h4 {
-  margin: 0;
-  padding: 10px 15px;
-  background: #f8f9fa;
-  border-bottom: 1px solid #ddd;
-  color: #333;
-}
-
-.loading {
-  padding: 20px;
-  color: #666;
-}
-
-.error-result,
-.success-result {
-  padding: 15px;
-}
-
-.status-badge {
-  padding: 5px 10px;
-  margin-bottom: 10px;
-  font-size: 14px;
-}
-
-.status-badge.success {
-  background: #d4edda;
-  color: #155724;
-}
-
-.status-badge.error {
-  background: #f8d7da;
-  color: #721c24;
-}
-
-.error-message {
-  color: #dc3545;
-  background: #f8d7da;
-  padding: 10px;
-  border: 1px solid #f5c6cb;
-}
-
-.response-data {
-  margin-top: 15px;
-}
-
-.comparison-view {
-  display: grid;
-  grid-template-columns: 1fr auto 1fr;
-  gap: 15px;
-  margin-bottom: 15px;
-}
-
-.before-card,
-.after-card {
-  background: #f8f9fa;
-  padding: 15px;
-  border: 1px solid #ddd;
-}
-
-.before-card {
-  border-left: 4px solid #6c757d;
-}
-
-.after-card {
-  border-left: 4px solid #6f42c1;
-}
-
-.before-card h5,
-.after-card h5 {
-  margin: 0 0 10px 0;
-  color: #333;
-}
-
-.arrow {
-  font-size: 20px;
-  color: #6f42c1;
-  align-self: center;
-}
-
-.info-item {
-  display: flex;
-  justify-content: space-between;
-  padding: 5px 0;
-  border-bottom: 1px solid #ddd;
-}
-
-.info-item:last-child {
-  border-bottom: none;
-}
-
-.label {
-  font-weight: bold;
-  color: #666;
-}
-
-.value {
-  color: #333;
-}
-
-.value.highlight {
-  color: #6f42c1;
-  background: #e7e1f0;
-  padding: 2px 5px;
-}
-
-.raw-response {
-  background: #f8f9fa;
-  border: 1px solid #ddd;
-}
-
-.raw-response h5 {
-  margin: 0;
-  padding: 10px;
-  background: #e9ecef;
-  color: #333;
-}
-
-.json-data {
-  margin: 0;
-  padding: 10px;
-  background: #f8f9fa;
-  color: #333;
-  font-family: monospace;
-  font-size: 12px;
-  white-space: pre;
-  overflow-x: auto;
-}
-</style>

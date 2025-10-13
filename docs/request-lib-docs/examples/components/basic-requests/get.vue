@@ -1,25 +1,35 @@
 <template>
-  <div>
+  <n-flex vertical>
     <!-- 请求操作区 -->
-    <div class="request-section">
-      <div>
-        <span class="method-tag">GET</span>
-        <code>https://jsonplaceholder.typicode.com/users/{{ userId }}</code>
-      </div>
-    </div>
-
+    <n-flex align="center">
+      <n-tag type="success">GET</n-tag>
+      <n-tag type="info"
+        >https://jsonplaceholder.typicode.com/users/{{ userId }}</n-tag
+      >
+      <n-button type="primary" @click="fetchUser" :loading="loading">
+        发送请求
+      </n-button>
+    </n-flex>
     <!-- 完整响应数据 -->
-    <div>
-      <h5>完整响应数据</h5>
-      <pre class="json-data">{{ JSON.stringify(userData, null, 2) }}</pre>
-    </div>
-  </div>
+    <n-code
+      v-if="userData"
+      :code="JSON.stringify(userData, null, 2)"
+      :hljs="hljs"
+      language="json"
+    />
+    <n-empty v-else description="点击发送请求按钮获取数据" />
+  </n-flex>
 </template>
 
 <script setup lang="ts">
 import { ref } from 'vue'
+import { NFlex, NTag, NCode, NButton, NEmpty } from 'naive-ui'
 import { createApiClient } from 'request-api'
 import { fetchRequestor } from 'request-imp-fetch'
+import hljs from 'highlight.js/lib/core'
+import json from 'highlight.js/lib/languages/json'
+
+hljs.registerLanguage('json', json)
 
 // 简化的用户API类
 class UserApi {
@@ -47,41 +57,20 @@ const apiClient = createApiClient(
 // 状态管理
 const userId = ref(1)
 const userData = ref<any>(null)
+const loading = ref(false)
 
 // 发送请求
 const fetchUser = async () => {
-  userData.value = null
+  try {
+    loading.value = true
+    userData.value = null
 
-  const user = await apiClient.user.getUser(userId.value)
-  userData.value = user
+    const user = await apiClient.user.getUser(userId.value)
+    userData.value = user
+  } catch (error) {
+    console.error('Request failed:', error)
+  } finally {
+    loading.value = false
+  }
 }
-
-// 页面加载时自动发送一次请求
-fetchUser()
 </script>
-
-<style scoped>
-.request-section {
-  padding-bottom: 15px;
-}
-
-.method-tag {
-  padding: 2px 8px;
-  color: white;
-  background: #28a745;
-}
-
-code {
-  padding: 2px 8px;
-  background: #f5f5f5;
-}
-
-.json-data {
-  margin-top: 10px;
-  padding: 10px;
-  background: #f8f9fa;
-  color: #333;
-  white-space: pre;
-  overflow-x: auto;
-}
-</style>

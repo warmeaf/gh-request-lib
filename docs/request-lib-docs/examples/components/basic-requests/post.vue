@@ -1,93 +1,77 @@
 <template>
-  <div>
+  <n-flex vertical>
     <!-- 请求操作区 -->
-    <div>
-      <div class="url-display">
-        <span class="method-tag">POST</span>
-        <code>https://jsonplaceholder.typicode.com/posts</code>
-      </div>
+    <n-flex align="center">
+      <n-tag type="warning">POST</n-tag>
+      <n-tag type="info">https://jsonplaceholder.typicode.com/posts</n-tag>
+    </n-flex>
 
-      <!-- 请求体数据 -->
-      <div>
-        <h5>请求体数据：</h5>
-        <div class="form-grid">
-          <div class="form-field">
-            <label>标题</label>
-            <input
-              v-model="postData.title"
-              type="text"
-              placeholder="输入文章标题"
-              class="form-input"
-            />
-          </div>
-          <div class="form-field">
-            <label>作者</label>
-            <select v-model="postData.userId" class="form-input">
-              <option value="1">用户 1</option>
-              <option value="2">用户 2</option>
-              <option value="3">用户 3</option>
-            </select>
-          </div>
-          <div class="form-field full-width">
-            <label>内容</label>
-            <textarea
-              v-model="postData.body"
-              placeholder="输入文章内容..."
-              rows="3"
-              class="form-input"
-            ></textarea>
-          </div>
-        </div>
+    <!-- 请求体数据表单 -->
+    <n-flex vertical>
+      <n-flex vertical>
+        <n-text depth="3">请求体数据</n-text>
+        <n-flex vertical>
+          <n-text depth="3">标题</n-text>
+          <n-input
+            v-model:value="postData.title"
+            placeholder="输入文章标题"
+          />
+        </n-flex>
 
-        <button
-          @click="createPost"
-          :disabled="loading || !isFormValid"
-          class="submit-btn"
-        >
-          {{ loading ? '发送请求...' : '创建文章' }}
-        </button>
-      </div>
-    </div>
+        <n-flex vertical>
+          <n-text depth="3">作者</n-text>
+          <n-select
+            v-model:value="postData.userId"
+            :options="userOptions"
+          />
+        </n-flex>
+
+        <n-flex vertical>
+          <n-text depth="3">内容</n-text>
+          <n-input
+            v-model:value="postData.body"
+            type="textarea"
+            placeholder="输入文章内容..."
+            :rows="3"
+          />
+        </n-flex>
+      </n-flex>
+
+      <n-button
+        type="primary"
+        @click="createPost"
+        :disabled="!isFormValid"
+        :loading="loading"
+      >
+        创建文章
+      </n-button>
+    </n-flex>
 
     <!-- 响应结果区 -->
-    <div>
-      <h4>响应结果</h4>
+    <n-alert v-if="error" type="error" title="请求失败">
+      {{ error }}
+    </n-alert>
 
-      <!-- 加载状态 -->
-      <div v-if="loading" class="loading">
-        <div>⏳</div>
-        <span>正在创建文章...</span>
-      </div>
+    <n-code
+      v-if="createdPost"
+      :code="JSON.stringify(createdPost, null, 2)"
+      :hljs="hljs"
+      language="json"
+    />
 
-      <!-- 错误状态 -->
-      <div v-if="error" class="error-result">
-        <div class="status-badge error">❌ 请求失败</div>
-        <div class="error-message">{{ error }}</div>
-      </div>
-
-      <!-- 成功状态 -->
-      <div v-if="createdPost && !loading" class="success-result">
-        <div class="status-badge success">✅ 创建成功</div>
-
-        <!-- 响应数据展示 -->
-        <div class="response-data">
-          <!-- 完整响应数据 -->
-          <div>
-            <h5>完整响应数据</h5>
-            <pre class="json-data">{{
-              JSON.stringify(createdPost, null, 2)
-            }}</pre>
-          </div>
-        </div>
-      </div>
-    </div>
-  </div>
+    <n-empty v-if="!createdPost && !error && !loading" description="填写表单并点击创建文章按钮" />
+  </n-flex>
 </template>
 
 <script setup lang="ts">
 import { ref, computed } from 'vue'
+import { NFlex, NTag, NCode, NButton, NEmpty, NInput, NSelect, NAlert, NText } from 'naive-ui'
 import { createApiClient } from 'request-api'
 import { fetchRequestor } from 'request-imp-fetch'
+import hljs from 'highlight.js/lib/core'
+import json from 'highlight.js/lib/languages/json'
+
+hljs.registerLanguage('json', json)
 
 // 简化的文章API类
 class PostApi {
@@ -113,11 +97,18 @@ const apiClient = createApiClient(
   }
 )
 
+// 用户选项
+const userOptions = [
+  { label: '用户 1', value: 1 },
+  { label: '用户 2', value: 2 },
+  { label: '用户 3', value: 3 },
+]
+
 // 状态管理
 const postData = ref({
   title: '我的新文章',
   body: '这是一个使用 POST 请求创建的文章示例...',
-  userId: '1',
+  userId: 1,
 })
 
 const loading = ref(false)
@@ -144,7 +135,7 @@ const createPost = async () => {
     const result = await apiClient.post.createPost({
       title: postData.value.title,
       body: postData.value.body,
-      userId: parseInt(postData.value.userId),
+      userId: postData.value.userId,
     })
     createdPost.value = result
   } catch (err: any) {
@@ -154,109 +145,3 @@ const createPost = async () => {
   }
 }
 </script>
-
-<style scoped>
-.url-display {
-  margin-bottom: 15px;
-}
-
-.method-tag {
-  padding: 2px 8px;
-  color: white;
-  background: #ffc107;
-}
-
-code {
-  padding: 2px 8px;
-  background: #f5f5f5;
-}
-
-.form-grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 15px;
-  margin-bottom: 15px;
-}
-
-.form-field.full-width {
-  grid-column: 1 / -1;
-}
-
-.form-field label {
-  display: block;
-  margin-bottom: 5px;
-  color: #333;
-  font-weight: bold;
-}
-
-.form-input {
-  width: 100%;
-  padding: 5px 10px;
-  border: 1px solid #ccc;
-}
-
-textarea.form-input {
-  height: 60px;
-}
-
-.submit-btn {
-  padding: 8px 16px;
-  background: #ffc107;
-  color: #333;
-  border: none;
-  cursor: pointer;
-}
-
-.submit-btn:disabled {
-  background: #6c757d;
-  color: #fff;
-  cursor: not-allowed;
-}
-
-.loading {
-  padding: 20px;
-  color: #666;
-}
-
-.error-result,
-.success-result {
-  padding: 15px;
-}
-
-.status-badge {
-  padding: 5px 10px;
-  margin-bottom: 10px;
-  font-size: 14px;
-}
-
-.status-badge.success {
-  background: #d4edda;
-  color: #155724;
-}
-
-.status-badge.error {
-  background: #f8d7da;
-  color: #721c24;
-}
-
-.error-message {
-  color: #dc3545;
-  background: #f8d7da;
-  padding: 10px;
-  border: 1px solid #f5c6cb;
-}
-
-.response-data {
-  margin-top: 15px;
-}
-
-.json-data {
-  margin: 0;
-  padding: 10px;
-  background: #f8f9fa;
-  color: #333;
-  font-size: 12px;
-  white-space: pre;
-  overflow-x: auto;
-}
-</style>
