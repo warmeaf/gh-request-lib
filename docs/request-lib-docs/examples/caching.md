@@ -144,7 +144,7 @@ async deleteUser(id: string) {
 根据数据特点选择合适的存储方式：
 
 ```typescript
-import { StorageType } from 'request-core'
+import { StorageType } from 'request-api'
 
 // 临时会话数据 - 使用内存
 async getSessionData() {
