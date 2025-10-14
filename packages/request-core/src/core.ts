@@ -224,6 +224,10 @@ export class RequestCore implements ConvenienceExecutor {
     return this.featureManager.getIdempotentStats()
   }
 
+  resetIdempotentStats(): void {
+    return this.featureManager.resetIdempotentStats()
+  }
+
   // 并发功能
   async requestConcurrent<T>(
     configs: RequestConfig[],

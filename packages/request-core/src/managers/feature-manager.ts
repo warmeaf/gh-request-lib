@@ -222,6 +222,13 @@ export class FeatureManager {
     return this.idempotentFeature.getIdempotentStats()
   }
 
+  /**
+   * 重置幂等统计信息
+   */
+  resetIdempotentStats(): void {
+    this.idempotentFeature.resetStats()
+  }
+
   // ==================== 串行功能 ====================
 
   /**
