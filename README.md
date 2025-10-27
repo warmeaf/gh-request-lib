@@ -1,6 +1,6 @@
 # 架构设计
 
-文档预览地址：https://github.com/warmeaf/gh-request-lib
+文档预览地址：https://warmeaf.github.io/gh-request-lib/
 
 ## 背景
 
