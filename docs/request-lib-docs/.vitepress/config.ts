@@ -25,7 +25,14 @@ export default defineConfig({
 
   vite: {
     ssr: {
-      noExternal: ['naive-ui', 'date-fns', 'vueuc'],
+      noExternal: [
+        'naive-ui',
+        'date-fns',
+        'vueuc',
+        'request-api',
+        'request-imp-axios',
+        'request-imp-fetch',
+      ],
     },
   },
   postRender(context) {
