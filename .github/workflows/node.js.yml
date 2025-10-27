@@ -38,8 +38,11 @@ jobs:
       - name: Install dependencies
         run: pnpm install
 
+      - name: Build packages
+        run: pnpm run build:packages
+
       - name: Build documentation with VitePress
-        run: pnpm docs:build
+        run: pnpm run docs:build
 
       - name: Setup Pages
         uses: actions/configure-pages@v4
