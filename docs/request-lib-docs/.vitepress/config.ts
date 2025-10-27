@@ -12,6 +12,7 @@ export default defineConfig({
   title: '请求库文档',
   description: '分层架构的前端请求库',
   lang: 'zh-CN',
+  base: '/gh-request-lib/',
 
   themeConfig,
 
