@@ -4,6 +4,7 @@
   "version": "0.0.0",
   "description": "分层架构的前端请求库 - Monorepo",
   "type": "module",
+  "packageManager": "pnpm@8.15.3",
   "scripts": {
     "build": "pnpm run build:packages && pnpm run build:browser",
     "build:clean": "pnpm run clean && pnpm run build",

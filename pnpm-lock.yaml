@@ -57,6 +57,9 @@ importers:
         specifier: ^1.0.15
         version: 1.0.15(mermaid@11.11.0)(vue@3.5.21)
     devDependencies:
+      '@css-render/vue3-ssr':
+        specifier: ^0.15.14
+        version: 0.15.14(vue@3.5.21)
       vitepress:
         specifier: 2.0.0-alpha.1
         version: 2.0.0-alpha.1(@algolia/client-search@5.37.0)(@types/node@24.3.0)(postcss@8.5.6)(search-insights@2.17.3)(typescript@5.9.2)
@@ -596,7 +599,6 @@ packages:
       vue: ^3.0.11
     dependencies:
       vue: 3.5.21(typescript@5.9.2)
-    dev: false
 
   /@docsearch/css@3.9.0:
     resolution: {integrity: sha512-cQbnVbq0rrBwNAKegIac/t6a8nWoUAn8frnkLFW6YARaRmAQr5/Eoe6Ln2fqkUCZ40KpdrKbpSAmgrkviOxuWA==}

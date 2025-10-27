@@ -18,6 +18,7 @@
     "vitepress-mermaid-renderer": "^1.0.15"
   },
   "devDependencies": {
+    "@css-render/vue3-ssr": "^0.15.14",
     "vitepress": "2.0.0-alpha.1"
   }
 }
