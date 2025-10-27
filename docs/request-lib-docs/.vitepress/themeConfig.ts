@@ -60,7 +60,7 @@ const themeConfig: DefaultTheme.Config = {
   },
 
   socialLinks: [
-    { icon: 'github', link: 'https://github.com/your-org/request-lib' },
+    { icon: 'github', link: 'https://github.com/warmeaf/gh-request-lib' },
   ],
 
   footer: {

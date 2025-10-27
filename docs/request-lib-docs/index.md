@@ -11,7 +11,7 @@ hero:
       link: /guide/getting-started
     - theme: alt
       text: 查看源码
-      link: https://github.com/your-org/request-lib
+      link: https://github.com/warmeaf/gh-request-lib
 
 features:
   - title: 🏗️ 分层架构

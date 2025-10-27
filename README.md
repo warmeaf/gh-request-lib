@@ -1,281 +1,176 @@
-# 分层架构前端请求库
+# 架构设计
 
-基于依赖倒置原则的分层架构前端请求库，提供统一的 API 接口和丰富的高级功能。
+## 背景
 
-## 🏗️ 架构设计
+前端生态虽然有许多成熟的请求库，但在实际项目开发中，它们难以完全契合业务需求：
 
-本项目采用三层架构设计：
+**axios**
 
-### 1. **核心层 (request-core)**
-- 定义 `Requestor` 抽象接口
-- 提供请求重试、缓存等高级功能
-- 与具体实现解耦，遵循依赖倒置原则
+axios 是成熟的基础库，但缺少上层功能，如请求重试、缓存、幂等、串行、并发控制等。
 
-### 2. **实现层 (request-imp-*)**
-- `request-imp-axios`: 基于 Axios 的实现
-- `request-imp-fetch`: 基于 Fetch API 的实现
-- 实现 `Requestor` 接口，可随时切换
+**VueRequest / SWR**
 
-### 3. **业务层 (request-bus)**
-- 集成核心层和实现层
-- 提供业务相关的 API 封装
-- 支持公司内部协议规范
+这类库提供丰富功能，但存在一些局限：
 
-## 📦 项目结构
+1. 与上层框架过度绑定，开发场景受限，无法提供统一的 API
+2. 成熟度不够，社区支持响应不够及时，存在一定风险
+3. 没有聚合基础请求库，仍需手动整合
 
-```
-├── packages/                     # 核心包目录
-│   ├── request-core/             # 核心层：接口定义和高级功能
-│   │   ├── src/
-│   │   │   ├── features/         # 功能模块
-│   │   │   │   ├── cache.ts      # 请求缓存
-│   │   │   │   └── retry.ts      # 请求重试
-│   │   │   ├── core.ts           # 核心类
-│   │   │   ├── interface.ts      # 接口定义
-│   │   │   └── index.ts          # 入口文件
-│   │   └── package.json
-│   │
-│   ├── request-imp-axios/        # Axios 实现层
-│   ├── request-imp-fetch/        # Fetch 实现层
-│   └── request-bus/              # 业务层
-│       ├── src/
-│       │   ├── apis/             # 业务 API
-│       │   │   ├── user.ts       # 用户相关 API
-│       │   │   └── post.ts       # 文章相关 API
-│       │   ├── config.ts         # 配置管理
-│       │   └── index.ts          # 统一导出
-│       └── package.json
-│
-├── apps/
-│   └── demo-browser/             # 浏览器演示应用
-└── README.md
-```
+**核心问题**
 
-## 🚀 快速开始
+公共库不包含公司内部制定的协议规范，即便使用公共库，也必须进行二次封装。
 
-### 1. 安装依赖
+因此需要自行封装一套适配业务需求的前端请求库。
 
-```bash
-pnpm install
-```
+## 技术栈
 
-### 2. 构建项目
+- **包管理器**: pnpm（利用 workspace 功能管理多包项目）
+- **语言**: TypeScript（提供类型安全和接口定义能力）
+- **核心依赖**:
+  - `axios` 或 `fetch`（作为底层请求实现）
+  - `spark-md5`（用于请求哈希，实现幂等性）
+- **开发环境**: Node.js (LTS 版本), pnpm
 
-```bash
-# 构建所有包
-pnpm run build
+## 架构设计
 
-# 构建浏览器版本
-pnpm run build:browser
-```
+### 初始设计
 
-### 3. 运行演示
+![初始设计](./assets/design01.png)
 
-```bash
-# Node.js 环境演示
-pnpm run demo
+整个库结构包含三层，从下往上依次是：
 
-# 浏览器环境演示
-pnpm run demo:browser
-# 然后访问 http://localhost:3000
-```
+- `请求实现层（request-imp）`: 提供请求基本功能
+- `request-core`: 提供网络上层控制，如请求串行、并行、重试、防重等功能
+- `request-api`: 为请求绑定业务功能，接入公司内部协议规范和接口文档，向外提供业务接口 API
 
-## 💡 使用示例
+> 层是对代码结构的逻辑划分，在具体实现上可以采用多种方式：每个层一个 monorepo 子包、每个层一个子文件夹等。
 
-### 浏览器环境使用
+### 优化设计
 
-```html
-<!DOCTYPE html>
-<html>
-<head>
-    <script type="module">
-        import { busApi } from 'request-bus'
-        
-        // 获取用户信息（带重试）
-        const user = await busApi.user.getUserInfo('1')
-        console.log(user)
-        
-        // 获取用户列表（带缓存）
-        const users = await busApi.user.getUserList()
-        console.log(users)
-    </script>
-</head>
-</html>
-```
+在三层中，请求实现层的实现有多种方式：基于 `fetch` 原生、基于 `axios` 等第三方库等。
 
-### Node.js 环境使用
+这种实现的多样性可能导致这一层的不稳定，而 `request-imp` 是基础层，它的不稳定性会传导到上一层。
+
+因此必须寻求方案来隔离这种不稳定性。
+
+基于 DIP（Dependence Inversion Principle，依赖倒置原则），可以彻底将 `request-core` 和请求的实现解耦，而 `typescript` 的类型系统让这一切的落地成为可能。
+
+结构演变为：
+
+![优化设计](./assets/design02.png)
+
+### 使用示例
+
+最后，应用程序只需要调用 request-api 暴露的业务 API 即可，完全不需要关心底层的实现细节。
 
 ```typescript
-import { busApi } from 'request-bus'
-
-// 获取用户信息（带重试）
-const user = await busApi.user.getUserInfo('1')
-console.log(user)
-
-// 获取用户列表（带缓存）
-const users = await busApi.user.getUserList()
-console.log(users)
-```
-
-### CDN 使用
-
-```html
-<script src="https://unpkg.com/your-request-lib/dist/request-lib.umd.js"></script>
-<script>
-    const { busApi } = RequestLib
-    
-    busApi.user.getUserInfo('1').then(user => {
-        console.log(user)
-    })
-</script>
-```
-
-### 切换请求实现
-
-```typescript
-// 切换到 Fetch 实现
-busApi.switchImplementation('fetch')
-
-// 切换到 Axios 实现
-busApi.switchImplementation('axios')
-```
-
-### 直接使用核心层
-
-```typescript
-import { RequestCore } from 'request-core'
+import { createApiClient } from 'request-api'
+import type { RequestCore } from 'request-api'
 import { AxiosRequestor } from 'request-imp-axios'
 
-const requestor = new AxiosRequestor()
-const core = new RequestCore(requestor)
+// 1. 定义 API 类
+class UserApi {
+  constructor(private requestCore: RequestCore) {}
 
-// 带重试的请求
-const data = await core.getWithRetry('/api/users', 3)
+  async getUser(id: string) {
+    return this.requestCore.get<User>(`/users/${id}`)
+  }
 
-// 带缓存的请求
-const cachedData = await core.getWithCache('/api/posts', { ttl: 300000 })
-```
-
-## 🔧 核心功能
-
-### 1. 请求重试
-- 自动重试失败的请求
-- 可配置重试次数和延迟时间
-- 支持指数退避策略
-
-### 2. 请求缓存
-- 内存级别的请求缓存
-- 可配置缓存时间 (TTL)
-- 支持自定义缓存键
-
-### 3. 实现切换
-- 运行时切换 Axios/Fetch 实现
-- 无需修改业务代码
-- 完全透明的切换过程
-
-### 4. 类型安全
-- 完整的 TypeScript 类型支持
-- 泛型支持，确保类型安全
-- 良好的 IDE 智能提示
-
-## 📚 API 文档
-
-### RequestCore
-
-核心请求类，提供统一的请求接口。
-
-```typescript
-class RequestCore {
-  // 基础请求方法
-  request<T>(config: RequestConfig): Promise<T>
-  get<T>(url: string, config?: Partial<RequestConfig>): Promise<T>
-  post<T>(url: string, data?: any, config?: Partial<RequestConfig>): Promise<T>
-  
-  // 高级功能
-  getWithRetry<T>(url: string, retries?: number): Promise<T>
-  getWithCache<T>(url: string, cacheConfig?: CacheConfig): Promise<T>
-  requestWithRetry<T>(config: RequestConfig, retryConfig?: RetryConfig): Promise<T>
-  requestWithCache<T>(config: RequestConfig, cacheConfig?: CacheConfig): Promise<T>
-  
-  // 缓存管理
-  clearCache(key?: string): void
-}
-```
-
-### BusApi
-
-业务层 API，提供具体的业务接口。
-
-```typescript
-class BusApi {
-  user: UserApi      // 用户相关 API
-  post: PostApi      // 文章相关 API
-  
-  // 切换实现
-  switchImplementation(implementation: 'axios' | 'fetch'): void
-  
-  // 清除缓存
-  clearAllCache(): void
-}
-```
-
-## 🔄 扩展指南
-
-### 添加新的实现层
-
-1. 创建新的实现包 `request-imp-xxx`
-2. 实现 `Requestor` 接口
-3. 在 `request-bus` 中添加配置
-
-```typescript
-// 示例：添加新的实现
-export class CustomRequestor implements Requestor {
-  async request<T>(config: RequestConfig): Promise<T> {
-    // 自定义实现逻辑
-    return customRequest(config)
+  async getUserList() {
+    return this.requestCore.get<User[]>('/users')
   }
 }
-```
 
-### 添加新的业务 API
-
-1. 在 `packages/request-bus/src/apis/` 下创建新文件
-2. 使用 `RequestConfig.getInstance()` 获取核心实例
-3. 在 `index.ts` 中导出
-
-```typescript
-// 示例：添加商品 API
-export class ProductApi {
-  private core = RequestConfig.getInstance()
-  
-  async getProducts(): Promise<Product[]> {
-    return this.core.getWithCache('/api/products')
+// 2. 创建 API 客户端
+const apiClient = createApiClient(
+  {
+    user: UserApi,
+  },
+  {
+    requestor: new AxiosRequestor(),
+    globalConfig: {
+      baseURL: 'https://jsonplaceholder.typicode.com',
+      timeout: 5000,
+    },
   }
-}
+)
+
+// 3. 使用 API
+const user = await apiClient.user.getUser('1')
+console.log('User:', user)
 ```
 
-## 🎯 设计原则
+### 架构图
 
-1. **依赖倒置 (DIP)**: 核心层依赖抽象而非具体实现
-2. **单一职责**: 每个层次都有明确的职责边界
-3. **开闭原则**: 对扩展开放，对修改封闭
-4. **可替换性**: 实现层可以随时替换而不影响上层
+```mermaid
+graph TD
+    %% 用户层
+    subgraph UserLayer[用户层]
+        User[用户代码 - 业务逻辑]
+    end
 
-## 📈 性能优化
+    %% API抽象层
+    subgraph ApiLayer[API层 - request-api]
+        ApiFactory[工厂方法]
+        ApiClient[API客户端]
+        ApiFactory --> ApiClient
+    end
 
-- 内置请求缓存减少重复请求
-- 智能重试机制提高成功率
-- TypeScript 编译时优化
-- Tree-shaking 友好的模块设计
+    %% 核心业务层
+    subgraph CoreLayer[核心层 - request-core]
+        RequestCore[RequestCore - 核心协调器]
 
-## 🤝 贡献指南
+        %% 核心抽象接口
+        subgraph CoreAbstractions[核心抽象]
+            Requestor{{Requestor接口 - 请求器契约}}
+            RequestConfig[RequestConfig - 请求配置]
+            Features[高级功能 - 重试 缓存 并发]
+        end
 
-1. Fork 本仓库
-2. 创建功能分支 (`git checkout -b feature/amazing-feature`)
-3. 提交更改 (`git commit -m 'Add some amazing feature'`)
-4. 推送到分支 (`git push origin feature/amazing-feature`)
-5. 开启 Pull Request
+        RequestCore -.->|依赖| Requestor
+        RequestCore --> Features
+    end
 
-## 📄 许可证
+    %% 实现层
+    subgraph ImplLayer[实现层 - request-imp-*]
+        AxiosImpl[AxiosRequestor - Axios实现]
+        FetchImpl[FetchRequestor - Fetch实现]
+        CustomImpl[CustomRequestor - 自定义实现]
+    end
 
-本项目采用 ISC 许可证 - 查看 [LICENSE](LICENSE) 文件了解详情。
+    %% 依赖关系流向
+    User -->|使用| ApiClient
+    ApiClient -->|委托| RequestCore
+
+    %% 依赖倒置核心体现
+    Requestor -.->|实现| AxiosImpl
+    Requestor -.->|实现| FetchImpl
+    Requestor -.->|实现| CustomImpl
+
+    %% 依赖注入
+    RequestCore -.->|注入| AxiosImpl
+    RequestCore -.->|注入| FetchImpl
+    RequestCore -.->|注入| CustomImpl
+
+    %% 样式定义
+    classDef userStyle fill:#e3f2fd,stroke:#1976d2,stroke-width:2px
+    classDef apiStyle fill:#f3e5f5,stroke:#7b1fa2,stroke-width:2px
+    classDef coreStyle fill:#e8f5e8,stroke:#388e3c,stroke-width:2px
+    classDef implStyle fill:#fff3e0,stroke:#f57c00,stroke-width:2px
+    classDef abstractStyle fill:#fce4ec,stroke:#c2185b,stroke-width:3px,stroke-dasharray: 5 5
+
+    class UserLayer userStyle
+    class ApiLayer apiStyle
+    class CoreLayer coreStyle
+    class ImplLayer implStyle
+    class Requestor abstractStyle
+```
+
+### 核心理念
+
+1. **分层**
+   - `request-imp-*`: 提供具体的 HTTP 请求发送能力（如 `request-axios-imp`, `request-fetch-imp`），实现统一的 `Requestor` 接口
+   - `request-core`: 核心层，定义 `Requestor` 接口，并基于此接口提供缓存、重试、幂等、并发/串行控制等与具体实现无关的高级功能。通过依赖注入接收 `request-imp` 的具体实现
+   - `request-api`: API 层，负责注入 `request-imp` 实现到 `request-core`，调用 `request-core` 提供的功能，集成公司特定业务逻辑和协议规范，并暴露最终给应用使用的 API 函数
+2. **依赖倒置（DIP）**
+   - `request-core` 不直接依赖具体的实现（axios/fetch），而是依赖抽象的 `Requestor` 接口。具体实现（`request-imp-*`）反过来依赖（实现）这个接口。这使得底层实现可以轻松替换，而不影响核心层和业务层
