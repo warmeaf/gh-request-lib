@@ -75,7 +75,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, onMounted } from 'vue'
 import {
   NFlex,
   NTag,
@@ -184,7 +184,9 @@ const deletePost = async () => {
   }
 }
 
-// 初始化加载第一个文章
-loadPost()
+// 初始化加载第一个文章（仅在客户端）
+onMounted(() => {
+  loadPost()
+})
 </script>
 

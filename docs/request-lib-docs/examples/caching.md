@@ -6,11 +6,13 @@
 
 演示如何使用 `getWithCache` 方法实现请求缓存，避免重复请求，提升应用性能。
 
+<ClientOnly>
 :::preview 基础缓存使用
 
 demo-preview=./components/caching/basic-cache.vue
 
 :::
+</ClientOnly>
 
 **关键要点：**
 - 使用 `getWithCache` 方法启用缓存
@@ -23,11 +25,13 @@ demo-preview=./components/caching/basic-cache.vue
 
 演示不同的缓存存储类型：内存存储、LocalStorage 和 IndexedDB。
 
+<ClientOnly>
 :::preview 不同存储类型
 
 demo-preview=./components/caching/storage-types.vue
 
 :::
+</ClientOnly>
 
 **关键要点：**
 - **内存存储**：页面刷新后数据丢失，适合临时数据
@@ -39,11 +43,13 @@ demo-preview=./components/caching/storage-types.vue
 
 演示缓存管理功能，包括清除特定缓存、清除所有缓存和查看缓存统计信息。
 
+<ClientOnly>
 :::preview 缓存管理
 
 demo-preview=./components/caching/cache-management.vue
 
 :::
+</ClientOnly>
 
 **关键要点：**
 - `clearCache(key)` - 清除指定键的缓存
@@ -55,11 +61,13 @@ demo-preview=./components/caching/cache-management.vue
 
 演示 TTL（Time To Live）缓存过期机制，可视化缓存的生命周期。
 
+<ClientOnly>
 :::preview TTL 演示
 
 demo-preview=./components/caching/ttl-demo.vue
 
 :::
+</ClientOnly>
 
 **关键要点：**
 - `ttl` 参数指定缓存有效期（毫秒）

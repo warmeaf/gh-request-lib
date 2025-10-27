@@ -120,7 +120,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import {
   NFlex,
   NTag,
@@ -271,7 +271,9 @@ const updatePost = async () => {
   }
 }
 
-// 初始化加载第一个文章
-loadPost()
+// 初始化加载第一个文章（仅在客户端）
+onMounted(() => {
+  loadPost()
+})
 </script>
 

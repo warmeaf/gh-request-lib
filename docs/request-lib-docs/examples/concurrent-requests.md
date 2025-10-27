@@ -6,11 +6,13 @@
 
 演示并发请求与串行请求的性能对比，直观展示并发请求的优势。
 
+<ClientOnly>
 :::preview 基础并发请求
 
 demo-preview=./components/concurrent-requests/basic-concurrent.vue
 
 :::
+</ClientOnly>
 
 **关键要点：**
 
@@ -23,11 +25,13 @@ demo-preview=./components/concurrent-requests/basic-concurrent.vue
 
 演示如何通过 `maxConcurrency` 参数限制同时发起的请求数量，避免资源过度占用。
 
+<ClientOnly>
 :::preview 并发数量控制
 
 demo-preview=./components/concurrent-requests/concurrency-limit.vue
 
 :::
+</ClientOnly>
 
 **关键要点：**
 
@@ -41,11 +45,13 @@ demo-preview=./components/concurrent-requests/concurrency-limit.vue
 
 演示 Fail-Fast 模式（快速失败）和容错模式的区别，以及各自的适用场景。
 
+<ClientOnly>
 :::preview Fail-Fast 模式
 
 demo-preview=./components/concurrent-requests/fail-fast.vue
 
 :::
+</ClientOnly>
 
 **关键要点：**
 
@@ -69,11 +75,13 @@ demo-preview=./components/concurrent-requests/fail-fast.vue
 
 演示批量创建、更新、删除等写操作的并发处理，以及结果的分类和错误处理。
 
+<ClientOnly>
 :::preview 批量操作
 
 demo-preview=./components/concurrent-requests/batch-operations.vue
 
 :::
+</ClientOnly>
 
 **关键要点：**
 

@@ -6,11 +6,13 @@
 
 演示如何使用 `requestWithRetry` 方法实现请求重试，自动处理失败的请求。
 
+<ClientOnly>
 :::preview 基础重试使用
 
 demo-preview=./components/retry-logic/basic-retry.vue
 
 :::
+</ClientOnly>
 
 **关键要点：**
 - 使用 `requestWithRetry`、`getWithRetry`、`postWithRetry` 等方法启用重试
@@ -23,11 +25,13 @@ demo-preview=./components/retry-logic/basic-retry.vue
 
 演示指数退避策略，延迟时间按指数增长，适合处理服务器负载问题。
 
+<ClientOnly>
 :::preview 指数退避策略
 
 demo-preview=./components/retry-logic/exponential-backoff.vue
 
 :::
+</ClientOnly>
 
 **关键要点：**
 - 使用 `backoffFactor` 参数启用指数退避
@@ -39,11 +43,13 @@ demo-preview=./components/retry-logic/exponential-backoff.vue
 
 演示抖动（Jitter）策略，在延迟基础上添加随机偏移，避免多个客户端同时重试。
 
+<ClientOnly>
 :::preview 抖动策略演示
 
 demo-preview=./components/retry-logic/jitter-demo.vue
 
 :::
+</ClientOnly>
 
 **关键要点：**
 - 使用 `jitter` 参数添加随机抖动（0-1 之间）
@@ -55,11 +61,13 @@ demo-preview=./components/retry-logic/jitter-demo.vue
 
 演示如何使用 `shouldRetry` 函数自定义重试判断逻辑，精确控制哪些错误需要重试。
 
+<ClientOnly>
 :::preview 自定义重试条件
 
 demo-preview=./components/retry-logic/custom-retry.vue
 
 :::
+</ClientOnly>
 
 **关键要点：**
 - 使用 `shouldRetry` 函数自定义重试逻辑

@@ -6,11 +6,13 @@
 
 演示串行请求与并发请求的执行顺序对比，直观展示串行请求如何确保按顺序执行。
 
+<ClientOnly>
 :::preview 基础串行请求
 
 demo-preview=./components/serial-requests/basic-serial.vue
 
 :::
+</ClientOnly>
 
 **关键要点：**
 
@@ -24,11 +26,13 @@ demo-preview=./components/serial-requests/basic-serial.vue
 
 演示多个独立的串行队列，每个队列独立管理，不同队列之间可以并行执行。
 
+<ClientOnly>
 :::preview 多队列独立执行
 
 demo-preview=./components/serial-requests/multiple-queues.vue
 
 :::
+</ClientOnly>
 
 **关键要点：**
 
@@ -51,11 +55,13 @@ demo-preview=./components/serial-requests/multiple-queues.vue
 
 演示电商订单处理场景，订单状态必须按顺序变更，避免出现状态不一致的问题。
 
+<ClientOnly>
 :::preview 订单处理场景
 
 demo-preview=./components/serial-requests/order-processing.vue
 
 :::
+</ClientOnly>
 
 **关键要点：**
 
@@ -80,11 +86,13 @@ demo-preview=./components/serial-requests/order-processing.vue
 2. **快速发送**：触发队列满限制（`maxQueueSize`），演示队列容量保护
 3. **慢速发送**：触发任务超时限制（`timeout`），演示超时保护机制
 
+<ClientOnly>
 :::preview 队列限制与超时
 
 demo-preview=./components/serial-requests/queue-limit.vue
 
 :::
+</ClientOnly>
 
 **关键要点：**
 

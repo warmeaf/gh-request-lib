@@ -42,11 +42,7 @@ jobs:
         run: pnpm run build:packages
 
       - name: Build documentation with VitePress
-        run: |
-          timeout 2m pnpm run docs:build || {
-            echo "Build completed or timed out"
-            exit 0
-          }
+        run: pnpm run docs:build
 
       - name: Setup Pages
         uses: actions/configure-pages@v4
@@ -59,7 +55,7 @@ jobs:
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v4
-        
+
       - name: Display deployment URL
         run: |
           echo "Documentation deployed at: ${{ steps.deployment.outputs.page_url }}"

@@ -6,11 +6,13 @@
 
 演示如何使用幂等请求防止表单重复提交，在指定时间内相同请求只执行一次。
 
+<ClientOnly>
 :::preview 基础幂等请求
 
 demo-preview=./components/idempotent-requests/basic-idempotent.vue
 
 :::
+</ClientOnly>
 
 **关键要点：**
 
@@ -24,11 +26,13 @@ demo-preview=./components/idempotent-requests/basic-idempotent.vue
 
 演示如何使用自定义幂等键，为不同的请求场景指定唯一的幂等标识。
 
+<ClientOnly>
 :::preview 自定义幂等键
 
 demo-preview=./components/idempotent-requests/custom-key.vue
 
 :::
+</ClientOnly>
 
 **关键要点：**
 
@@ -51,11 +55,13 @@ demo-preview=./components/idempotent-requests/custom-key.vue
 
 演示如何监控幂等请求的执行情况，包括重复请求统计、回调处理等。
 
+<ClientOnly>
 :::preview 幂等统计与监控
 
 demo-preview=./components/idempotent-requests/stats-monitoring.vue
 
 :::
+</ClientOnly>
 
 **关键要点：**
 
@@ -79,11 +85,13 @@ demo-preview=./components/idempotent-requests/stats-monitoring.vue
 
 演示不同 Hash 算法的特性和性能，帮助选择适合的算法。
 
+<ClientOnly>
 :::preview Hash 算法对比
 
 demo-preview=./components/idempotent-requests/hash-comparison.vue
 
 :::
+</ClientOnly>
 
 **关键要点：**
 

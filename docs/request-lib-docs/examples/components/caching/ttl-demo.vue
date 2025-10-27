@@ -82,7 +82,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onUnmounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
 import {
   NFlex,
   NTag,
@@ -146,9 +146,11 @@ const currentTime = ref(Date.now())
 
 // 定时器更新当前时间
 let timer: NodeJS.Timeout | null = null
-timer = setInterval(() => {
-  currentTime.value = Date.now()
-}, 100)
+onMounted(() => {
+  timer = setInterval(() => {
+    currentTime.value = Date.now()
+  }, 100)
+})
 
 onUnmounted(() => {
   if (timer) {

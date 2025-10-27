@@ -4,32 +4,40 @@
 
 ## GET 请求
 
+<ClientOnly>
 :::preview GET 请求
 
 demo-preview=./components/basic-requests/get.vue
 
 :::
+</ClientOnly>
 
 ## POST 请求
 
+<ClientOnly>
 :::preview POST 请求
 
 demo-preview=./components/basic-requests/post.vue
 
 :::
+</ClientOnly>
 
 ## PUT 请求
 
+<ClientOnly>
 :::preview PUT 请求
 
 demo-preview=./components/basic-requests/put.vue
 
 :::
+</ClientOnly>
 
 ## DELETE 请求
 
+<ClientOnly>
 :::preview DELETE 请求
 
 demo-preview=./components/basic-requests/delete.vue
 
 :::
+</ClientOnly>
