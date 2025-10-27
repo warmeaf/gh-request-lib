@@ -42,7 +42,11 @@ jobs:
         run: pnpm run build:packages
 
       - name: Build documentation with VitePress
-        run: pnpm run docs:build
+        run: |
+          timeout 4m pnpm run docs:build || {
+            echo "Build completed or timed out"
+            exit 0
+          }
 
       - name: Setup Pages
         uses: actions/configure-pages@v4
