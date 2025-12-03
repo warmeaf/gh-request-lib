@@ -176,7 +176,6 @@ describe('ErrorHandler', () => {
     })
 
     describe('inferErrorType', () => {
-        // 测试私有方法通过 wrapError 间接测试
         it('should infer network error types correctly', () => {
             // 应该正确推断网络错误类型
             const networkErrors = [
@@ -187,34 +186,41 @@ describe('ErrorHandler', () => {
             ]
 
             networkErrors.forEach(error => {
-                const result = ErrorHandler.wrapError(error, mockContext)
-                expect(result.type).toBe(RequestErrorType.NETWORK_ERROR)
+                const result = ErrorHandler.inferErrorType(error)
+                expect(result).toBe(RequestErrorType.NETWORK_ERROR)
             })
         })
 
         it('should infer timeout error types correctly', () => {
             // 应该正确推断超时错误类型
             const timeoutError1 = new Error('request timeout')
-            const timeoutError2 = new Error('Operation timeout')  // 修改为 "timeout" 而不是 "timed out"
+            const timeoutError2 = new Error('Operation timed out')
+            const timeoutError3 = new Error('Request abort')
             const abortError = new Error('Request aborted')
             abortError.name = 'AbortError'
 
-            const result1 = ErrorHandler.wrapError(timeoutError1, mockContext)
-            const result2 = ErrorHandler.wrapError(timeoutError2, mockContext)
-            const result3 = ErrorHandler.wrapError(abortError, mockContext)
-
-            expect(result1.type).toBe(RequestErrorType.TIMEOUT_ERROR)
-            expect(result2.type).toBe(RequestErrorType.TIMEOUT_ERROR)
-            expect(result3.type).toBe(RequestErrorType.TIMEOUT_ERROR)
+            expect(ErrorHandler.inferErrorType(timeoutError1)).toBe(RequestErrorType.TIMEOUT_ERROR)
+            expect(ErrorHandler.inferErrorType(timeoutError2)).toBe(RequestErrorType.TIMEOUT_ERROR)
+            expect(ErrorHandler.inferErrorType(timeoutError3)).toBe(RequestErrorType.TIMEOUT_ERROR)
+            expect(ErrorHandler.inferErrorType(abortError)).toBe(RequestErrorType.TIMEOUT_ERROR)
         })
 
         it('should prioritize network errors over timeout errors', () => {
             // 网络错误应该优先于超时错误
             const connectionTimeoutError = new Error('connection timeout')
 
-            const result = ErrorHandler.wrapError(connectionTimeoutError, mockContext)
+            const result = ErrorHandler.inferErrorType(connectionTimeoutError)
 
-            expect(result.type).toBe(RequestErrorType.NETWORK_ERROR)
+            expect(result).toBe(RequestErrorType.NETWORK_ERROR)
+        })
+
+        it('should handle unknown error types', () => {
+            // 应该正确处理未知错误类型
+            const unknownError = new Error('Some unknown error')
+            const nonError = { custom: 'error' }
+
+            expect(ErrorHandler.inferErrorType(unknownError)).toBe(RequestErrorType.UNKNOWN_ERROR)
+            expect(ErrorHandler.inferErrorType(nonError)).toBe(RequestErrorType.UNKNOWN_ERROR)
         })
 
         it('should default to unknown error type', () => {

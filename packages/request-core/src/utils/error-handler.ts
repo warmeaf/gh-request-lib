@@ -134,24 +134,91 @@ export class ErrorHandler {
 
   /**
    * 推断错误类型
+   * 统一的错误类型推断方法，供其他模块复用
    */
-  private static inferErrorType(error: Error): RequestErrorType {
-    const message = error.message.toLowerCase()
-    
-    // 网络相关错误优先级高于通用超时错误（connection timeout 应该归类为网络错误）
-    if (message.includes('network') || 
-        message.includes('fetch') || 
-        message.includes('connection') ||
-        message.includes('cors')) {
-      return RequestErrorType.NETWORK_ERROR
-    }
-    
-    // 超时错误
-    if (message.includes('timeout') || message.includes('timed out') || error.name === 'AbortError') {
-      return RequestErrorType.TIMEOUT_ERROR
+  static inferErrorType(error: unknown): RequestErrorType {
+    if (error instanceof Error) {
+      const message = error.message.toLowerCase()
+      
+      // 网络相关错误优先级高于通用超时错误（connection timeout 应该归类为网络错误）
+      if (message.includes('network') || 
+          message.includes('fetch') || 
+          message.includes('connection') ||
+          message.includes('cors')) {
+        return RequestErrorType.NETWORK_ERROR
+      }
+      
+      // 超时错误 - 包含多种超时相关的关键词
+      if (message.includes('timeout') || 
+          message.includes('timed out') || 
+          message.includes('abort') ||
+          error.name === 'AbortError') {
+        return RequestErrorType.TIMEOUT_ERROR
+      }
     }
     
     return RequestErrorType.UNKNOWN_ERROR
+  }
+
+  /**
+   * 增强错误信息，支持添加执行上下文
+   * 如果错误已经是 RequestError，会更新其上下文信息；否则创建新的 RequestError
+   */
+  static enhanceError(
+    error: unknown,
+    context: {
+      url: string
+      method: string
+      duration?: number
+      timestamp?: number
+      tag?: string
+      requestId?: string
+      message?: string
+      suggestion?: string
+    }
+  ): RequestError {
+    if (error instanceof RequestError) {
+      // 如果已经是RequestError，直接修改其context而不创建新对象，保持对象引用不变
+      // 使用类型断言绕过readonly限制，因为我们需要添加执行上下文信息
+      const errorContext = error.context as any
+      // 只有当错误没有 duration 时才设置，避免覆盖已有的 duration
+      if (context.duration !== undefined && errorContext.duration === undefined) {
+        errorContext.duration = context.duration
+      }
+      if (!errorContext.url) {
+        errorContext.url = context.url
+      }
+      if (!errorContext.method) {
+        errorContext.method = context.method
+      }
+      if (context.tag !== undefined && errorContext.tag === undefined) {
+        errorContext.tag = context.tag
+      }
+      if (context.requestId) {
+        errorContext.metadata = {
+          ...errorContext.metadata,
+          requestId: context.requestId
+        }
+      }
+      return error
+    }
+
+    // 创建新的RequestError
+    const message = context.message || (error instanceof Error ? error.message : 'Unknown error')
+    
+    return new RequestError(message, {
+      originalError: error,
+      type: this.inferErrorType(error),
+      context: {
+        url: context.url,
+        method: context.method,
+        duration: context.duration,
+        timestamp: context.timestamp || Date.now(),
+        tag: context.tag,
+        metadata: context.requestId ? { requestId: context.requestId } : undefined
+      },
+      suggestion: context.suggestion
+    })
   }
 }
 

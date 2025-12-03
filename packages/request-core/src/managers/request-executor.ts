@@ -1,4 +1,5 @@
 import { Requestor, RequestConfig, RequestError, RequestErrorType } from '../interface'
+import { ErrorHandler } from '../utils/error-handler'
 
 /**
  * @description 请求执行上下文
@@ -99,71 +100,21 @@ export class RequestExecutor {
 
   /**
    * 增强错误信息
+   * 使用统一的错误处理工具，添加执行上下文信息
    */
   private enhanceError(
     error: unknown,
     context: RequestExecutionContext,
     duration: number
   ): RequestError {
-    if (error instanceof RequestError) {
-      // 如果已经是RequestError，直接修改其context而不创建新对象，保持对象引用不变
-      // 使用类型断言绕过readonly限制，因为我们需要添加执行上下文信息
-      const errorContext = error.context as any
-      errorContext.duration = duration
-      errorContext.url = errorContext.url || context.config.url
-      errorContext.method = errorContext.method || context.config.method
-      errorContext.tag = errorContext.tag || context.config.tag
-      errorContext.metadata = {
-        ...errorContext.metadata,
-        requestId: context.requestId
-      }
-      return error
-    }
-
-    // 创建新的RequestError
-    const message = error instanceof Error ? error.message : 'Unknown error'
-    
-    return new RequestError(message, {
-      originalError: error,
-      type: this.inferErrorType(error),
-      context: {
-        url: context.config.url,
-        method: context.config.method,
-        duration,
-        timestamp: context.startTime,
-        tag: context.config.tag,
-        metadata: {
-          requestId: context.requestId
-        }
-      }
+    return ErrorHandler.enhanceError(error, {
+      url: context.config.url,
+      method: context.config.method,
+      duration,
+      timestamp: context.startTime,
+      tag: context.config.tag,
+      requestId: context.requestId
     })
-  }
-
-  /**
-   * 推断错误类型
-   */
-  private inferErrorType(error: unknown): RequestErrorType {
-    if (error instanceof Error) {
-      const message = error.message.toLowerCase()
-      
-      // 网络相关错误优先级高于通用超时错误（connection timeout 应该归类为网络错误）
-      if (message.includes('network') || 
-          message.includes('fetch') || 
-          message.includes('connection') ||
-          message.includes('cors')) {
-        return RequestErrorType.NETWORK_ERROR
-      }
-      
-      if (message.includes('timeout') || error.name === 'AbortError') {
-        return RequestErrorType.TIMEOUT_ERROR
-      }
-      
-      if (message.includes('abort')) {
-        return RequestErrorType.TIMEOUT_ERROR
-      }
-    }
-    
-    return RequestErrorType.UNKNOWN_ERROR
   }
 
   /**
