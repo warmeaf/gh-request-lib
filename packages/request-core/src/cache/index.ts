@@ -19,7 +19,7 @@ export {
   FIFOInvalidationPolicy,
   TimeBasedInvalidationPolicy,
   CustomInvalidationPolicy
-} from './strategies'
+} from './storage-adapter'
 
 // 导出具体的实现类
 export { CacheKeyGenerator } from './cache-key-generator'

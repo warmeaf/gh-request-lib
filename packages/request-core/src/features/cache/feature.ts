@@ -10,8 +10,8 @@ import {
   WebSQLAdapter,
   CacheKeyStrategy,
   LRUInvalidationPolicy,
+  StorageType,
 } from '../../cache'
-import { StorageType } from '../../cache/strategies'
 import type { CacheInvalidationPolicy } from '../../cache'
 import type { CacheConfig } from './types'
 

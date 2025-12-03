@@ -1,6 +1,5 @@
-import { CacheKeyConfig, CacheKeyStrategy, StorageAdapter } from '../../cache'
+import { CacheKeyConfig, CacheKeyStrategy, StorageAdapter, StorageType } from '../../cache'
 import type { CacheInvalidationPolicy } from '../../cache'
-import { StorageType } from '../../cache/strategies'
 
 /**
  * @description 缓存配置
