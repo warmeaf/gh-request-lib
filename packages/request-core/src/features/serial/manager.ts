@@ -251,6 +251,13 @@ export class SerialRequestManager {
   }
 
   /**
+   * 获取 debug 配置状态
+   */
+  isDebug(): boolean {
+    return this.config.debug || false
+  }
+
+  /**
    * 销毁管理器，清理所有资源
    */
   destroy(): void {

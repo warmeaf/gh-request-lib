@@ -7,9 +7,9 @@ import { SerialConfig, SerialManagerConfig } from './types'
  */
 export class SerialRequestInterceptor implements RequestInterceptor {
   private serialManager: SerialRequestManager
+  private readonly isSharedManager: boolean // 标记 manager 是否是共享的
   private readonly config: {
     enabled: boolean
-    debug: boolean
   }
 
   constructor(
@@ -18,15 +18,28 @@ export class SerialRequestInterceptor implements RequestInterceptor {
     options: {
       enabled?: boolean
       debug?: boolean
+      serialManager?: SerialRequestManager // 可选的共享 manager 实例
     } = {}
   ) {
-    this.serialManager = new SerialRequestManager(requestor, managerConfig)
-    this.config = {
-      enabled: options.enabled !== false, // 默认启用
-      debug: options.debug || false
+    // 如果提供了共享的 manager 实例，使用它；否则创建新实例（保持向后兼容）
+    if (options.serialManager) {
+      this.serialManager = options.serialManager
+      this.isSharedManager = true
+    } else {
+      // 合并 debug 配置到 managerConfig
+      const finalManagerConfig: SerialManagerConfig = {
+        ...managerConfig,
+        debug: options.debug ?? managerConfig?.debug ?? false
+      }
+      this.serialManager = new SerialRequestManager(requestor, finalManagerConfig)
+      this.isSharedManager = false
     }
 
-    if (this.config.debug) {
+    this.config = {
+      enabled: options.enabled !== false // 默认启用
+    }
+
+    if (this.serialManager.isDebug()) {
       console.log('[SerialRequestInterceptor] Interceptor initialized')
     }
   }
@@ -45,7 +58,7 @@ export class SerialRequestInterceptor implements RequestInterceptor {
       return config
     }
 
-    if (this.config.debug) {
+    if (this.serialManager.isDebug()) {
       console.log(`[SerialRequestInterceptor] Intercepted request with serialKey: ${config.serialKey}`)
     }
 
@@ -77,7 +90,7 @@ export class SerialRequestInterceptor implements RequestInterceptor {
    */
   enable(): void {
     this.config.enabled = true
-    if (this.config.debug) {
+    if (this.serialManager.isDebug()) {
       console.log('[SerialRequestInterceptor] Serial feature enabled')
     }
   }
@@ -87,7 +100,7 @@ export class SerialRequestInterceptor implements RequestInterceptor {
    */
   disable(): void {
     this.config.enabled = false
-    if (this.config.debug) {
+    if (this.serialManager.isDebug()) {
       console.log('[SerialRequestInterceptor] Serial feature disabled')
     }
   }
@@ -129,10 +142,14 @@ export class SerialRequestInterceptor implements RequestInterceptor {
 
   /**
    * 销毁拦截器
+   * 注意：如果使用的是共享的 manager 实例，不会销毁 manager
    */
   destroy(): void {
-    this.serialManager.destroy()
-    if (this.config.debug) {
+    // 只有当 manager 不是共享的时候才销毁它
+    if (!this.isSharedManager) {
+      this.serialManager.destroy()
+    }
+    if (this.serialManager.isDebug()) {
       console.log('[SerialRequestInterceptor] Interceptor destroyed')
     }
   }

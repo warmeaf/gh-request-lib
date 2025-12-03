@@ -1,6 +1,6 @@
 import { RequestConfig, Requestor } from '../../interface'
 import { SerialRequestManager } from './manager'
-import { SerialRequestInterceptor, SerialInterceptedException, isSerialInterceptedException } from './interceptor'
+import { SerialRequestInterceptor } from './interceptor'
 import { SerialConfig, SerialManagerConfig, SerialManagerStats } from './types'
 
 /**
@@ -10,9 +10,6 @@ export class SerialFeature {
   private readonly manager: SerialRequestManager
   private readonly interceptor: SerialRequestInterceptor
   private readonly requestor: Requestor
-  private readonly config: {
-    debug: boolean
-  }
 
   constructor(
     requestor: Requestor,
@@ -22,15 +19,23 @@ export class SerialFeature {
     } = {}
   ) {
     this.requestor = requestor
-    this.config = {
-      debug: options.debug || false
+
+    // 合并 debug 配置到 managerConfig
+    const finalManagerConfig: SerialManagerConfig = {
+      ...managerConfig,
+      debug: options.debug ?? managerConfig?.debug ?? false
     }
 
-    // 初始化管理器和拦截器
-    this.manager = new SerialRequestManager(requestor, managerConfig)
-    this.interceptor = new SerialRequestInterceptor(requestor, managerConfig, options)
+    // 先创建管理器实例
+    this.manager = new SerialRequestManager(requestor, finalManagerConfig)
+    
+    // 将 manager 实例传递给 interceptor，实现共享
+    this.interceptor = new SerialRequestInterceptor(requestor, managerConfig, {
+      ...options,
+      serialManager: this.manager
+    })
 
-    if (this.config.debug) {
+    if (this.manager.isDebug()) {
       console.log('[SerialFeature] Serial feature initialized')
     }
   }
@@ -40,37 +45,40 @@ export class SerialFeature {
    * 这个方法应该在拦截器链中被调用
    */
   async handleSerialRequest<T = any>(config: RequestConfig): Promise<T> {
-    try {
-      // 尝试通过拦截器处理请求
-      await this.interceptor.onRequest(config)
-      
-      // 如果执行到这里，说明请求没有被串行化，直接执行
+    // 如果串行功能未启用，直接执行请求
+    if (!this.interceptor.isEnabled()) {
       return this.requestor.request<T>(config)
-    } catch (error) {
-      // 检查是否为串行拦截异常
-      if (isSerialInterceptedException(error)) {
-        // 处理串行请求
-        return this.processSerialRequest<T>(error)
-      }
-      
-      // 其他异常直接抛出
-      throw error
     }
-  }
 
-  /**
-   * 处理被拦截的串行请求
-   */
-  private async processSerialRequest<T = any>(exception: SerialInterceptedException): Promise<T> {
-    const { config, queueConfig } = exception
-    const serialKey = config.serialKey!
+    // 如果请求没有 serialKey，直接执行请求
+    if (!config.serialKey) {
+      return this.requestor.request<T>(config)
+    }
 
-    if (this.config.debug) {
+    // 从 metadata 中提取串行队列配置（如果有的话）
+    const queueConfig = this.extractSerialConfig(config)
+    const serialKey = config.serialKey
+
+    if (this.manager.isDebug()) {
       console.log(`[SerialFeature] Processing serial request for key: ${serialKey}`)
     }
 
     // 将请求加入串行队列
     return this.manager.enqueueRequest<T>(serialKey, config, queueConfig)
+  }
+
+  /**
+   * 从请求配置中提取串行配置
+   */
+  private extractSerialConfig(config: RequestConfig): SerialConfig | undefined {
+    const metadata = config.metadata
+    if (!metadata) {
+      return undefined
+    }
+
+    // 从 metadata 中提取串行相关配置
+    const serialConfig = metadata.serialConfig as SerialConfig
+    return serialConfig
   }
 
   /**
@@ -287,10 +295,12 @@ export class SerialFeature {
    * 销毁功能实例
    */
   destroy(): void {
+    // interceptor 使用的是共享的 manager，所以只销毁 interceptor（不会销毁 manager）
     this.interceptor.destroy()
+    // 销毁 manager
     this.manager.destroy()
     
-    if (this.config.debug) {
+    if (this.manager.isDebug()) {
       console.log('[SerialFeature] Serial feature destroyed')
     }
   }
