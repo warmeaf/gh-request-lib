@@ -31,26 +31,4 @@ export class ResultCollector<T> {
   getResults(): ConcurrentResult<T>[] {
     return this.results.filter((r): r is ConcurrentResult<T> => Boolean(r))
   }
-
-  getSuccessfulResults(): T[] {
-    const results: T[] = []
-    for (let i = 0; i < this.results.length; i++) {
-      const result = this.results[i]
-      if (result?.success && result.data !== undefined) {
-        results.push(result.data)
-      }
-    }
-    return results
-  }
-
-  getFailedResults(): ConcurrentResult<T>[] {
-    const results: ConcurrentResult<T>[] = []
-    for (let i = 0; i < this.results.length; i++) {
-      const result = this.results[i]
-      if (result && !result.success) {
-        results.push(result)
-      }
-    }
-    return results
-  }
 }

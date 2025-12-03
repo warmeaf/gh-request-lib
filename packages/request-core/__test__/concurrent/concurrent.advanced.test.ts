@@ -261,11 +261,12 @@ describe('ConcurrentFeature - 高级功能测试', () => {
       const allResults = collector.getResults()
       expect(allResults).toHaveLength(1000)
 
-      const successfulResults = collector.getSuccessfulResults()
+      // 使用 ConcurrentFeature 的方法来过滤结果
+      const successfulResults = concurrentFeature.getSuccessfulResults(allResults)
       // 总数1000 - 失败334 = 成功666
       expect(successfulResults).toHaveLength(1000 - 334)
 
-      const failedResults = collector.getFailedResults()
+      const failedResults = concurrentFeature.getFailedResults(allResults)
       // i % 3 === 0 的数字从0到999共有：(999-0)/3 + 1 = 334个
       expect(failedResults).toHaveLength(334)
     })
@@ -325,7 +326,8 @@ describe('ConcurrentFeature - 高级功能测试', () => {
       const results = collector.getResults()
       expect(results).toHaveLength(4)
 
-      const successfulData = collector.getSuccessfulResults()
+      // 使用 ConcurrentFeature 的方法来过滤结果
+      const successfulData = concurrentFeature.getSuccessfulResults(results)
       expect(successfulData).toEqual([10, 30, 70, 90])
     })
   })

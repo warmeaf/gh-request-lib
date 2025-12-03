@@ -53,84 +53,14 @@ export class ConcurrentFeature {
     const collector = new ResultCollector<T>(configs.length)
     const startTime = Date.now()
 
-    const tasks = configs.map(async (config, index) => {
-      const requestStart = Date.now()
-
-      try {
-        console.log(
-          LogFormatter.formatConcurrentLog('start', index, configs.length, config.url)
-        )
-
-        const data = await this.requestor.request<T>(config)
-        const duration = Date.now() - requestStart
-
-        const result: ConcurrentResult<T> = {
-          success: true,
-          data,
-          config,
-          index,
-          duration,
-          retryCount: 0,
-        }
-        collector.setResult(index, result)
-
-        console.log(
-          LogFormatter.formatConcurrentLog('complete', index, configs.length, config.url, {
-            duration: `${Math.round(duration)}ms`,
-          })
-        )
-
-        this.updateSuccessStats(duration)
-      } catch (error) {
-        const duration = Date.now() - requestStart
-
-        console.error(
-          LogFormatter.formatConcurrentLog('failed', index, configs.length, config.url, {
-            duration: `${Math.round(duration)}ms`,
-            error: error instanceof Error ? error.message : String(error),
-          })
-        )
-
-        if (failFast) {
-          throw error
-        }
-
-        const result: ConcurrentResult<T> = {
-          success: false,
-          error,
-          config,
-          index,
-          duration,
-          retryCount: 0,
-        }
-        collector.setResult(index, result)
-
-        this.updateFailureStats(duration)
-      }
-    })
+    const tasks = configs.map((config, index) =>
+      this.executeSingleRequest<T>(config, index, configs.length, collector, failFast)
+    )
 
     try {
-      if (timeout && timeout > 0) {
-        if (failFast) {
-          await this.awaitWithTimeout(Promise.all(tasks), timeout)
-        } else {
-          await this.awaitWithTimeout(Promise.allSettled(tasks), timeout)
-        }
-      } else {
-        if (failFast) {
-          await Promise.all(tasks)
-        } else {
-          await Promise.allSettled(tasks)
-        }
-      }
+      await this.executeWithTimeout(tasks, failFast, timeout)
     } catch (error) {
-      if (timeout && timeout > 0 && error instanceof Error && error.message.includes('timeout')) {
-        // 对于超时错误，总是抛出，不管 failFast 设置
-        throw error
-      }
-      if (failFast) {
-        throw error
-      }
+      this.handleTimeoutError(error, failFast, timeout)
     }
 
     this.stats.maxConcurrencyUsed = configs.length
@@ -157,35 +87,20 @@ export class ConcurrentFeature {
     const startTime = Date.now()
 
     const tasks = configs.map((config, index) =>
-      this.executeRequestWithSemaphore<T>(config, index, semaphore, collector, failFast, maxConcurrency)
+      this.executeSingleRequest<T>(config, index, configs.length, collector, failFast, {
+        semaphore,
+        maxConcurrency,
+      })
     )
 
     try {
-      if (timeout && timeout > 0) {
-        if (failFast) {
-          await this.awaitWithTimeout(Promise.all(tasks), timeout)
-        } else {
-          await this.awaitWithTimeout(Promise.allSettled(tasks), timeout)
-        }
-      } else {
-        if (failFast) {
-          await Promise.all(tasks)
-        } else {
-          await Promise.allSettled(tasks)
-        }
-      }
+      await this.executeWithTimeout(tasks, failFast, timeout)
     } catch (error) {
       // 在failFast模式下发生错误时，立即清理资源
       this.activeSemaphores.delete(semaphore)
       semaphore.destroy()
       
-      if (timeout && timeout > 0 && error instanceof Error && error.message.includes('timeout')) {
-        // 对于超时错误，总是抛出，不管 failFast 设置
-        throw error
-      }
-      if (failFast) {
-        throw error
-      }
+      this.handleTimeoutError(error, failFast, timeout)
     }
 
     this.updateFinalStats(Date.now() - startTime, maxConcurrency)
@@ -194,92 +109,6 @@ export class ConcurrentFeature {
     semaphore.destroy()
 
     return collector.getResults()
-  }
-
-  private async executeRequestWithSemaphore<T>(
-    config: RequestConfig,
-    index: number,
-    semaphore: Semaphore,
-    collector: ResultCollector<T>,
-    failFast: boolean,
-    maxConcurrency: number
-  ): Promise<void> {
-    let requestStartTime: number | undefined
-    
-    try {
-      await semaphore.acquire()
-
-      // 正确计算当前并发数：最大许可数 - 当前可用许可数
-      const currentConcurrency = maxConcurrency - semaphore.available()
-      this.stats.maxConcurrencyUsed = Math.max(
-        this.stats.maxConcurrencyUsed,
-        currentConcurrency
-      )
-
-      console.log(
-        LogFormatter.formatConcurrentLog('start', index, this.stats.total, config.url, {
-          'active requests': currentConcurrency,
-          waiting: semaphore.waitingCount(),
-        })
-      )
-
-      // 在获取信号量后才开始计时，只计算实际请求执行时间
-      requestStartTime = Date.now()
-      const data = await this.requestor.request<T>(config)
-      const duration = Date.now() - requestStartTime
-
-      const result: ConcurrentResult<T> = {
-        success: true,
-        data,
-        config,
-        index,
-        duration,
-        retryCount: 0,
-      }
-      collector.setResult(index, result)
-
-      console.log(
-        LogFormatter.formatConcurrentLog('complete', index, this.stats.total, config.url, {
-          duration: `${Math.round(duration)}ms`,
-          'active requests': currentConcurrency - 1,
-        })
-      )
-
-      this.updateSuccessStats(duration)
-    } catch (error) {
-      // 如果在请求执行过程中出错，计算从请求开始到出错的时间
-      // 如果在获取信号量阶段出错，则requestStartTime未初始化，duration设为0
-      const duration = requestStartTime 
-        ? Date.now() - requestStartTime 
-        : 0
-
-      console.error(
-        LogFormatter.formatConcurrentLog('failed', index, this.stats.total, config.url, {
-          duration: `${Math.round(duration)}ms`,
-          error: error instanceof Error ? error.message : String(error),
-        })
-      )
-
-      if (failFast) {
-        // failFast模式下，直接抛出错误，信号量会在finally中释放
-        throw error
-      }
-
-      const result: ConcurrentResult<T> = {
-        success: false,
-        error,
-        config,
-        index,
-        duration,
-        retryCount: 0,
-      }
-      collector.setResult(index, result)
-
-      this.updateFailureStats(duration)
-    } finally {
-      // 所有请求完成后都需要释放信号量，包括成功和失败的
-      semaphore.release()
-    }
   }
 
   private awaitWithTimeout<T>(promise: Promise<T>, timeout: number): Promise<T> {
@@ -306,6 +135,161 @@ export class ConcurrentFeature {
       )
       promise.then(onResolve, onReject)
     })
+  }
+
+  /**
+   * @description 统一处理超时逻辑
+   */
+  private async executeWithTimeout<T>(
+    tasks: Promise<T>[],
+    failFast: boolean,
+    timeout?: number
+  ): Promise<void> {
+    if (timeout && timeout > 0) {
+      if (failFast) {
+        await this.awaitWithTimeout(Promise.all(tasks), timeout)
+      } else {
+        await this.awaitWithTimeout(Promise.allSettled(tasks), timeout)
+      }
+    } else {
+      if (failFast) {
+        await Promise.all(tasks)
+      } else {
+        await Promise.allSettled(tasks)
+      }
+    }
+  }
+
+  /**
+   * @description 统一处理超时错误
+   */
+  private handleTimeoutError(error: unknown, failFast: boolean, timeout?: number): void {
+    if (timeout && timeout > 0 && error instanceof Error && error.message.includes('timeout')) {
+      // 对于超时错误，总是抛出，不管 failFast 设置
+      throw error
+    }
+    if (failFast) {
+      throw error
+    }
+  }
+
+  /**
+   * @description 执行单个请求的核心逻辑
+   */
+  private async executeSingleRequest<T>(
+    config: RequestConfig,
+    index: number,
+    total: number,
+    collector: ResultCollector<T>,
+    failFast: boolean,
+    options?: {
+      semaphore?: Semaphore
+      maxConcurrency?: number
+    }
+  ): Promise<void> {
+    const { semaphore, maxConcurrency } = options || {}
+    let requestStartTime: number | undefined
+
+    try {
+      // 如果有信号量，需要先获取
+      if (semaphore) {
+        await semaphore.acquire()
+
+        // 更新并发数统计
+        if (maxConcurrency !== undefined) {
+          const currentConcurrency = maxConcurrency - semaphore.available()
+          this.stats.maxConcurrencyUsed = Math.max(
+            this.stats.maxConcurrencyUsed,
+            currentConcurrency
+          )
+
+          console.log(
+            LogFormatter.formatConcurrentLog('start', index, total, config.url, {
+              'active requests': currentConcurrency,
+              waiting: semaphore.waitingCount(),
+            })
+          )
+        }
+
+        // 在获取信号量后才开始计时，只计算实际请求执行时间
+        requestStartTime = Date.now()
+      } else {
+        // 无信号量时，在方法开始时计时
+        requestStartTime = Date.now()
+        console.log(
+          LogFormatter.formatConcurrentLog('start', index, total, config.url)
+        )
+      }
+
+      // 执行请求
+      const data = await this.requestor.request<T>(config)
+      const duration = requestStartTime ? Date.now() - requestStartTime : 0
+
+      // 构建成功结果
+      const result: ConcurrentResult<T> = {
+        success: true,
+        data,
+        config,
+        index,
+        duration,
+        retryCount: 0,
+      }
+      collector.setResult(index, result)
+
+      // 记录成功日志
+      const logExtra: Record<string, unknown> = {
+        duration: `${Math.round(duration)}ms`,
+      }
+      if (semaphore && maxConcurrency !== undefined) {
+        const currentConcurrency = maxConcurrency - semaphore.available()
+        logExtra['active requests'] = currentConcurrency - 1
+      }
+      console.log(
+        LogFormatter.formatConcurrentLog('complete', index, total, config.url, logExtra)
+      )
+
+      // 更新成功统计
+      this.updateSuccessStats(duration)
+    } catch (error) {
+      // 计算持续时间
+      // 如果在请求执行过程中出错，计算从请求开始到出错的时间
+      // 如果在获取信号量阶段出错，则requestStartTime未初始化，duration设为0
+      const duration = requestStartTime
+        ? Date.now() - requestStartTime
+        : 0
+
+      // 记录失败日志
+      console.error(
+        LogFormatter.formatConcurrentLog('failed', index, total, config.url, {
+          duration: `${Math.round(duration)}ms`,
+          error: error instanceof Error ? error.message : String(error),
+        })
+      )
+
+      // failFast 模式下直接抛出错误
+      if (failFast) {
+        throw error
+      }
+
+      // 构建失败结果
+      const result: ConcurrentResult<T> = {
+        success: false,
+        error,
+        config,
+        index,
+        duration,
+        retryCount: 0,
+      }
+      collector.setResult(index, result)
+
+      // 更新失败统计
+      this.updateFailureStats(duration)
+    } finally {
+      // 如果有信号量，需要释放
+      if (semaphore) {
+        semaphore.release()
+      }
+    }
   }
 
   async requestMultiple<T>(
