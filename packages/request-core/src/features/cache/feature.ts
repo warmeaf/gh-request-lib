@@ -12,7 +12,7 @@ import {
   StorageType,
 } from '../../cache'
 import type { CacheInvalidationPolicy } from '../../cache'
-import type { CacheConfig } from './types'
+import type { CacheConfig, CachePreset } from './types'
 
 
 export class CacheFeature {
@@ -219,10 +219,61 @@ export class CacheFeature {
     return true
   }
 
+  /**
+   * 应用预设配置
+   */
+  private applyPreset(preset: CachePreset): Partial<CacheConfig> {
+    switch (preset) {
+      case 'short':
+        return {
+          ttl: 60 * 1000, // 1分钟
+          storageType: StorageType.MEMORY,
+          clone: 'none'
+        }
+      case 'medium':
+        return {
+          ttl: 30 * 60 * 1000, // 30分钟
+          storageType: StorageType.LOCAL_STORAGE,
+          clone: 'shallow'
+        }
+      case 'long':
+        return {
+          ttl: 24 * 60 * 60 * 1000, // 24小时
+          storageType: StorageType.INDEXED_DB,
+          clone: 'deep'
+        }
+      case 'persistent':
+        return {
+          ttl: 7 * 24 * 60 * 60 * 1000, // 7天
+          storageType: StorageType.INDEXED_DB,
+          clone: 'deep',
+          maxEntries: 5000
+        }
+      case 'default':
+      default:
+        return {
+          ttl: 5 * 60 * 1000, // 5分钟
+          storageType: StorageType.MEMORY,
+          clone: 'none'
+        }
+    }
+  }
+
   async requestWithCache<T>(
     config: RequestConfig,
     cacheConfig: CacheConfig = { ttl: 5 * 60 * 1000 }
   ): Promise<T> {
+    // 如果指定了预设配置，先应用预设，然后合并用户自定义配置
+    let finalConfig = cacheConfig
+    if (cacheConfig.preset) {
+      const presetConfig = this.applyPreset(cacheConfig.preset)
+      finalConfig = {
+        ...presetConfig,
+        ...cacheConfig,
+        preset: undefined // 移除 preset，避免重复处理
+      }
+    }
+
     const {
       ttl = 5 * 60 * 1000,
       key,
@@ -233,7 +284,7 @@ export class CacheFeature {
       storageAdapter,
       keyStrategy,
       invalidationPolicy,
-    } = cacheConfig
+    } = finalConfig
 
     if (typeof maxEntries === 'number' && maxEntries > 0) {
       this.maxEntries = maxEntries

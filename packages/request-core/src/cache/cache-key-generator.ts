@@ -623,22 +623,19 @@ export class CacheKeyGenerator {
   }
 
   /**
-   * 获取统计信息
+   * 获取统计信息（简化版，仅保留核心指标）
    */
   getStats() {
     const baseStats = this.context.stats
+    const totalGenerations = baseStats.totalGenerations
     return {
-      totalGenerations: baseStats.totalGenerations,
+      totalGenerations,
       cacheHits: baseStats.cacheHits,
       cacheMisses: baseStats.cacheMisses,
-      averageGenerationTime: baseStats.totalGenerations > 0
-        ? baseStats.totalGenerationTime / baseStats.totalGenerations
+      hitRate: totalGenerations > 0
+        ? Number((baseStats.cacheHits / totalGenerations * 100).toFixed(2))
         : 0,
-      cacheSize: this.context.cache.size,
-      lastCleanupTime: baseStats.lastCleanupTime,
-      hitRate: baseStats.totalGenerations > 0
-        ? (baseStats.cacheHits / baseStats.totalGenerations * 100).toFixed(2)
-        : '0.00'
+      cacheSize: this.context.cache.size
     }
   }
 

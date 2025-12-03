@@ -49,13 +49,13 @@ describe('Cache Key Generation - Statistics', () => {
       expect(stats.cacheHits).toBeGreaterThan(0)
     })
 
-    it('should track generation timing', () => {
+    it('should track generation count', () => {
       const config = CACHE_REQUEST_CONFIGS.GET_USERS
 
       keyGenerator.generateCacheKey(config)
 
       const stats = keyGenerator.getStats()
-      expect(stats.averageGenerationTime).toBeGreaterThanOrEqual(0)
+      expect(stats.totalGenerations).toBeGreaterThanOrEqual(1)
     })
 
     it('should allow resetting statistics', () => {
@@ -73,7 +73,7 @@ describe('Cache Key Generation - Statistics', () => {
       expect(stats.totalGenerations).toBe(0)
       expect(stats.cacheHits).toBe(0)
       expect(stats.cacheMisses).toBe(0)
-      expect(stats.averageGenerationTime).toBe(0)
+      expect(stats.hitRate).toBe(0)
     })
   })
 
@@ -94,8 +94,8 @@ describe('Cache Key Generation - Statistics', () => {
       const stats = keyGenWithCache.getStats()
       expect(stats.totalGenerations).toBe(2)
       expect(stats.cacheHits).toBeGreaterThan(0)
-      expect(parseFloat(stats.hitRate)).toBeGreaterThan(0)
-      expect(parseFloat(stats.hitRate)).toBeLessThanOrEqual(100)
+      expect(stats.hitRate).toBeGreaterThan(0)
+      expect(stats.hitRate).toBeLessThanOrEqual(100)
     })
 
     it('should track cache size accurately', () => {
@@ -132,16 +132,16 @@ describe('Cache Key Generation - Statistics', () => {
       expect(stats.cacheHits).toBe(0)
       expect(stats.cacheMisses).toBe(0)
       expect(stats.cacheSize).toBe(0)
-      expect(stats.hitRate).toBe('0.00')
+      expect(stats.hitRate).toBe(0)
     })
 
-    it('should track last cleanup time', () => {
+    it('should track cache size after multiple generations', () => {
       const keyGenWithCache = new CacheKeyGenerator({
         enableHashCache: true
       })
 
-      // 生成足够多的键触发清理
-      for (let i = 0; i < 1200; i++) {
+      // 生成多个不同的键
+      for (let i = 0; i < 100; i++) {
         keyGenWithCache.generateCacheKey({
           url: `https://api.example.com/item/${i}`,
           method: 'GET' as const,
@@ -150,10 +150,11 @@ describe('Cache Key Generation - Statistics', () => {
       }
 
       const stats = keyGenWithCache.getStats()
-      expect(stats.lastCleanupTime).toBeGreaterThan(0)
+      expect(stats.cacheSize).toBeGreaterThan(0)
+      expect(stats.totalGenerations).toBe(100)
     })
 
-    it('should track timing statistics accurately', () => {
+    it('should track generation statistics accurately', () => {
       const config = CACHE_REQUEST_CONFIGS.GET_USERS
 
       // 生成一些键
@@ -161,8 +162,9 @@ describe('Cache Key Generation - Statistics', () => {
       keyGenerator.generateCacheKey(config)
 
       const stats = keyGenerator.getStats()
-      expect(stats.averageGenerationTime).toBeGreaterThanOrEqual(0)
       expect(stats.totalGenerations).toBe(2)
+      expect(stats.hitRate).toBeGreaterThanOrEqual(0)
+      expect(stats.hitRate).toBeLessThanOrEqual(100)
     })
   })
 })
