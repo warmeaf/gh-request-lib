@@ -30,6 +30,13 @@ export class RetryFeature {
     return false
   }
 
+  private logFinalError(config: RequestConfig, attempt: number, error: unknown): void {
+    const finalMessage = `❌ [Retry] Request failed after ${attempt + 1} attempts`
+    console.error(
+      `${finalMessage}\n  URL: ${config.url}\n  Error: ${error instanceof Error ? error.message : String(error)}`
+    )
+  }
+
   async requestWithRetry<T>(
     config: RequestConfig,
     retryConfig: RetryConfig = { retries: 3 }
@@ -54,7 +61,6 @@ export class RetryFeature {
     const shouldRetry = retryConfig.shouldRetry ?? this.defaultShouldRetry.bind(this)
 
     let attempt = 0
-    let lastError: unknown
 
     while (attempt < maxAttempts) {
       try {
@@ -63,16 +69,12 @@ export class RetryFeature {
 
         return await this.requestor.request<T>(config)
       } catch (error) {
-        lastError = error
         const isLastAttempt = attempt === maxAttempts - 1
         const remainingRetries = maxAttempts - attempt - 1
 
         // 如果是最后一次尝试，直接抛出错误，不需要调用shouldRetry
         if (isLastAttempt) {
-          const finalMessage = `❌ [Retry] Request failed after ${attempt + 1} attempts`
-          console.error(
-            `${finalMessage}\n  URL: ${config.url}\n  Error: ${error instanceof Error ? error.message : String(error)}`
-          )
+          this.logFinalError(config, attempt, error)
           throw error
         }
 
@@ -81,18 +83,12 @@ export class RetryFeature {
           shouldRetryResult = shouldRetry(error, attempt)
         } catch (shouldRetryError) {
           // 如果shouldRetry函数抛出异常，停止重试并抛出原始错误
-          const finalMessage = `❌ [Retry] Request failed after ${attempt + 1} attempts`
-          console.error(
-            `${finalMessage}\n  URL: ${config.url}\n  Error: ${error instanceof Error ? error.message : String(error)}`
-          )
+          this.logFinalError(config, attempt, error)
           throw error
         }
 
         if (!shouldRetryResult) {
-          const finalMessage = `❌ [Retry] Request failed after ${attempt + 1} attempts`
-          console.error(
-            `${finalMessage}\n  URL: ${config.url}\n  Error: ${error instanceof Error ? error.message : String(error)}`
-          )
+          this.logFinalError(config, attempt, error)
           throw error
         }
 
@@ -114,6 +110,8 @@ export class RetryFeature {
       }
     }
 
-    throw lastError || new RequestError('Unexpected retry loop exit')
+    // 理论上不应该到达这里，因为所有失败路径都会抛出错误
+    // 但为了满足 TypeScript 的类型检查，添加防御性代码
+    throw new RequestError('Unexpected retry loop exit')
   }
 }
