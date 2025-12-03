@@ -53,21 +53,77 @@ export class CacheFeature {
     this.invalidationPolicy = new LRUInvalidationPolicy()
   }
 
+  /**
+   * 统一处理存储操作的错误和日志记录
+   */
+  private handleStorageError(
+    operation: string,
+    key: string,
+    error: unknown,
+    status?: string,
+    fallback?: () => void
+  ): void {
+    console.warn(
+      LogFormatter.formatCacheLog('error', key, {
+        'operation': operation,
+        'error': error instanceof Error ? error.message : 'Unknown error',
+        ...(status && { 'status': status }),
+      })
+    )
+    if (fallback) {
+      fallback()
+    }
+  }
+
+  /**
+   * 安全地获取存储键列表，统一处理错误
+   */
+  private async safeGetKeys(): Promise<string[] | null> {
+    try {
+      return await this.storageAdapter.getKeys()
+    } catch (error) {
+      this.handleStorageError('get keys', 'storage', error, 'operation skipped')
+      return null
+    }
+  }
+
+  /**
+   * 安全地获取存储统计信息，统一处理错误
+   */
+  private async safeGetStats(): Promise<{ size: number; [key: string]: unknown } | null> {
+    try {
+      return await this.storageAdapter.getStats()
+    } catch (error) {
+      this.handleStorageError('get stats', 'stats', error, 'using default values')
+      return null
+    }
+  }
+
+  /**
+   * 降级到内存存储适配器
+   */
+  private fallbackToMemoryStorage(reason: string): MemoryStorageAdapter {
+    console.warn(`${reason}, falling back to memory storage`)
+    return new MemoryStorageAdapter()
+  }
+
+  /**
+   * 记录缓存日志的辅助方法
+   */
+  private logCacheEvent(
+    type: 'hit' | 'miss' | 'set' | 'clear' | 'error',
+    key: string,
+    metadata?: Record<string, unknown>
+  ): void {
+    const logMethod = type === 'error' ? console.warn : console.log
+    logMethod(LogFormatter.formatCacheLog(type, key, metadata || {}))
+  }
+
   private async incrementalCleanupIfNeeded(): Promise<void> {
     // 清理逻辑适用于所有存储类型，不仅仅是内存存储
     const now = Date.now()
-    let keys: string[] = []
-    try {
-      keys = await this.storageAdapter.getKeys()
-    } catch (error) {
-      // 获取键列表失败时，记录警告并跳过清理
-      console.warn(
-        LogFormatter.formatCacheLog('error', 'cleanup', {
-          'operation': 'get keys for cleanup',
-          'error': error instanceof Error ? error.message : 'Unknown error',
-          'status': 'cleanup skipped'
-        })
-      )
+    const keys = await this.safeGetKeys()
+    if (!keys) {
       return
     }
     
@@ -93,24 +149,12 @@ export class CacheFeature {
       for (const key of expiredKeys) {
         await this.storageAdapter.removeItem(key)
       }
-      console.log(
-        LogFormatter.formatCacheLog('clear', `${expiredKeys.length} expired items`, {
-          'remaining items': keys.length - expiredKeys.length,
-        })
-      )
+      this.logCacheEvent('clear', `${expiredKeys.length} expired items`, {
+        'remaining items': keys.length - expiredKeys.length,
+      })
     }
-    let currentKeys: string[] = []
-    try {
-      currentKeys = await this.storageAdapter.getKeys()
-    } catch (error) {
-      // 获取键列表失败时，记录警告并跳过LRU清理
-      console.warn(
-        LogFormatter.formatCacheLog('error', 'LRU cleanup', {
-          'operation': 'get keys for LRU',
-          'error': error instanceof Error ? error.message : 'Unknown error',
-          'status': 'LRU cleanup skipped'
-        })
-      )
+    const currentKeys = await this.safeGetKeys()
+    if (!currentKeys) {
       return
     }
     if (currentKeys.length > this.maxEntries) {
@@ -125,12 +169,10 @@ export class CacheFeature {
         await this.storageAdapter.removeItem(items[i].key)
       }
       if (toEvict > 0) {
-        console.log(
-          LogFormatter.formatCacheLog('clear', `${toEvict} LRU items`, {
-            'remaining items': currentKeys.length - toEvict,
-            'max entries': this.maxEntries,
-          })
-        )
+        this.logCacheEvent('clear', `${toEvict} LRU items`, {
+          'remaining items': currentKeys.length - toEvict,
+          'max entries': this.maxEntries,
+        })
       }
     }
   }
@@ -140,13 +182,7 @@ export class CacheFeature {
       await this.storageAdapter.destroy()
     } catch (error) {
       // 存储适配器销毁失败时记录警告，但不阻止清理过程
-      console.warn(
-        LogFormatter.formatCacheLog('error', 'destroy', {
-          'operation': 'storage destroy',
-          'error': error instanceof Error ? error.message : 'Unknown error',
-          'status': 'cleanup continued'
-        })
-      )
+      this.handleStorageError('storage destroy', 'destroy', error, 'cleanup continued')
     } finally {
       // 确保内部状态总是被重置
       this.lastCleanupTime = 0
@@ -171,9 +207,20 @@ export class CacheFeature {
     }
   }
 
+  /**
+   * 检查缓存项是否有效（不更新访问时间）
+   */
+  private isCacheItemValidInternal(item: any, now: number): boolean {
+    if (!item) return false
+    return !this.invalidationPolicy.shouldInvalidate(item, now)
+  }
+
+  /**
+   * 检查缓存项是否有效并更新访问时间
+   */
   private isCacheValidAndUpdate<T>(item: any): boolean {
     const now = Date.now()
-    if (this.invalidationPolicy.shouldInvalidate(item, now)) {
+    if (!this.isCacheItemValidInternal(item, now)) {
       return false
     }
     this.invalidationPolicy.updateItemOnAccess(item, now)
@@ -233,33 +280,23 @@ export class CacheFeature {
       cachedItem = await this.storageAdapter.getItem(cacheKey)
     } catch (error) {
       // 存储适配器读取失败时，记录警告并将其视为缓存未命中
-      console.warn(
-        LogFormatter.formatCacheLog('error', cacheKey, {
-          'operation': 'read',
-          'error': error instanceof Error ? error.message : 'Unknown storage error',
-          'fallback': 'cache miss'
-        })
-      )
+      this.handleStorageError('read', cacheKey, error, 'cache miss')
       cachedItem = null
     }
     if (cachedItem && this.isCacheValidAndUpdate(cachedItem)) {
       try {
         await this.storageAdapter.setItem(cachedItem)
-        console.log(
-          LogFormatter.formatCacheLog('hit', cacheKey, {
-            'ttl remaining': `${Math.round((cachedItem.ttl - (Date.now() - cachedItem.timestamp)) / 1000)}s`,
-            'access count': cachedItem.accessCount,
-          })
-        )
+        this.logCacheEvent('hit', cacheKey, {
+          'ttl remaining': `${Math.round((cachedItem.ttl - (Date.now() - cachedItem.timestamp)) / 1000)}s`,
+          'access count': cachedItem.accessCount,
+        })
       } catch (error) {
         // 更新访问时间失败，但仍然返回缓存数据
-        console.warn(
-          LogFormatter.formatCacheLog('hit', cacheKey, {
-            'status': 'update failed',
-            'error': error instanceof Error ? error.message : 'Unknown storage error',
-            'data returned': 'from cache'
-          })
-        )
+        this.logCacheEvent('error', cacheKey, {
+          'operation': 'update access time',
+          'error': error instanceof Error ? error.message : 'Unknown storage error',
+          'status': 'data returned from cache'
+        })
       }
       return this.safeCloneData(cachedItem.data, clone) as T
     }
@@ -271,12 +308,10 @@ export class CacheFeature {
     // 并发控制：检查是否已有相同请求正在进行
     const existingRequest = this.pendingRequests.get(cacheKey)
     if (existingRequest) {
-      console.log(
-        LogFormatter.formatCacheLog('miss', cacheKey, {
-          'status': 'waiting for existing request',
-          'url': config.url,
-        })
-      )
+      this.logCacheEvent('miss', cacheKey, {
+        'status': 'waiting for existing request',
+        'url': config.url,
+      })
       return (await existingRequest) as T
     }
 
@@ -302,12 +337,10 @@ export class CacheFeature {
     ttl: number,
     clone: 'deep' | 'shallow' | 'none'
   ): Promise<T> {
-    console.log(
-      LogFormatter.formatCacheLog('miss', cacheKey, {
-        reason: 'not found',
-        'will fetch': config.url,
-      })
-    )
+    this.logCacheEvent('miss', cacheKey, {
+      reason: 'not found',
+      'will fetch': config.url,
+    })
     const data = await this.requestor.request<T>(config)
 
     const now = Date.now()
@@ -324,23 +357,21 @@ export class CacheFeature {
       // 在添加新缓存项后立即检查是否需要清理
       await this.incrementalCleanupIfNeeded()
 
-      const stats = await this.storageAdapter.getStats()
-      console.log(
-        LogFormatter.formatCacheLog('set', cacheKey, {
+      const stats = await this.safeGetStats()
+      if (stats) {
+        this.logCacheEvent('set', cacheKey, {
           ttl: `${Math.round(ttl / 1000)}s`,
           'cache size': stats.size,
           'max entries': this.maxEntries,
         })
-      )
+      }
     } catch (error) {
       // 缓存存储失败，但不影响数据返回
-      console.warn(
-        LogFormatter.formatCacheLog('set', cacheKey, {
-          'status': 'storage failed',
-          'error': error instanceof Error ? error.message : 'Unknown storage error',
-          'data returned': 'success'
-        })
-      )
+      this.logCacheEvent('error', cacheKey, {
+        'operation': 'set cache item',
+        'error': error instanceof Error ? error.message : 'Unknown storage error',
+        'status': 'data returned successfully'
+      })
     }
 
     return this.safeCloneData(data, clone) as T
@@ -349,86 +380,40 @@ export class CacheFeature {
   async clearCache(key?: string): Promise<void> {
     if (key) {
       // 获取键列表，失败时继续执行移除操作
-      let existed = false
-      try {
-        const keys = await this.storageAdapter.getKeys()
-        existed = keys.includes(key)
-      } catch (error) {
-        console.warn(
-          LogFormatter.formatCacheLog('error', key, {
-            'operation': 'get keys for validation',
-            'error': error instanceof Error ? error.message : 'Unknown error',
-            'status': 'continued with removal'
-          })
-        )
-      }
+      const keys = await this.safeGetKeys()
+      const existed = keys ? keys.includes(key) : false
 
       // 移除项目，失败时记录错误但不抛出
       try {
         await this.storageAdapter.removeItem(key)
       } catch (error) {
-        console.warn(
-          LogFormatter.formatCacheLog('error', key, {
-            'operation': 'remove item',
-            'error': error instanceof Error ? error.message : 'Unknown error',
-            'status': 'removal failed'
-          })
-        )
+        this.handleStorageError('remove item', key, error, 'removal failed')
         return // 移除失败时，不需要继续获取统计信息
       }
 
       // 获取统计信息并记录，失败时只记录错误
       if (existed) {
-        try {
-          const stats = await this.storageAdapter.getStats()
-          console.log(
-            LogFormatter.formatCacheLog('clear', key, {
-              'remaining items': stats.size,
-            })
-          )
-        } catch (error) {
-          console.warn(
-            LogFormatter.formatCacheLog('error', key, {
-              'operation': 'get stats after removal',
-              'error': error instanceof Error ? error.message : 'Unknown error',
-              'status': 'item removed successfully'
-            })
-          )
+        const stats = await this.safeGetStats()
+        if (stats) {
+          this.logCacheEvent('clear', key, {
+            'remaining items': stats.size,
+          })
         }
       }
     } else {
       // 清除所有缓存
-      let previousSize = 0
-      try {
-        const stats = await this.storageAdapter.getStats()
-        previousSize = stats.size
-      } catch (error) {
-        console.warn(
-          LogFormatter.formatCacheLog('error', 'stats', {
-            'operation': 'get stats before clear',
-            'error': error instanceof Error ? error.message : 'Unknown error',
-            'status': 'continued with clear all'
-          })
-        )
-      }
+      const stats = await this.safeGetStats()
+      const previousSize = stats ? stats.size : 0
 
       try {
         await this.storageAdapter.clear()
         if (previousSize > 0) {
-          console.log(
-            LogFormatter.formatCacheLog('clear', 'all items', {
-              'cleared count': previousSize,
-            })
-          )
+          this.logCacheEvent('clear', 'all items', {
+            'cleared count': previousSize,
+          })
         }
       } catch (error) {
-        console.warn(
-          LogFormatter.formatCacheLog('error', 'clear all', {
-            'operation': 'clear all items',
-            'error': error instanceof Error ? error.message : 'Unknown error',
-            'status': 'clear operation failed'
-          })
-        )
+        this.handleStorageError('clear all items', 'clear all', error, 'clear operation failed')
       }
     }
   }
@@ -482,22 +467,10 @@ export class CacheFeature {
     cleanupInterval: number
     storageType: StorageType
   }> {
-    let stats: { size: number } = { size: 0 }
-    try {
-      stats = await this.storageAdapter.getStats()
-    } catch (error) {
-      // 存储适配器统计获取失败时，记录警告并使用默认值
-      console.warn(
-        LogFormatter.formatCacheLog('error', 'stats', {
-          'operation': 'get storage stats',
-          'error': error instanceof Error ? error.message : 'Unknown error',
-          'fallback': 'default values'
-        })
-      )
-    }
+    const stats = await this.safeGetStats()
     
     return {
-      size: stats.size,
+      size: stats?.size || 0,
       maxEntries: this.maxEntries,
       keyGeneratorStats: this.keyGenerator.getStats(),
       lastCleanup: this.lastCleanupTime,
@@ -534,20 +507,17 @@ export class CacheFeature {
         if (typeof localStorage !== 'undefined') {
           return new LocalStorageAdapter()
         }
-        console.warn('LocalStorage is not available, falling back to memory storage')
-        return new MemoryStorageAdapter()
+        return this.fallbackToMemoryStorage('LocalStorage is not available')
       case StorageType.INDEXED_DB:
         if (typeof indexedDB !== 'undefined') {
           return new IndexedDBAdapter()
         }
-        console.warn('IndexedDB is not available, falling back to memory storage')
-        return new MemoryStorageAdapter()
+        return this.fallbackToMemoryStorage('IndexedDB is not available')
       case StorageType.WEB_SQL:
         if (typeof openDatabase !== 'undefined' && openDatabase !== undefined) {
           return new WebSQLAdapter()
         }
-        console.warn('WebSQL is not available, falling back to memory storage')
-        return new MemoryStorageAdapter()
+        return this.fallbackToMemoryStorage('WebSQL is not available')
       default:
         return new MemoryStorageAdapter()
     }
@@ -582,8 +552,6 @@ export class CacheFeature {
   }
 
   isCacheItemValid(item: any): boolean {
-    if (!item) return false
-    const now = Date.now()
-    return !this.invalidationPolicy.shouldInvalidate(item, now)
+    return this.isCacheItemValidInternal(item, Date.now())
   }
 }
