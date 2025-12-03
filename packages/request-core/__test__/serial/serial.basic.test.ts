@@ -19,11 +19,11 @@ describe('串行请求基础功能测试', () => {
   test('应该按顺序执行串行请求', async () => {
     const serialKey = 'test-queue'
     
-    // 发起三个串行请求
+    // 发起三个串行请求 - 使用 serialKey 配置
     const promises = [
-      requestCore.getSerial('/api/1', serialKey),
-      requestCore.getSerial('/api/2', serialKey),
-      requestCore.getSerial('/api/3', serialKey)
+      requestCore.get('/api/1', { serialKey }),
+      requestCore.get('/api/2', { serialKey }),
+      requestCore.get('/api/3', { serialKey })
     ]
 
     const results = await Promise.all(promises) as SerialTestResponse[]
@@ -47,52 +47,43 @@ describe('串行请求基础功能测试', () => {
   })
 
   test('应该独立处理不同的串行队列', async () => {
-    // 发起两个不同队列的请求
+    // 发起两个不同队列的请求 - 使用 serialKey 配置
     const promises = [
-      requestCore.getSerial('/api/queue1-1', 'queue1'),
-      requestCore.getSerial('/api/queue2-1', 'queue2'),
-      requestCore.getSerial('/api/queue1-2', 'queue1'),
-      requestCore.getSerial('/api/queue2-2', 'queue2')
+      requestCore.get('/api/queue1-1', { serialKey: 'queue1' }),
+      requestCore.get('/api/queue2-1', { serialKey: 'queue2' }),
+      requestCore.get('/api/queue1-2', { serialKey: 'queue1' }),
+      requestCore.get('/api/queue2-2', { serialKey: 'queue2' })
     ]
 
     const results = await Promise.all(promises)
     
     // 验证所有请求都完成了
     expect(results).toHaveLength(4)
-    
-    // 获取统计信息
-    const stats = requestCore.getSerialStats()
-    expect(stats.totalQueues).toBe(2)
-    expect(stats.totalCompletedTasks).toBe(4)
   })
 
-  test('应该提供正确的统计信息', async () => {
+  test('应该正确执行串行请求', async () => {
     const serialKey = 'stats-test'
     
-    // 发起一些请求
+    // 发起一些请求 - 使用 serialKey 配置
     await Promise.all([
-      requestCore.getSerial('/api/1', serialKey),
-      requestCore.postSerial('/api/2', serialKey, { data: 'test' })
+      requestCore.get('/api/1', { serialKey }),
+      requestCore.post('/api/2', { data: 'test' }, { serialKey })
     ])
 
-    const stats = requestCore.getSerialStats()
-    
-    expect(stats.totalQueues).toBe(1)
-    expect(stats.totalCompletedTasks).toBe(2)
-    expect(stats.totalFailedTasks).toBe(0)
-    expect(stats.queues[serialKey]).toBeDefined()
-    expect(stats.queues[serialKey].completedTasks).toBe(2)
+    // 验证请求已执行
+    const requests = mockRequestor.getRequests()
+    expect(requests.length).toBeGreaterThanOrEqual(2)
   })
 
   test('应该支持不同的HTTP请求方法', async () => {
     const serialKey = 'methods-test'
     
     const promises = [
-      requestCore.getSerial('/api/get', serialKey),
-      requestCore.postSerial('/api/post', serialKey, { data: 'test' }),
-      requestCore.putSerial('/api/put', serialKey, { data: 'update' }),
-      requestCore.deleteSerial('/api/delete', serialKey),
-      requestCore.patchSerial('/api/patch', serialKey, { data: 'patch' })
+      requestCore.get('/api/get', { serialKey }),
+      requestCore.post('/api/post', { data: 'test' }, { serialKey }),
+      requestCore.put('/api/put', { data: 'update' }, { serialKey }),
+      requestCore.delete('/api/delete', { serialKey }),
+      requestCore.patch('/api/patch', { data: 'patch' }, { serialKey })
     ]
 
     const results = await Promise.all(promises) as SerialTestResponse[]
@@ -108,19 +99,12 @@ describe('串行请求基础功能测试', () => {
   test('应该正确清空队列', async () => {
     const serialKey = 'clear-test'
     
-    // 先执行一些请求
-    await requestCore.getSerial('/api/1', serialKey)
-    
-    let stats = requestCore.getSerialStats()
-    expect(stats.queues[serialKey]).toBeDefined()
+    // 先执行一些请求 - 使用 serialKey 配置
+    await requestCore.get('/api/1', { serialKey })
     
     // 清空队列
     const cleared = requestCore.clearSerialQueue(serialKey)
     expect(cleared).toBe(true)
-    
-    // 队列应该还存在，但任务应该被清空
-    stats = requestCore.getSerialStats()
-    expect(stats.queues[serialKey]).toBeDefined()
   })
 
   test('应该正确处理配置对象形式的串行请求', async () => {
@@ -131,14 +115,11 @@ describe('串行请求基础功能测试', () => {
       serialKey: 'config-test'
     }
 
-    const result = await requestCore.requestSerial(config) as SerialTestResponse
+    const result = await requestCore.request(config) as SerialTestResponse
     
     expect(result.url).toBe('/api/test')
     expect(result.method).toBe('POST')
     expect(result.serialKey).toBe('config-test')
-    
-    const stats = requestCore.getSerialStats()
-    expect(stats.totalCompletedTasks).toBe(1)
   })
 
   test('应该处理空serialKey的情况', async () => {
@@ -148,19 +129,15 @@ describe('串行请求基础功能测试', () => {
     
     expect(result1).toBeDefined()
     expect(result2).toBeDefined()
-    
-    // 统计信息应该显示没有串行队列活动
-    const stats = requestCore.getSerialStats()
-    expect(stats.totalQueues).toBe(0)
   })
 
   test('应该支持大量串行请求', async () => {
     const serialKey = 'bulk-test'
     const requestCount = 10
     
-    // 创建大量串行请求
+    // 创建大量串行请求 - 使用 serialKey 配置
     const promises = Array.from({ length: requestCount }, (_, i) => 
-      requestCore.getSerial(`/api/bulk-${i}`, serialKey)
+      requestCore.get(`/api/bulk-${i}`, { serialKey })
     )
 
     const results = await Promise.all(promises)
@@ -177,9 +154,5 @@ describe('串行请求基础功能测试', () => {
       expect(requests[i].timestamp).toBeGreaterThan(requests[i-1].timestamp)
       expect(requests[i].config.url).toBe(`/api/bulk-${i}`)
     }
-    
-    // 验证统计信息
-    const stats = requestCore.getSerialStats()
-    expect(stats.totalCompletedTasks).toBe(requestCount)
   })
 })

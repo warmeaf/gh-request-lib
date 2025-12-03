@@ -351,8 +351,7 @@ describe('RequestCore 拦截器功能测试', () => {
         requestCore.addInterceptor(interceptor)
       })
       
-      const stats = requestCore.getAllStats()
-      expect(stats.interceptors).toBeDefined()
+      // 统计功能已移除，直接验证拦截器列表
       
       // 检查拦截器列表
       const currentInterceptors = requestCore.getInterceptors()

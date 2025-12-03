@@ -11,22 +11,22 @@ import {
   FileUploadOptions,
   PaginationParams,
   PaginatedResponse,
-  IdempotentConfig,
-  IdempotentStats
+  IdempotentConfig
 } from './interface'
-import { RetryConfig } from './features/retry'
-import { CacheConfig } from './features/cache'
-import { ConcurrentConfig, ConcurrentResult } from './features/concurrent'
+import { RetryConfig, RetryFeature } from './features/retry'
+import { CacheConfig, CacheFeature } from './features/cache'
+import { ConcurrentConfig, ConcurrentResult, ConcurrentFeature } from './features/concurrent'
+import { IdempotentFeature } from './features/idempotent'
+import { SerialFeature } from './features/serial'
 
 // 导入管理器
 import { InterceptorManager } from './managers/interceptor-manager'
 import { ConfigManager } from './managers/config-manager'
 import { RequestExecutor } from './managers/request-executor'
 import { ConvenienceMethods, ConvenienceExecutor } from './managers/convenience-methods'
-import { FeatureManager } from './managers/feature-manager'
 
 /**
- * @description 重构后的请求核心层 - 作为协调者组合各个管理器
+ * @description 请求核心层 - 简化的实现，直接管理功能特性
  */
 
 export class RequestCore implements ConvenienceExecutor {
@@ -35,13 +35,18 @@ export class RequestCore implements ConvenienceExecutor {
   private configManager: ConfigManager
   private requestExecutor: RequestExecutor
   private convenienceMethods: ConvenienceMethods
-  private featureManager: FeatureManager
+  
+  // 功能特性 - 直接管理，移除 FeatureManager 中间层
+  private retryFeature: RetryFeature
+  private cacheFeature: CacheFeature
+  private concurrentFeature: ConcurrentFeature
+  private idempotentFeature: IdempotentFeature
+  private serialFeature: SerialFeature
 
   /**
    * 通过依赖注入接收一个实现了 Requestor 接口的实例。
    * @param requestor 具体的请求实现者。
    * @param globalConfig 全局配置
-   * @param options 额外选项
    */
   constructor(
     private requestor: Requestor, 
@@ -52,7 +57,13 @@ export class RequestCore implements ConvenienceExecutor {
     this.configManager = new ConfigManager()
     this.requestExecutor = new RequestExecutor(requestor)
     this.convenienceMethods = new ConvenienceMethods(this)
-    this.featureManager = new FeatureManager(requestor)
+    
+    // 初始化功能特性
+    this.retryFeature = new RetryFeature(requestor)
+    this.cacheFeature = new CacheFeature(requestor)
+    this.concurrentFeature = new ConcurrentFeature(requestor)
+    this.idempotentFeature = new IdempotentFeature(requestor)
+    this.serialFeature = new SerialFeature(requestor)
     
     if (globalConfig) {
       this.setGlobalConfig(globalConfig)
@@ -92,6 +103,7 @@ export class RequestCore implements ConvenienceExecutor {
 
   /**
    * 基础请求方法 - 核心执行接口
+   * 支持通过 metadata 配置功能特性（retryConfig, cacheConfig, idempotentConfig）
    * @param config 请求配置
    * @returns 请求结果
    */
@@ -99,6 +111,36 @@ export class RequestCore implements ConvenienceExecutor {
     // 验证和合并配置
     this.configManager.validateRequestConfig(config)
     const mergedConfig = this.configManager.mergeConfigs(config)
+    
+    // 检查 metadata 中的功能配置，按优先级处理
+    const metadata = mergedConfig.metadata || {}
+    
+    // 优先级：幂等 > 缓存 > 重试 > 普通请求
+    if (metadata.idempotentConfig) {
+      return this.idempotentFeature.requestIdempotent<T>(
+        mergedConfig,
+        metadata.idempotentConfig as IdempotentConfig
+      )
+    }
+    
+    if (metadata.cacheConfig) {
+      return this.cacheFeature.requestWithCache<T>(
+        mergedConfig,
+        metadata.cacheConfig as CacheConfig
+      )
+    }
+    
+    if (metadata.retryConfig) {
+      return this.retryFeature.requestWithRetry<T>(
+        mergedConfig,
+        metadata.retryConfig as RetryConfig
+      )
+    }
+    
+    // 处理串行请求
+    if (mergedConfig.serialKey) {
+      return this.serialFeature.handleSerialRequest<T>(mergedConfig)
+    }
     
     try {
       // 执行拦截器链和实际请求
@@ -163,225 +205,65 @@ export class RequestCore implements ConvenienceExecutor {
     return this.convenienceMethods.options<T>(url, config)
   }
 
-  // ==================== 功能特性委托 ====================
+  // ==================== 功能特性管理方法 ====================
 
-  // 重试功能
-  async requestWithRetry<T>(config: RequestConfig, retryConfig?: RetryConfig): Promise<T> {
-    return this.featureManager.requestWithRetry<T>(config, retryConfig)
-  }
-
-  async getWithRetry<T>(url: string, retryConfig: RetryConfig = { retries: 3 }): Promise<T> {
-    return this.featureManager.getWithRetry<T>(url, retryConfig)
-  }
-  
-  async postWithRetry<T>(url: string, data?: any, retryConfig: RetryConfig = { retries: 3 }): Promise<T> {
-    return this.featureManager.postWithRetry<T>(url, data, retryConfig)
-  }
-
-  // 缓存功能
-  async requestWithCache<T>(config: RequestConfig, cacheConfig?: CacheConfig): Promise<T> {
-    return this.featureManager.requestWithCache<T>(config, cacheConfig)
-  }
-
-  async getWithCache<T>(url: string, cacheConfig?: CacheConfig): Promise<T> {
-    return this.featureManager.getWithCache<T>(url, cacheConfig)
-  }
-
+  /**
+   * 清除缓存
+   */
   clearCache(key?: string): void {
-    this.featureManager.clearCache(key)
+    this.cacheFeature.clearCache(key)
   }
 
-  // 幂等功能
-  async requestIdempotent<T>(config: RequestConfig, idempotentConfig?: IdempotentConfig): Promise<T> {
-    return this.featureManager.requestIdempotent<T>(config, idempotentConfig)
-  }
-
-  async getIdempotent<T>(url: string, config?: Partial<RequestConfig>, idempotentConfig?: IdempotentConfig): Promise<T> {
-    return this.featureManager.getIdempotent<T>(url, config, idempotentConfig)
-  }
-
-  async postIdempotent<T>(url: string, data?: any, config?: Partial<RequestConfig>, idempotentConfig?: IdempotentConfig): Promise<T> {
-    return this.featureManager.postIdempotent<T>(url, data, config, idempotentConfig)
-  }
-
-  async putIdempotent<T>(url: string, data?: any, config?: Partial<RequestConfig>, idempotentConfig?: IdempotentConfig): Promise<T> {
-    return this.featureManager.putIdempotent<T>(url, data, config, idempotentConfig)
-  }
-
-  async patchIdempotent<T>(url: string, data?: any, config?: Partial<RequestConfig>, idempotentConfig?: IdempotentConfig): Promise<T> {
-    return this.featureManager.patchIdempotent<T>(url, data, config, idempotentConfig)
-  }
-
-  async deleteIdempotent<T>(url: string, config?: Partial<RequestConfig>, idempotentConfig?: IdempotentConfig): Promise<T> {
-    return this.featureManager.deleteIdempotent<T>(url, config, idempotentConfig)
-  }
-
+  /**
+   * 清除幂等缓存
+   */
   async clearIdempotentCache(key?: string): Promise<void> {
-    return this.featureManager.clearIdempotentCache(key)
+    return this.idempotentFeature.clearIdempotentCache(key)
   }
 
-  getIdempotentStats(): IdempotentStats {
-    return this.featureManager.getIdempotentStats()
-  }
-
-  resetIdempotentStats(): void {
-    return this.featureManager.resetIdempotentStats()
-  }
-
-  // 并发功能
+  /**
+   * 并发请求 - 保留此方法因为它是批量操作，不是单个请求的便利方法
+   */
   async requestConcurrent<T>(
     configs: RequestConfig[],
     concurrentConfig?: ConcurrentConfig
   ): Promise<ConcurrentResult<T>[]> {
-    return this.featureManager.requestConcurrent<T>(configs, concurrentConfig)
+    return this.concurrentFeature.requestConcurrent<T>(configs, concurrentConfig)
   }
 
-  async requestMultiple<T>(
-    config: RequestConfig,
-    count: number,
-    concurrentConfig?: ConcurrentConfig
-  ): Promise<ConcurrentResult<T>[]> {
-    return this.featureManager.requestMultiple<T>(config, count, concurrentConfig)
-  }
-
-  async getConcurrent<T>(
-    urls: string[],
-    concurrentConfig?: ConcurrentConfig
-  ): Promise<ConcurrentResult<T>[]> {
-    return this.featureManager.getConcurrent<T>(urls, concurrentConfig)
-  }
-
-  async postConcurrent<T>(
-    requests: Array<{ url: string; data?: any; config?: Partial<RequestConfig> }>,
-    concurrentConfig?: ConcurrentConfig
-  ): Promise<ConcurrentResult<T>[]> {
-    return this.featureManager.postConcurrent<T>(requests, concurrentConfig)
-  }
-
+  /**
+   * 获取并发请求的成功结果
+   */
   getSuccessfulResults<T>(results: ConcurrentResult<T>[]): T[] {
-    return this.featureManager.getSuccessfulResults(results)
+    return this.concurrentFeature.getSuccessfulResults(results)
   }
 
+  /**
+   * 获取并发请求的失败结果
+   */
   getFailedResults<T>(results: ConcurrentResult<T>[]): ConcurrentResult<T>[] {
-    return this.featureManager.getFailedResults(results)
+    return this.concurrentFeature.getFailedResults(results)
   }
 
+  /**
+   * 检查并发请求是否有失败
+   */
   hasConcurrentFailures<T>(results: ConcurrentResult<T>[]): boolean {
-    return this.featureManager.hasConcurrentFailures(results)
-  }
-
-  // ==================== 串行功能委托 ====================
-
-  /**
-   * 串行请求 - 处理带有 serialKey 的请求
-   */
-  async requestSerial<T>(config: RequestConfig, queueConfig?: any): Promise<T> {
-    return this.featureManager.requestSerial<T>(config, queueConfig)
-  }
-
-  /**
-   * 串行 GET 请求
-   */
-  async getSerial<T>(
-    url: string,
-    serialKey: string,
-    config?: Partial<RequestConfig>,
-    queueConfig?: any
-  ): Promise<T> {
-    return this.featureManager.getSerial<T>(url, serialKey, config, queueConfig)
-  }
-
-  /**
-   * 串行 POST 请求
-   */
-  async postSerial<T>(
-    url: string,
-    serialKey: string,
-    data?: any,
-    config?: Partial<RequestConfig>,
-    queueConfig?: any
-  ): Promise<T> {
-    return this.featureManager.postSerial<T>(url, serialKey, data, config, queueConfig)
-  }
-
-  /**
-   * 串行 PUT 请求
-   */
-  async putSerial<T>(
-    url: string,
-    serialKey: string,
-    data?: any,
-    config?: Partial<RequestConfig>,
-    queueConfig?: any
-  ): Promise<T> {
-    return this.featureManager.putSerial<T>(url, serialKey, data, config, queueConfig)
-  }
-
-  /**
-   * 串行 DELETE 请求
-   */
-  async deleteSerial<T>(
-    url: string,
-    serialKey: string,
-    config?: Partial<RequestConfig>,
-    queueConfig?: any
-  ): Promise<T> {
-    return this.featureManager.deleteSerial<T>(url, serialKey, config, queueConfig)
-  }
-
-  /**
-   * 串行 PATCH 请求
-   */
-  async patchSerial<T>(
-    url: string,
-    serialKey: string,
-    data?: any,
-    config?: Partial<RequestConfig>,
-    queueConfig?: any
-  ): Promise<T> {
-    return this.featureManager.patchSerial<T>(url, serialKey, data, config, queueConfig)
+    return this.concurrentFeature.hasFailures(results)
   }
 
   /**
    * 清空指定串行队列
    */
   clearSerialQueue(serialKey: string): boolean {
-    return this.featureManager.clearSerialQueue(serialKey)
+    return this.serialFeature.clearQueue(serialKey)
   }
 
   /**
    * 清空所有串行队列
    */
   clearAllSerialQueues(): void {
-    this.featureManager.clearAllSerialQueues()
-  }
-
-  /**
-   * 获取串行请求统计信息
-   */
-  getSerialStats() {
-    return this.featureManager.getSerialStats()
-  }
-
-  /**
-   * 检查串行队列是否存在
-   */
-  hasSerialQueue(serialKey: string): boolean {
-    return this.featureManager.getSerialFeature().hasQueue(serialKey)
-  }
-
-  /**
-   * 移除指定串行队列
-   */
-  removeSerialQueue(serialKey: string): boolean {
-    return this.featureManager.getSerialFeature().removeQueue(serialKey)
-  }
-
-  /**
-   * 移除所有串行队列
-   */
-  removeAllSerialQueues(): void {
-    this.featureManager.getSerialFeature().removeAllQueues()
+    this.serialFeature.clearAllQueues()
   }
 
   // ==================== 扩展便利方法委托 ====================
@@ -417,14 +299,21 @@ export class RequestCore implements ConvenienceExecutor {
     return this.convenienceMethods.getPaginated<T>(url, pagination, config)
   }
 
+  /**
+   * 批量请求 - 并发执行多个请求
+   */
   async batchRequests<T>(requests: RequestConfig[], options?: {
     concurrency?: number
     ignoreErrors?: boolean
   }): Promise<T[]> {
-    return this.featureManager.batchRequests<T>(requests, options)
+    const results = await this.requestConcurrent<T>(requests, {
+      maxConcurrency: options?.concurrency,
+      failFast: !options?.ignoreErrors
+    })
+    return this.getSuccessfulResults(results)
   }
-  // ==================== 统计和管理方法 ====================
-  
+
+  // ==================== 管理方法 ====================
   
   /**
    * 获取全局配置
@@ -439,47 +328,21 @@ export class RequestCore implements ConvenienceExecutor {
   getInterceptors(): RequestInterceptor[] {
     return this.interceptorManager.getAll()
   }
-  
-  /**
-   * 获取缓存统计
-   */
-  getCacheStats() {
-    return this.featureManager.getCacheStats()
-  }
-  
-  /**
-   * 获取并发统计
-   */
-  getConcurrentStats() {
-    return this.featureManager.getConcurrentStats()
-  }
 
   /**
    * 销毁请求核心实例，清理资源
    */
   destroy(): void {
-    this.featureManager.destroy()
-    this.clearInterceptors()
-    this.configManager.reset()
-    
-    console.log('[RequestCore] All resources have been cleaned up')
-  }
-
-  /**
-   * 获取所有管理器的统计信息
-   */
-  getAllStats(): {
-    cache: any
-    concurrent: any
-    interceptors: any
-    config: any
-  } {
-    return {
-      cache: this.getCacheStats(),
-      concurrent: this.getConcurrentStats(),
-      interceptors: this.interceptorManager.getStats(),
-      config: this.configManager.getStats()
-    }
+    Promise.all([
+      this.cacheFeature.destroy(),
+      this.concurrentFeature.destroy(),
+      this.idempotentFeature.destroy(),
+      Promise.resolve(this.serialFeature.destroy())
+    ]).then(() => {
+      this.clearInterceptors()
+      this.configManager.reset()
+      console.log('[RequestCore] All resources have been cleaned up')
+    })
   }
 }
 
@@ -596,25 +459,7 @@ class RequestBuilderImpl<T> implements RequestBuilder<T> {
     
     const requestConfig = this.config as RequestConfig
     
-    // 检查是否有重试配置
-    const retryConfig = this.config.metadata?.retryConfig as any
-    if (retryConfig) {
-      return this.core.requestWithRetry<T>(requestConfig, retryConfig)
-    }
-    
-    // 检查是否有缓存配置  
-    const cacheConfig = this.config.metadata?.cacheConfig as any
-    if (cacheConfig) {
-      return this.core.requestWithCache<T>(requestConfig, cacheConfig)
-    }
-    
-    // 检查是否有幂等配置
-    const idempotentConfig = this.config.metadata?.idempotentConfig as IdempotentConfig
-    if (idempotentConfig) {
-      return this.core.requestIdempotent<T>(requestConfig, idempotentConfig)
-    }
-    
-    // 普通请求
+    // 直接使用 request 方法，它会自动处理 metadata 中的配置
     return this.core.request<T>(requestConfig)
   }
 }

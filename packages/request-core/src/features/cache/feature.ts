@@ -37,7 +37,7 @@ export class CacheFeature {
     private requestor: Requestor,
     maxEntries = 1000,
     keyGeneratorConfig?: CacheKeyConfig,
-    storageType: StorageType = StorageType.INDEXED_DB
+    storageType: StorageType = StorageType.MEMORY
   ) {
     this.maxEntries = maxEntries
     this.keyGenerator = new CacheKeyGenerator({

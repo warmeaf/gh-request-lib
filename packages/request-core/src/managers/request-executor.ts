@@ -155,7 +155,13 @@ export class RequestExecutor {
     
     if (config.debug) {
       console.error(`❌ 请求失败 [${requestId}]`)
-      console.error('错误:', error.toDisplayMessage())
+      console.error('错误:', error.message)
+      if (error.status) {
+        console.error('状态码:', error.status)
+      }
+      if (error.context.url) {
+        console.error('URL:', error.context.url)
+      }
       console.log(`⏱️ 耗时: ${Math.round(duration)}ms`)
       console.groupEnd()
     }

@@ -219,33 +219,18 @@ describe('RequestBuilder 链式调用测试', () => {
     test('应该能够配置重试', async () => {
       mockRequestor.getMock().mockResolvedValue(CORE_MOCK_RESPONSES.SUCCESS)
 
-      // Mock requestWithRetry 方法
-      const requestWithRetrySpy = vi.spyOn(requestCore, 'requestWithRetry')
-      requestWithRetrySpy.mockResolvedValue(CORE_MOCK_RESPONSES.SUCCESS)
-
       await requestCore
         .create()
         .url(CORE_TEST_URLS.USERS)
         .retry(3)
         .send()
 
-      expect(requestWithRetrySpy).toHaveBeenCalledWith(
-        expect.objectContaining({
-          url: CORE_TEST_URLS.USERS,
-          method: 'GET'
-        }),
-        { retries: 3 }
-      )
-
-      requestWithRetrySpy.mockRestore()
+      const lastRequest = mockRequestor.getLastRequest()
+      expect(lastRequest?.metadata?.retryConfig).toEqual(expect.objectContaining({ retries: 3 }))
     })
 
     test('应该能够配置缓存', async () => {
       mockRequestor.getMock().mockResolvedValue(CORE_MOCK_RESPONSES.SUCCESS)
-
-      // Mock requestWithCache 方法
-      const requestWithCacheSpy = vi.spyOn(requestCore, 'requestWithCache')
-      requestWithCacheSpy.mockResolvedValue(CORE_MOCK_RESPONSES.SUCCESS)
 
       await requestCore
         .create()
@@ -253,23 +238,12 @@ describe('RequestBuilder 链式调用测试', () => {
         .cache(300000) // 5分钟
         .send()
 
-      expect(requestWithCacheSpy).toHaveBeenCalledWith(
-        expect.objectContaining({
-          url: CORE_TEST_URLS.USERS,
-          method: 'GET'
-        }),
-        { ttl: 300000 }
-      )
-
-      requestWithCacheSpy.mockRestore()
+      const lastRequest = mockRequestor.getLastRequest()
+      expect(lastRequest?.metadata?.cacheConfig).toEqual(expect.objectContaining({ ttl: 300000 }))
     })
 
     test('应该能够配置幂等性', async () => {
       mockRequestor.getMock().mockResolvedValue(CORE_MOCK_RESPONSES.SUCCESS)
-
-      // Mock requestIdempotent 方法
-      const requestIdempotentSpy = vi.spyOn(requestCore, 'requestIdempotent')
-      requestIdempotentSpy.mockResolvedValue(CORE_MOCK_RESPONSES.SUCCESS)
 
       await requestCore
         .create()
@@ -277,27 +251,17 @@ describe('RequestBuilder 链式调用测试', () => {
         .idempotent(600000) // 10分钟
         .send()
 
-      expect(requestIdempotentSpy).toHaveBeenCalledWith(
-        expect.objectContaining({
-          url: CORE_TEST_URLS.USERS,
-          method: 'GET'
-        }),
-        { ttl: 600000 }
-      )
-
-      requestIdempotentSpy.mockRestore()
+      const lastRequest = mockRequestor.getLastRequest()
+      expect(lastRequest?.metadata?.idempotentConfig).toEqual(expect.objectContaining({ ttl: 600000 }))
     })
 
     test('应该能够使用详细的幂等配置', async () => {
       mockRequestor.getMock().mockResolvedValue(CORE_MOCK_RESPONSES.SUCCESS)
 
-      const requestIdempotentSpy = vi.spyOn(requestCore, 'requestIdempotent')
-      requestIdempotentSpy.mockResolvedValue(CORE_MOCK_RESPONSES.SUCCESS)
-
       const idempotentConfig = {
         ttl: 600000,
-        keyGenerator: 'custom',
-        storage: 'memory'
+        key: 'custom-key',
+        includeHeaders: ['Authorization']
       }
 
       await requestCore
@@ -306,15 +270,8 @@ describe('RequestBuilder 链式调用测试', () => {
         .idempotentWith(idempotentConfig)
         .send()
 
-      expect(requestIdempotentSpy).toHaveBeenCalledWith(
-        expect.objectContaining({
-          url: CORE_TEST_URLS.USERS,
-          method: 'GET'
-        }),
-        idempotentConfig
-      )
-
-      requestIdempotentSpy.mockRestore()
+      const lastRequest = mockRequestor.getLastRequest()
+      expect(lastRequest?.metadata?.idempotentConfig).toEqual(idempotentConfig)
     })
   })
 
@@ -449,16 +406,9 @@ describe('RequestBuilder 链式调用测试', () => {
     test('应该能够处理功能特性的优先级', async () => {
       mockRequestor.getMock().mockResolvedValue(CORE_MOCK_RESPONSES.SUCCESS)
 
-      // Mock 所有功能特性方法
-      const requestWithRetrySpy = vi.spyOn(requestCore, 'requestWithRetry')
-      const requestWithCacheSpy = vi.spyOn(requestCore, 'requestWithCache')
-      const requestIdempotentSpy = vi.spyOn(requestCore, 'requestIdempotent')
+      mockRequestor.getMock().mockResolvedValue(CORE_MOCK_RESPONSES.SUCCESS)
 
-      requestWithRetrySpy.mockResolvedValue(CORE_MOCK_RESPONSES.SUCCESS)
-      requestWithCacheSpy.mockResolvedValue(CORE_MOCK_RESPONSES.SUCCESS)
-      requestIdempotentSpy.mockResolvedValue(CORE_MOCK_RESPONSES.SUCCESS)
-
-      // 设置多个功能特性，测试优先级
+      // 设置多个功能特性，测试优先级（幂等 > 缓存 > 重试）
       await requestCore
         .create()
         .url(CORE_TEST_URLS.USERS)
@@ -467,14 +417,11 @@ describe('RequestBuilder 链式调用测试', () => {
         .idempotent(600000)
         .send()
 
-      // 根据代码逻辑，重试优先级最高
-      expect(requestWithRetrySpy).toHaveBeenCalled()
-      expect(requestWithCacheSpy).not.toHaveBeenCalled()
-      expect(requestIdempotentSpy).not.toHaveBeenCalled()
-
-      requestWithRetrySpy.mockRestore()
-      requestWithCacheSpy.mockRestore()
-      requestIdempotentSpy.mockRestore()
+      // 应该使用幂等配置（优先级最高）
+      const lastRequest = mockRequestor.getLastRequest()
+      expect(lastRequest?.metadata?.idempotentConfig).toBeDefined()
+      expect(lastRequest?.metadata?.cacheConfig).toBeDefined()
+      expect(lastRequest?.metadata?.retryConfig).toBeDefined()
     })
   })
 

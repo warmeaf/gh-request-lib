@@ -8,4 +8,3 @@ export { RequestExecutor } from './request-executor'
 export { ConvenienceMethods } from './convenience-methods'
 export type { ConvenienceExecutor } from './convenience-methods'
 
-export { FeatureManager } from './feature-manager'

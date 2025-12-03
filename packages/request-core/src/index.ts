@@ -37,8 +37,7 @@ export {
   InterceptorManager,
   ConfigManager,
   RequestExecutor,
-  ConvenienceMethods,
-  FeatureManager
+  ConvenienceMethods
 } from './managers'
 export type { ConvenienceExecutor } from './managers'
 

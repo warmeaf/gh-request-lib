@@ -286,7 +286,7 @@ describe('RequestCore 基础功能测试', () => {
     })
   })
 
-  describe('统计方法', () => {
+  describe('配置方法', () => {
     test('getGlobalConfig() 应该返回当前全局配置', () => {
       const globalConfig = createTestGlobalConfig()
       requestCore.setGlobalConfig(globalConfig)
@@ -294,22 +294,16 @@ describe('RequestCore 基础功能测试', () => {
       const retrievedConfig = requestCore.getGlobalConfig()
       expect(retrievedConfig).toEqual(globalConfig)
     })
-
-    test('getAllStats() 应该返回所有统计信息', () => {
-      const stats = requestCore.getAllStats()
-
-      expect(stats).toHaveProperty('cache')
-      expect(stats).toHaveProperty('concurrent')
-      expect(stats).toHaveProperty('interceptors')
-      expect(stats).toHaveProperty('config')
-    })
   })
 
   describe('资源清理', () => {
-    test('destroy() 应该正确清理所有资源', () => {
+    test('destroy() 应该正确清理所有资源', async () => {
       const consoleSpy = vi.spyOn(console, 'log').mockImplementation(() => { })
 
       requestCore.destroy()
+      
+      // 等待 destroy() 完成（它是异步的）
+      await new Promise(resolve => setTimeout(resolve, 100))
 
       expect(consoleSpy).toHaveBeenCalledWith('[RequestCore] All resources have been cleaned up')
 

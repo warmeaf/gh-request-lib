@@ -1,19 +1,10 @@
 import { RequestConfig, RequestError, RequestErrorType, GlobalConfig } from '../interface'
 
 /**
- * @description 配置验证结果
- */
-interface ValidationResult {
-  isValid: boolean
-  errors: string[]
-  warnings: string[]
-}
-
-/**
  * @description 配置管理器
  * 
- * 负责请求配置的验证、合并和处理。
- * 提供详细的验证错误信息和配置建议。
+ * 负责请求配置的验证和合并。
+ * 简化的实现，只保留核心验证逻辑。
  */
 export class ConfigManager {
   private globalConfig: GlobalConfig = {}
@@ -22,19 +13,33 @@ export class ConfigManager {
    * 设置全局配置
    */
   setGlobalConfig(config: GlobalConfig): void {
-    const validation = this.validateGlobalConfig(config)
-    
-    if (!validation.isValid) {
-      throw new RequestError(`Invalid global config: ${validation.errors.join(', ')}`, {
+    // 简化的验证：只检查基本类型
+    if (config.baseURL !== undefined && typeof config.baseURL !== 'string') {
+      throw new RequestError('baseURL must be a string', {
         type: RequestErrorType.VALIDATION_ERROR,
-        suggestion: '请检查全局配置参数是否正确',
         code: 'INVALID_GLOBAL_CONFIG'
       })
     }
 
-    // 显示警告
-    if (validation.warnings.length > 0) {
-      console.warn('[ConfigManager] Configuration warnings:', validation.warnings)
+    if (config.timeout !== undefined && (typeof config.timeout !== 'number' || config.timeout < 0)) {
+      throw new RequestError('timeout must be a non-negative number', {
+        type: RequestErrorType.VALIDATION_ERROR,
+        code: 'INVALID_GLOBAL_CONFIG'
+      })
+    }
+
+    if (config.headers !== undefined && (typeof config.headers !== 'object' || Array.isArray(config.headers))) {
+      throw new RequestError('headers must be a plain object', {
+        type: RequestErrorType.VALIDATION_ERROR,
+        code: 'INVALID_GLOBAL_CONFIG'
+      })
+    }
+
+    if (config.interceptors !== undefined && !Array.isArray(config.interceptors)) {
+      throw new RequestError('interceptors must be an array', {
+        type: RequestErrorType.VALIDATION_ERROR,
+        code: 'INVALID_GLOBAL_CONFIG'
+      })
     }
 
     this.globalConfig = { ...this.globalConfig, ...config }
@@ -48,32 +53,63 @@ export class ConfigManager {
   }
 
   /**
-   * 验证请求配置
+   * 验证请求配置 - 简化的实现，只验证必填字段
    */
   validateRequestConfig(config: RequestConfig): void {
-    const validation = this.validateConfig(config)
-    
-    if (!validation.isValid) {
-      const mainError = validation.errors[0]
-      throw new RequestError(mainError, {
+    if (!config) {
+      throw new RequestError('Request config is required', {
         type: RequestErrorType.VALIDATION_ERROR,
-        suggestion: this.getValidationSuggestion(config, validation),
-        code: this.getValidationCode(validation),
-        context: { 
-          url: config?.url, 
-          method: config?.method,
-          timestamp: Date.now(),
-          metadata: { 
-            allErrors: validation.errors,
-            warnings: validation.warnings
-          }
-        }
+        code: 'VALIDATION_FAILED'
       })
     }
 
-    // 显示警告
-    if (validation.warnings.length > 0) {
-      console.warn('[ConfigManager] Request config warnings:', validation.warnings)
+    if (!config.url || typeof config.url !== 'string') {
+      throw new RequestError('URL is required and must be a string', {
+        type: RequestErrorType.VALIDATION_ERROR,
+        code: 'INVALID_URL',
+        context: { url: config?.url, method: config?.method, timestamp: Date.now() }
+      })
+    }
+
+    if (!config.method) {
+      throw new RequestError('HTTP method is required', {
+        type: RequestErrorType.VALIDATION_ERROR,
+        code: 'INVALID_METHOD',
+        context: { url: config.url, timestamp: Date.now() }
+      })
+    }
+
+    if (!this.isValidHttpMethod(config.method)) {
+      throw new RequestError(`Invalid HTTP method: ${config.method}`, {
+        type: RequestErrorType.VALIDATION_ERROR,
+        code: 'INVALID_METHOD',
+        context: { url: config.url, method: config.method, timestamp: Date.now() }
+      })
+    }
+
+    // 可选字段的基本类型验证
+    if (config.timeout !== undefined && (typeof config.timeout !== 'number' || config.timeout < 0)) {
+      throw new RequestError('Timeout must be a non-negative number', {
+        type: RequestErrorType.VALIDATION_ERROR,
+        code: 'INVALID_TIMEOUT',
+        context: { url: config.url, method: config.method, timestamp: Date.now() }
+      })
+    }
+
+    if (config.headers && (typeof config.headers !== 'object' || Array.isArray(config.headers))) {
+      throw new RequestError('Headers must be a plain object', {
+        type: RequestErrorType.VALIDATION_ERROR,
+        code: 'INVALID_HEADERS',
+        context: { url: config.url, method: config.method, timestamp: Date.now() }
+      })
+    }
+
+    if (config.responseType && !this.isValidResponseType(config.responseType)) {
+      throw new RequestError(`Invalid response type: ${config.responseType}`, {
+        type: RequestErrorType.VALIDATION_ERROR,
+        code: 'INVALID_RESPONSE_TYPE',
+        context: { url: config.url, method: config.method, timestamp: Date.now() }
+      })
     }
   }
 
@@ -113,113 +149,6 @@ export class ConfigManager {
     return merged
   }
 
-  /**
-   * 验证配置对象
-   */
-  private validateConfig(config: RequestConfig): ValidationResult {
-    const errors: string[] = []
-    const warnings: string[] = []
-
-    // 必填字段验证
-    if (!config) {
-      errors.push('Request config is required')
-      return { isValid: false, errors, warnings }
-    }
-
-    if (!config.url || typeof config.url !== 'string') {
-      errors.push('URL is required and must be a string')
-    } else {
-      // URL格式验证
-      if (config.url.trim() !== config.url) {
-        warnings.push('URL contains leading or trailing whitespace')
-      }
-      
-      if (config.url.length > 2048) {
-        warnings.push('URL is very long (>2048 chars), may cause issues')
-      }
-    }
-
-    if (!config.method) {
-      errors.push('HTTP method is required')
-    } else if (!this.isValidHttpMethod(config.method)) {
-      errors.push(`Invalid HTTP method: ${config.method}`)
-    }
-
-    // 可选字段验证
-    if (config.timeout !== undefined) {
-      if (typeof config.timeout !== 'number' || config.timeout < 0) {
-        errors.push('Timeout must be a positive number')
-      } else if (config.timeout > 300000) { // 5分钟
-        warnings.push('Timeout is very long (>5 minutes)')
-      }
-    }
-
-    // 请求头验证
-    if (config.headers) {
-      if (typeof config.headers !== 'object' || Array.isArray(config.headers)) {
-        errors.push('Headers must be a plain object')
-      } else {
-        Object.entries(config.headers).forEach(([key, value]) => {
-          if (typeof key !== 'string' || typeof value !== 'string') {
-            errors.push(`Invalid header: ${key} = ${value}`)
-          }
-        })
-      }
-    }
-
-    // 响应类型验证
-    if (config.responseType && !this.isValidResponseType(config.responseType)) {
-      errors.push(`Invalid response type: ${config.responseType}`)
-    }
-
-    return {
-      isValid: errors.length === 0,
-      errors,
-      warnings
-    }
-  }
-
-  /**
-   * 验证全局配置
-   */
-  private validateGlobalConfig(config: GlobalConfig): ValidationResult {
-    const errors: string[] = []
-    const warnings: string[] = []
-
-    if (config.baseURL !== undefined) {
-      if (typeof config.baseURL !== 'string') {
-        errors.push('baseURL must be a string')
-      } else if (!this.isValidBaseUrl(config.baseURL)) {
-        errors.push('baseURL must be a valid URL')
-      }
-    }
-
-    if (config.timeout !== undefined) {
-      if (typeof config.timeout !== 'number' || config.timeout < 0) {
-        errors.push('Global timeout must be a positive number')
-      } else if (config.timeout > 300000) {
-        warnings.push('Global timeout is very long (>5 minutes)')
-      }
-    }
-
-    if (config.headers !== undefined) {
-      if (typeof config.headers !== 'object' || Array.isArray(config.headers)) {
-        errors.push('Global headers must be a plain object')
-      }
-    }
-
-    if (config.interceptors !== undefined) {
-      if (!Array.isArray(config.interceptors)) {
-        errors.push('Interceptors must be an array')
-      }
-    }
-
-    return {
-      isValid: errors.length === 0,
-      errors,
-      warnings
-    }
-  }
 
   /**
    * 检查是否为有效的HTTP方法
@@ -245,18 +174,6 @@ export class ConfigManager {
   }
 
   /**
-   * 检查是否为有效的基础URL
-   */
-  private isValidBaseUrl(baseURL: string): boolean {
-    try {
-      new URL(baseURL)
-      return true
-    } catch {
-      return false
-    }
-  }
-
-  /**
    * 构建完整URL
    */
   private buildUrl(baseURL: string, path: string): string {
@@ -266,68 +183,9 @@ export class ConfigManager {
   }
 
   /**
-   * 获取验证建议
-   */
-  private getValidationSuggestion(config: RequestConfig, validation: ValidationResult): string {
-    if (validation.errors.some(e => e.includes('URL'))) {
-      return '请提供有效的URL字符串，例如："https://api.example.com/users"'
-    }
-    
-    if (validation.errors.some(e => e.includes('method'))) {
-      return '请提供有效的HTTP方法，如：GET, POST, PUT, DELETE等'
-    }
-    
-    if (validation.errors.some(e => e.includes('timeout'))) {
-      return '请设置一个大于0的数字，单位为毫秒，例如：5000'
-    }
-    
-    return '请检查请求配置参数是否正确'
-  }
-
-  /**
-   * 获取验证错误代码
-   */
-  private getValidationCode(validation: ValidationResult): string {
-    if (validation.errors.some(e => e.includes('URL'))) {
-      return 'INVALID_URL'
-    }
-    
-    if (validation.errors.some(e => e.includes('method'))) {
-      return 'INVALID_METHOD'
-    }
-    
-    if (validation.errors.some(e => e.includes('timeout'))) {
-      return 'INVALID_TIMEOUT'
-    }
-    
-    return 'VALIDATION_FAILED'
-  }
-
-  /**
    * 重置全局配置
    */
   reset(): void {
     this.globalConfig = {}
-  }
-
-  /**
-   * 获取配置统计信息
-   */
-  getStats(): {
-    hasGlobalConfig: boolean
-    globalConfigKeys: string[]
-    hasBaseURL: boolean
-    hasGlobalTimeout: boolean
-    hasGlobalHeaders: boolean
-    globalHeadersCount: number
-  } {
-    return {
-      hasGlobalConfig: Object.keys(this.globalConfig).length > 0,
-      globalConfigKeys: Object.keys(this.globalConfig),
-      hasBaseURL: !!this.globalConfig.baseURL,
-      hasGlobalTimeout: !!this.globalConfig.timeout,
-      hasGlobalHeaders: !!this.globalConfig.headers,
-      globalHeadersCount: this.globalConfig.headers ? Object.keys(this.globalConfig.headers).length : 0
-    }
   }
 }

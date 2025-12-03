@@ -101,10 +101,6 @@ describe('RequestCore 集成测试', () => {
     test('应该支持链式调用与功能特性的组合', async () => {
       mockRequestor.getMock().mockResolvedValue(CORE_MOCK_RESPONSES.SUCCESS)
 
-      // Mock 功能特性方法
-      const requestWithCacheSpy = vi.spyOn(requestCore, 'requestWithCache')
-      requestWithCacheSpy.mockResolvedValue(CORE_MOCK_RESPONSES.SUCCESS)
-
       // 使用链式调用 + 缓存功能
       const result = await requestCore
         .create()
@@ -118,19 +114,8 @@ describe('RequestCore 集成测试', () => {
         .send()
 
       expect(result).toEqual(CORE_MOCK_RESPONSES.SUCCESS)
-      expect(requestWithCacheSpy).toHaveBeenCalledWith(
-        expect.objectContaining({
-          url: CORE_TEST_URLS.USERS,
-          method: 'GET',
-          headers: expect.objectContaining({ 'Accept': 'application/json' }),
-          params: { page: 1, limit: 10 },
-          timeout: 10000,
-          debug: true
-        }),
-        { ttl: 300000 }
-      )
-
-      requestWithCacheSpy.mockRestore()
+      const lastRequest = mockRequestor.getLastRequest()
+      expect(lastRequest?.metadata?.cacheConfig).toEqual(expect.objectContaining({ ttl: 300000 }))
     })
 
     test('应该支持多个功能特性的协同工作', async () => {
@@ -144,39 +129,18 @@ describe('RequestCore 集成测试', () => {
         return Promise.resolve(CORE_MOCK_RESPONSES.SUCCESS)
       })
 
-      // Mock 重试功能，让它实际执行请求
-      const originalRequestWithRetry = requestCore['featureManager'].requestWithRetry.bind(requestCore['featureManager'])
-      const requestWithRetrySpy = vi.spyOn(requestCore, 'requestWithRetry')
-      requestWithRetrySpy.mockImplementation(async (config, retryConfig) => {
-        // 这里模拟重试逻辑
-        let lastError: any
-        const maxAttempts = (retryConfig?.retries || 0) + 1
-        
-        for (let attempt = 1; attempt <= maxAttempts; attempt++) {
-          try {
-            return await requestCore.request(config)
-          } catch (error) {
-            lastError = error
-            if (attempt < maxAttempts) {
-              await waitFor(100) // 短暂延迟
-            }
-          }
-        }
-        throw lastError
-      })
-
       const config: RequestConfig = {
         url: CORE_TEST_URLS.ERROR,
-        method: 'GET'
+        method: 'GET',
+        metadata: {
+          retryConfig: { retries: 3, delay: 100 }
+        }
       }
 
-      const result = await requestCore.requestWithRetry(config, { retries: 3 })
+      const result = await requestCore.request(config)
 
       expect(result).toEqual(CORE_MOCK_RESPONSES.SUCCESS)
       expect(attemptCount).toBe(3) // 应该尝试了3次
-      expect(requestWithRetrySpy).toHaveBeenCalledWith(config, { retries: 3 })
-
-      requestWithRetrySpy.mockRestore()
     })
   })
 
@@ -268,19 +232,9 @@ describe('RequestCore 集成测试', () => {
     test('应该支持串行请求队列管理', async () => {
       mockRequestor.getMock().mockResolvedValue(CORE_MOCK_RESPONSES.SUCCESS)
 
-      // Mock 串行功能
-      const requestSerialSpy = vi.spyOn(requestCore, 'requestSerial')
-      requestSerialSpy.mockResolvedValue(CORE_MOCK_RESPONSES.SUCCESS)
-
-      const hasSerialQueueSpy = vi.spyOn(requestCore, 'hasSerialQueue')
-      hasSerialQueueSpy.mockReturnValue(true)
-
-      const clearSerialQueueSpy = vi.spyOn(requestCore, 'clearSerialQueue')
-      clearSerialQueueSpy.mockReturnValue(true)
-
       const serialKey = 'user-operations'
       
-      // 执行串行请求
+      // 执行串行请求 - 使用 request 方法配合 serialKey
       const config: RequestConfig = {
         url: CORE_TEST_URLS.USERS,
         method: 'POST',
@@ -288,24 +242,12 @@ describe('RequestCore 集成测试', () => {
         data: { name: 'John' }
       }
 
-      await requestCore.requestSerial(config)
-
-      // 检查队列状态
-      const hasQueue = requestCore.hasSerialQueue(serialKey)
-      expect(hasQueue).toBe(true)
+      const result = await requestCore.request(config)
+      expect(result).toEqual(CORE_MOCK_RESPONSES.SUCCESS)
 
       // 清除队列
       const cleared = requestCore.clearSerialQueue(serialKey)
       expect(cleared).toBe(true)
-
-      // 验证 requestSerial 被调用，只传了一个参数时不需要检查 undefined
-      expect(requestSerialSpy).toHaveBeenCalledWith(config)
-      expect(hasSerialQueueSpy).toHaveBeenCalledWith(serialKey)
-      expect(clearSerialQueueSpy).toHaveBeenCalledWith(serialKey)
-
-      requestSerialSpy.mockRestore()
-      hasSerialQueueSpy.mockRestore()
-      clearSerialQueueSpy.mockRestore()
     })
   })
 
@@ -313,150 +255,51 @@ describe('RequestCore 集成测试', () => {
     test('应该支持缓存和幂等性的组合使用', async () => {
       mockRequestor.getMock().mockResolvedValue(CORE_MOCK_RESPONSES.USER)
 
-      // Mock 缓存和幂等功能 - spy featureManager 的方法而不是 requestCore 的
-      const featureManager = requestCore['featureManager']
-      const requestWithCacheSpy = vi.spyOn(featureManager, 'requestWithCache')
-      requestWithCacheSpy.mockResolvedValue(CORE_MOCK_RESPONSES.USER)
-
-      // postIdempotent 内部调用 featureManager.postIdempotent
-      const requestIdempotentSpy = vi.spyOn(featureManager, 'postIdempotent')
-      requestIdempotentSpy.mockResolvedValue(CORE_MOCK_RESPONSES.USER)
-
-      const clearCacheSpy = vi.spyOn(requestCore, 'clearCache')
-      clearCacheSpy.mockImplementation(() => {})
-
-      const clearIdempotentCacheSpy = vi.spyOn(requestCore, 'clearIdempotentCache')
-      clearIdempotentCacheSpy.mockResolvedValue()
-
-      // 使用缓存请求
-      const cacheResult = await requestCore.getWithCache(CORE_TEST_URLS.USER_DETAIL, { ttl: 300000 })
+      // 使用缓存请求 - 通过 metadata 配置
+      const cacheResult = await requestCore.get(CORE_TEST_URLS.USER_DETAIL, {
+        metadata: {
+          cacheConfig: { ttl: 300000 }
+        }
+      })
       expect(cacheResult).toEqual(CORE_MOCK_RESPONSES.USER)
 
-      // 使用幂等请求
-      const idempotentResult = await requestCore.postIdempotent(
-        CORE_TEST_URLS.USERS,
-        { name: 'John' },
-        {},
-        { ttl: 600000 }
-      )
+      // 使用幂等请求 - 通过 metadata 配置
+      const idempotentResult = await requestCore.post(CORE_TEST_URLS.USERS, { name: 'John' }, {
+        metadata: {
+          idempotentConfig: { ttl: 600000 }
+        }
+      })
       expect(idempotentResult).toEqual(CORE_MOCK_RESPONSES.USER)
-
-      // 清理缓存
-      requestCore.clearCache()
-      await requestCore.clearIdempotentCache()
-
-      expect(requestWithCacheSpy).toHaveBeenCalled()
-      expect(requestIdempotentSpy).toHaveBeenCalled()
-      expect(clearCacheSpy).toHaveBeenCalled()
-      expect(clearIdempotentCacheSpy).toHaveBeenCalled()
-
-      requestWithCacheSpy.mockRestore()
-      requestIdempotentSpy.mockRestore()
-      clearCacheSpy.mockRestore()
-      clearIdempotentCacheSpy.mockRestore()
     })
   })
 
-  describe('统计和监控集成', () => {
-    test('应该提供完整的统计信息', () => {
-      // Mock 各种统计方法
-      const getCacheStatsSpy = vi.spyOn(requestCore, 'getCacheStats')
-      getCacheStatsSpy.mockReturnValue(Promise.resolve({
-        size: 15,
-        maxEntries: 100,
-        hitRate: 66.67,
-        keyGeneratorStats: {
-          totalGenerations: 15,
-          cacheHits: 10,
-          cacheMisses: 5,
-          averageGenerationTime: 1,
-          cacheSize: 15,
-          lastCleanupTime: Date.now(),
-          hitRate: '66.67%'
-        },
-        lastCleanup: Date.now(),
-        cleanupInterval: 60000,
-        storageType: StorageType.MEMORY
-      }))
+  describe('功能集成验证', () => {
+    test('应该正确集成各种功能特性', async () => {
+      mockRequestor.getMock().mockResolvedValue(CORE_MOCK_RESPONSES.SUCCESS)
 
-      const getConcurrentStatsSpy = vi.spyOn(requestCore, 'getConcurrentStats')
-      getConcurrentStatsSpy.mockReturnValue({
-        total: 50,
-        completed: 50,
-        successful: 47,
-        failed: 3,
-        averageDuration: 200,
-        maxConcurrencyUsed: 5
+      // 测试缓存功能
+      const cacheResult = await requestCore.get(CORE_TEST_URLS.USERS, {
+        metadata: {
+          cacheConfig: { ttl: 300000 }
+        }
       })
+      expect(cacheResult).toEqual(CORE_MOCK_RESPONSES.SUCCESS)
 
-      const getIdempotentStatsSpy = vi.spyOn(requestCore, 'getIdempotentStats')
-      getIdempotentStatsSpy.mockReturnValue({
-        totalRequests: 10,
-        duplicatesBlocked: 8,
-        pendingRequestsReused: 2,
-        cacheHits: 6,
-        actualNetworkRequests: 2,
-        duplicateRate: 80,
-        avgResponseTime: 150,
-        keyGenerationTime: 1
+      // 测试幂等功能
+      const idempotentResult = await requestCore.post(CORE_TEST_URLS.USERS, { name: 'John' }, {
+        metadata: {
+          idempotentConfig: { ttl: 600000 }
+        }
       })
+      expect(idempotentResult).toEqual(CORE_MOCK_RESPONSES.SUCCESS)
 
-      const getSerialStatsSpy = vi.spyOn(requestCore, 'getSerialStats')
-      getSerialStatsSpy.mockReturnValue({
-        totalQueues: 2,
-        activeQueues: 1,
-        totalTasks: 25,
-        totalPendingTasks: 5,
-        totalCompletedTasks: 18,
-        totalFailedTasks: 2,
-        avgProcessingTime: 180,
-        queues: {}
+      // 测试重试功能
+      const retryResult = await requestCore.get(CORE_TEST_URLS.USERS, {
+        metadata: {
+          retryConfig: { retries: 3 }
+        }
       })
-
-      // 获取所有统计信息
-      const allStats = requestCore.getAllStats()
-      const concurrentStats = requestCore.getConcurrentStats()
-      const idempotentStats = requestCore.getIdempotentStats()
-      const serialStats = requestCore.getSerialStats()
-
-      expect(allStats).toHaveProperty('cache')
-      expect(allStats).toHaveProperty('concurrent')
-      expect(allStats).toHaveProperty('interceptors')
-      expect(allStats).toHaveProperty('config')
-
-      expect(concurrentStats).toEqual({
-        total: 50,
-        completed: 50,
-        successful: 47,
-        failed: 3,
-        averageDuration: 200,
-        maxConcurrencyUsed: 5
-      })
-      expect(idempotentStats).toEqual({
-        totalRequests: 10,
-        duplicatesBlocked: 8,
-        pendingRequestsReused: 2,
-        cacheHits: 6,
-        actualNetworkRequests: 2,
-        duplicateRate: 80,
-        avgResponseTime: 150,
-        keyGenerationTime: 1
-      })
-      expect(serialStats).toEqual({
-        totalQueues: 2,
-        activeQueues: 1,
-        totalTasks: 25,
-        totalPendingTasks: 5,
-        totalCompletedTasks: 18,
-        totalFailedTasks: 2,
-        avgProcessingTime: 180,
-        queues: {}
-      })
-
-      getCacheStatsSpy.mockRestore()
-      getConcurrentStatsSpy.mockRestore()
-      getIdempotentStatsSpy.mockRestore()
-      getSerialStatsSpy.mockRestore()
+      expect(retryResult).toEqual(CORE_MOCK_RESPONSES.SUCCESS)
     })
   })
 
@@ -520,13 +363,12 @@ describe('RequestCore 集成测试', () => {
       mockRequestor.getMock().mockResolvedValue(CORE_MOCK_RESPONSES.SUCCESS)
       await requestCore.get('/test')
 
-      // 获取清理前的状态
-      const statsBefore = requestCore.getAllStats()
-      expect(statsBefore).toBeDefined()
-
-      // 执行资源清理
+      // 执行资源清理 - destroy() 是异步的，需要等待
       const consoleSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
       requestCore.destroy()
+      
+      // 等待 destroy() 完成
+      await new Promise(resolve => setTimeout(resolve, 100))
 
       expect(consoleSpy).toHaveBeenCalledWith('[RequestCore] All resources have been cleaned up')
       
@@ -553,14 +395,17 @@ describe('RequestCore 集成测试', () => {
 
     test('应该正确处理功能特性中的错误', async () => {
       // Mock 一个会失败的功能特性
-      const requestWithRetrySpy = vi.spyOn(requestCore, 'requestWithRetry')
-      requestWithRetrySpy.mockRejectedValue(new Error('Retry failed after max attempts'))
+      mockRequestor.getMock().mockRejectedValue(new Error('Retry failed after max attempts'))
 
       await expect(
-        requestCore.requestWithRetry({ url: CORE_TEST_URLS.ERROR, method: 'GET' }, { retries: 3 })
+        requestCore.request({
+          url: CORE_TEST_URLS.ERROR,
+          method: 'GET',
+          metadata: {
+            retryConfig: { retries: 3 }
+          }
+        })
       ).rejects.toThrow('Retry failed after max attempts')
-
-      requestWithRetrySpy.mockRestore()
     })
   })
 })

@@ -283,8 +283,9 @@ describe('LogFormatter', () => {
             expect(result).toContain('❌ [AxiosRequestor] Request failed (500ms)')
             expect(result).toContain('URL: /api/users')
             expect(result).toContain('Method: GET')
-            // RequestError 的 toDisplayMessage() 返回中文格式，所以检查 "错误: Not found"
-            expect(result).toContain('错误: Not found')
+            // RequestError 现在直接使用 message，不再有 toDisplayMessage() 方法
+            expect(result).toContain('Error: Not found')
+            expect(result).toContain('Status: 404')
         })
 
         it('should format error log with standard Error', () => {

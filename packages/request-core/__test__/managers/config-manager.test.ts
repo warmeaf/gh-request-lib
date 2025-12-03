@@ -29,9 +29,9 @@ describe('ConfigManager', () => {
       expect(retrieved.debug).toBe(globalConfig.debug)
     })
 
-    it('should throw error for invalid baseURL', () => {
+    it('should throw error for invalid baseURL type', () => {
       const invalidConfig = {
-        baseURL: 'not-a-valid-url'
+        baseURL: 123 as any
       }
 
       expect(() => {
@@ -43,6 +43,7 @@ describe('ConfigManager', () => {
       } catch (error) {
         expect(error).toBeInstanceOf(RequestError)
         expect((error as RequestError).type).toBe(RequestErrorType.VALIDATION_ERROR)
+        expect((error as RequestError).message).toContain('baseURL must be a string')
       }
     })
 
@@ -53,7 +54,7 @@ describe('ConfigManager', () => {
 
       expect(() => {
         configManager.setGlobalConfig(invalidConfig)
-      }).toThrow('Global timeout must be a positive number')
+      }).toThrow('timeout must be a non-negative number')
     })
 
     it('should throw error for invalid headers', () => {
@@ -63,7 +64,7 @@ describe('ConfigManager', () => {
 
       expect(() => {
         configManager.setGlobalConfig(invalidConfig)
-      }).toThrow('Global headers must be a plain object')
+      }).toThrow('headers must be a plain object')
     })
 
     it('should throw error for invalid interceptors', () => {
@@ -73,18 +74,16 @@ describe('ConfigManager', () => {
 
       expect(() => {
         configManager.setGlobalConfig(invalidConfig)
-      }).toThrow('Interceptors must be an array')
+      }).toThrow('interceptors must be an array')
     })
 
-    it('should warn for very long timeout', () => {
-      const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
-      
-      configManager.setGlobalConfig({
-        timeout: 400000 // 大于5分钟
-      })
-
-      expect(warnSpy).toHaveBeenCalled()
-      warnSpy.mockRestore()
+    it('should accept long timeout without warning', () => {
+      // 警告机制已移除，长超时时间应该被接受
+      expect(() => {
+        configManager.setGlobalConfig({
+          timeout: 400000 // 大于5分钟
+        })
+      }).not.toThrow()
     })
 
     it('should return a copy of global config', () => {
@@ -200,48 +199,45 @@ describe('ConfigManager', () => {
 
       expect(() => {
         configManager.validateRequestConfig(config)
-      }).toThrow('Timeout must be a positive number')
+      }).toThrow('Timeout must be a non-negative number')
     })
 
-    it('should warn for very long timeout', () => {
-      const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
-
+    it('should accept long timeout without warning', () => {
+      // 警告机制已移除，长超时时间应该被接受
       const config: RequestConfig = {
         url: 'https://api.example.com/users',
         method: 'GET',
         timeout: 400000
       }
 
-      configManager.validateRequestConfig(config)
-      expect(warnSpy).toHaveBeenCalled()
-      warnSpy.mockRestore()
+      expect(() => {
+        configManager.validateRequestConfig(config)
+      }).not.toThrow()
     })
 
-    it('should warn for URL with whitespace', () => {
-      const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
-
+    it('should accept URL with whitespace without warning', () => {
+      // 警告机制已移除，带空格的URL应该被接受（虽然不推荐）
       const config: RequestConfig = {
         url: ' https://api.example.com/users ',
         method: 'GET'
       }
 
-      configManager.validateRequestConfig(config)
-      expect(warnSpy).toHaveBeenCalled()
-      warnSpy.mockRestore()
+      expect(() => {
+        configManager.validateRequestConfig(config)
+      }).not.toThrow()
     })
 
-    it('should warn for very long URL', () => {
-      const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
-
+    it('should accept very long URL without warning', () => {
+      // 警告机制已移除，长URL应该被接受
       const longUrl = 'https://api.example.com/' + 'a'.repeat(2050)
       const config: RequestConfig = {
         url: longUrl,
         method: 'GET'
       }
 
-      configManager.validateRequestConfig(config)
-      expect(warnSpy).toHaveBeenCalled()
-      warnSpy.mockRestore()
+      expect(() => {
+        configManager.validateRequestConfig(config)
+      }).not.toThrow()
     })
 
     it('should throw error for invalid headers', () => {
@@ -256,7 +252,8 @@ describe('ConfigManager', () => {
       }).toThrow('Headers must be a plain object')
     })
 
-    it('should throw error for invalid header values', () => {
+    it('should accept header values without strict type checking', () => {
+      // 简化的验证不再检查header值的类型
       const config: RequestConfig = {
         url: 'https://api.example.com/users',
         method: 'GET',
@@ -265,9 +262,10 @@ describe('ConfigManager', () => {
         }
       }
 
+      // 简化的验证只检查headers是否为对象，不检查值的类型
       expect(() => {
         configManager.validateRequestConfig(config)
-      }).toThrow(/Invalid header/)
+      }).not.toThrow()
     })
 
     it('should throw error for invalid response type', () => {
@@ -298,7 +296,7 @@ describe('ConfigManager', () => {
       })
     })
 
-    it('should provide helpful suggestions in validation errors', () => {
+    it('should provide error code in validation errors', () => {
       const config = {
         url: '',
         method: 'INVALID'
@@ -309,8 +307,9 @@ describe('ConfigManager', () => {
       } catch (error) {
         expect(error).toBeInstanceOf(RequestError)
         const requestError = error as RequestError
-        expect(requestError.suggestion).toBeTruthy()
+        // suggestion 字段已移除，只保留 code
         expect(requestError.code).toBeTruthy()
+        expect(requestError.type).toBe(RequestErrorType.VALIDATION_ERROR)
       }
     })
   })
@@ -487,19 +486,14 @@ describe('ConfigManager', () => {
     })
   })
 
-  describe('配置统计', () => {
-    it('should return correct stats for empty config', () => {
-      const stats = configManager.getStats()
+  describe('配置获取', () => {
+    it('should return empty config for new instance', () => {
+      const config = configManager.getGlobalConfig()
 
-      expect(stats.hasGlobalConfig).toBe(false)
-      expect(stats.globalConfigKeys).toEqual([])
-      expect(stats.hasBaseURL).toBe(false)
-      expect(stats.hasGlobalTimeout).toBe(false)
-      expect(stats.hasGlobalHeaders).toBe(false)
-      expect(stats.globalHeadersCount).toBe(0)
+      expect(Object.keys(config).length).toBe(0)
     })
 
-    it('should return correct stats with global config', () => {
+    it('should return correct global config', () => {
       configManager.setGlobalConfig({
         baseURL: 'https://api.example.com',
         timeout: 5000,
@@ -509,26 +503,28 @@ describe('ConfigManager', () => {
         }
       })
 
-      const stats = configManager.getStats()
+      const config = configManager.getGlobalConfig()
 
-      expect(stats.hasGlobalConfig).toBe(true)
-      expect(stats.globalConfigKeys.length).toBeGreaterThan(0)
-      expect(stats.hasBaseURL).toBe(true)
-      expect(stats.hasGlobalTimeout).toBe(true)
-      expect(stats.hasGlobalHeaders).toBe(true)
-      expect(stats.globalHeadersCount).toBe(2)
+      expect(config.baseURL).toBe('https://api.example.com')
+      expect(config.timeout).toBe(5000)
+      expect(config.headers).toEqual({
+        'Authorization': 'Bearer token',
+        'Content-Type': 'application/json'
+      })
     })
 
-    it('should track config keys correctly', () => {
+    it('should return copy of global config', () => {
       configManager.setGlobalConfig({
         baseURL: 'https://api.example.com',
         debug: true
       })
 
-      const stats = configManager.getStats()
+      const config1 = configManager.getGlobalConfig()
+      const config2 = configManager.getGlobalConfig()
 
-      expect(stats.globalConfigKeys).toContain('baseURL')
-      expect(stats.globalConfigKeys).toContain('debug')
+      // 修改返回的配置不应影响内部配置
+      config1.baseURL = 'https://other.com'
+      expect(config2.baseURL).toBe('https://api.example.com')
     })
   })
 
@@ -566,9 +562,9 @@ describe('ConfigManager', () => {
       }
 
       configManager.setGlobalConfig({ headers })
-      const stats = configManager.getStats()
+      const config = configManager.getGlobalConfig()
 
-      expect(stats.globalHeadersCount).toBe(100)
+      expect(Object.keys(config.headers || {}).length).toBe(100)
     })
 
     it('should handle config with only global headers', () => {

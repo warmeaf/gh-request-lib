@@ -1,25 +1,9 @@
 import { RequestError, RequestErrorType } from '../interface'
 
 /**
- * @description 统一的错误处理工具类
+ * @description 统一的错误处理工具类 - 简化的实现
  * 
- * 提供标准化的错误创建和包装方法，确保所有错误都有一致的结构和上下文信息。
- * 这个类消除了各个请求实现中重复的错误处理代码，并提供了类型安全的错误创建方法。
- * 
- * @example
- * ```typescript
- * // 创建HTTP错误
- * const httpError = ErrorHandler.createHttpError(404, 'Not Found', {
- *   url: '/api/users/123',
- *   method: 'GET'
- * })
- * 
- * // 包装未知错误
- * const wrappedError = ErrorHandler.wrapError(someError, {
- *   url: '/api/data',
- *   method: 'POST'
- * })
- * ```
+ * 提供标准化的错误创建和包装方法。
  */
 export class ErrorHandler {
   /**
@@ -174,14 +158,11 @@ export class ErrorHandler {
       tag?: string
       requestId?: string
       message?: string
-      suggestion?: string
     }
   ): RequestError {
     if (error instanceof RequestError) {
       // 如果已经是RequestError，直接修改其context而不创建新对象，保持对象引用不变
-      // 使用类型断言绕过readonly限制，因为我们需要添加执行上下文信息
       const errorContext = error.context as any
-      // 只有当错误没有 duration 时才设置，避免覆盖已有的 duration
       if (context.duration !== undefined && errorContext.duration === undefined) {
         errorContext.duration = context.duration
       }
@@ -216,8 +197,7 @@ export class ErrorHandler {
         timestamp: context.timestamp || Date.now(),
         tag: context.tag,
         metadata: context.requestId ? { requestId: context.requestId } : undefined
-      },
-      suggestion: context.suggestion
+      }
     })
   }
 }
@@ -305,7 +285,10 @@ export class LogFormatter {
     message += `\n  Method: ${method}`
     
     if (error instanceof RequestError) {
-      message += `\n  Error: ${error.toDisplayMessage()}`
+      message += `\n  Error: ${error.message}`
+      if (error.status) {
+        message += `\n  Status: ${error.status}`
+      }
     } else if (error instanceof Error) {
       message += `\n  Error: ${error.message}`
     } else {

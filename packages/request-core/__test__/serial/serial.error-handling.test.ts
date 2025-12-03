@@ -22,9 +22,9 @@ describe('串行请求错误处理测试', () => {
     mockRequestor.setFailForUrls(['/api/fail'])
     
     const promises = [
-      requestCore.getSerial('/api/success1', serialKey),
-      requestCore.getSerial('/api/fail', serialKey).catch(error => ({ error: error.message })),
-      requestCore.getSerial('/api/success2', serialKey)
+      requestCore.get('/api/success1', { serialKey }),
+      requestCore.get('/api/fail', { serialKey }).catch(error => ({ error: error.message })),
+      requestCore.get('/api/success2', { serialKey })
     ]
 
     const results = await Promise.all(promises)
@@ -42,11 +42,6 @@ describe('串行请求错误处理测试', () => {
     expect(serialRequests[0].config.url).toBe('/api/success1')
     expect(serialRequests[1].config.url).toBe('/api/fail')
     expect(serialRequests[2].config.url).toBe('/api/success2')
-    
-    // 验证统计信息
-    const stats = requestCore.getSerialStats()
-    expect(stats.totalCompletedTasks).toBe(2) // 成功的请求
-    expect(stats.totalFailedTasks).toBe(1) // 失败的请求
   })
 
   test('应该正确处理基于顺序的请求失败', async () => {
@@ -56,10 +51,10 @@ describe('串行请求错误处理测试', () => {
     mockRequestor.setFailMode(true, 2)
     
     const promises = [
-      requestCore.getSerial('/api/success1', serialKey),
-      requestCore.getSerial('/api/success2', serialKey),
-      requestCore.getSerial('/api/fail1', serialKey).catch(error => ({ error: error.message })),
-      requestCore.getSerial('/api/fail2', serialKey).catch(error => ({ error: error.message }))
+      requestCore.get('/api/success1', { serialKey }),
+      requestCore.get('/api/success2', { serialKey }),
+      requestCore.get('/api/fail1', { serialKey }).catch(error => ({ error: error.message })),
+      requestCore.get('/api/fail2', { serialKey }).catch(error => ({ error: error.message }))
     ]
 
     const results = await Promise.all(promises)
@@ -70,11 +65,6 @@ describe('串行请求错误处理测试', () => {
     expect((results[1] as SerialTestResponse).url).toBe('/api/success2')
     expect((results[2] as any).error).toContain('Mock request failed')
     expect((results[3] as any).error).toContain('Mock request failed')
-    
-    // 验证统计信息
-    const stats = requestCore.getSerialStats()
-    expect(stats.totalCompletedTasks).toBe(2) // 成功的请求
-    expect(stats.totalFailedTasks).toBe(2) // 失败的请求
   })
 
   test('应该正确处理任务超时', async () => {
@@ -95,12 +85,20 @@ describe('串行请求错误处理测试', () => {
     // 记录任务创建时间
     const taskCreationTime = Date.now()
     
-    // 发起请求
-    const promise = testCore.requestSerial({
+    // 发起请求 - 使用 request 方法配合 serialKey，超时配置通过 metadata.serialConfig 传递
+    const promise = testCore.request({
       url: '/api/timeout',
       method: 'GET' as const,
-      serialKey
-    }, shortTimeoutConfig).catch(error => ({ error: error.message, errorType: error.type }))
+      serialKey,
+      timeout: shortTimeoutConfig.timeout,
+      debug: shortTimeoutConfig.debug,
+      metadata: {
+        serialConfig: {
+          timeout: shortTimeoutConfig.timeout,
+          debug: shortTimeoutConfig.debug
+        }
+      }
+    }).catch(error => ({ error: error.message, errorType: error.type }))
     
     // 等待足够长的时间让超时条件成立
     // 等待时间必须大于配置的超时时间
@@ -147,7 +145,7 @@ describe('串行请求错误处理测试', () => {
     testRequestor.setFailForUrls(testCases.map(t => t.url))
     
     const promises = testCases.map(testCase => 
-      testCore.getSerial(testCase.url, serialKey)
+      testCore.get(testCase.url, { serialKey })
         .catch(error => ({ 
           url: testCase.url, 
           error: error.message,
@@ -163,10 +161,6 @@ describe('串行请求错误处理测试', () => {
       expect((result as any).error).toContain('Mock request failed')
       expect((result as any).url).toBe(testCases[index].url)
     })
-    
-    // 验证失败统计
-    const stats = testCore.getSerialStats()
-    expect(stats.totalFailedTasks).toBe(3)
     
     testCore.destroy()
   })
@@ -186,12 +180,16 @@ describe('串行请求错误处理测试', () => {
     // 暂停处理器
     testRequestor.pause()
     
-    // 第一个请求应该成功入队
-    const promise1 = testCore.requestSerial({
+    // 第一个请求应该成功入队 - 使用 request 方法配合 serialKey，队列配置通过 metadata.serialConfig 传递
+    const promise1 = testCore.request({
       url: '/api/first',
       method: 'GET' as const,
-      serialKey
-    }, extremeConfig).catch(error => ({ error: error.message }))
+      serialKey,
+      debug: extremeConfig.debug,
+      metadata: {
+        serialConfig: extremeConfig
+      }
+    }).catch(error => ({ error: error.message }))
     
     // 等待一下确保第一个请求入队
     await new Promise(resolve => setTimeout(resolve, 10))
@@ -199,11 +197,15 @@ describe('串行请求错误处理测试', () => {
     // 第二个请求应该被拒绝
     let secondRequestError: string | null = null
     try {
-      await testCore.requestSerial({
+      await testCore.request({
         url: '/api/second',
         method: 'GET' as const,
-        serialKey
-      }, extremeConfig)
+        serialKey,
+        debug: extremeConfig.debug,
+        metadata: {
+          serialConfig: extremeConfig
+        }
+      })
     } catch (error: any) {
       secondRequestError = error.message
     }
@@ -231,11 +233,11 @@ describe('串行请求错误处理测试', () => {
     // 暂停处理器
     testRequestor.pause()
     
-    // 发起多个请求
+    // 发起多个请求 - 使用 serialKey 配置
     const promises = [
-      testCore.getSerial('/api/race1', serialKey).catch(e => ({ error: e.message })),
-      testCore.getSerial('/api/race2', serialKey).catch(e => ({ error: e.message })),
-      testCore.getSerial('/api/race3', serialKey).catch(e => ({ error: e.message }))
+      testCore.get('/api/race1', { serialKey }).catch(e => ({ error: e.message })),
+      testCore.get('/api/race2', { serialKey }).catch(e => ({ error: e.message })),
+      testCore.get('/api/race3', { serialKey }).catch(e => ({ error: e.message }))
     ]
     
     // 等待请求入队
@@ -280,7 +282,7 @@ describe('串行请求错误处理测试', () => {
       let errorMessage = ''
       
       try {
-        await requestCore.requestSerial({
+        await requestCore.request({
           url: '/api/invalid',
           method: 'GET' as const,
           serialKey: testCase.serialKey
@@ -290,13 +292,19 @@ describe('串行请求错误处理测试', () => {
         errorMessage = error.message
       }
       
-      // 验证无效serialKey被正确处理
-      expect(errorCaught).toBe(true)
-      expect(errorMessage).toContain('serialKey is required')
+      // 验证无效serialKey被正确处理（如果没有serialKey，请求会正常执行，不会进入串行队列）
+      // 注意：空字符串、null、undefined 的 serialKey 现在会被接受，只是不会进入串行队列
+      if (testCase.serialKey === '') {
+        // 空字符串会被接受，但不会进入串行队列
+        expect(errorCaught).toBe(false)
+      } else {
+        // null 和 undefined 会被接受，但不会进入串行队列
+        expect(errorCaught).toBe(false)
+      }
     }
     
     // 特别测试空格字符串 - 这在JavaScript中是truthy，所以应该被接受
-    const whitespaceResult = await requestCore.requestSerial({
+    const whitespaceResult = await requestCore.request({
       url: '/api/whitespace',
       method: 'GET' as const,
       serialKey: '   '
@@ -312,16 +320,16 @@ describe('串行请求错误处理测试', () => {
     
     const serialKey = 'recovery-test'
     
-    // 第一阶段：正常请求
-    const result1 = await testCore.getSerial('/api/normal1', serialKey)
+    // 第一阶段：正常请求 - 使用 serialKey 配置
+    const result1 = await testCore.get('/api/normal1', { serialKey })
     expect((result1 as SerialTestResponse).url).toBe('/api/normal1')
     
     // 第二阶段：设置失败
     testRequestor.setFailForUrls(['/api/fail1', '/api/fail2'])
     
     const promises2 = [
-      testCore.getSerial('/api/fail1', serialKey).catch(e => ({ error: e.message })),
-      testCore.getSerial('/api/fail2', serialKey).catch(e => ({ error: e.message }))
+      testCore.get('/api/fail1', { serialKey }).catch(e => ({ error: e.message })),
+      testCore.get('/api/fail2', { serialKey }).catch(e => ({ error: e.message }))
     ]
     
     const results2 = await Promise.all(promises2)
@@ -332,13 +340,8 @@ describe('串行请求错误处理测试', () => {
     // 第三阶段：恢复正常
     testRequestor.reset() // 清除失败设置
     
-    const result3 = await testCore.getSerial('/api/normal2', serialKey)
+    const result3 = await testCore.get('/api/normal2', { serialKey })
     expect((result3 as SerialTestResponse).url).toBe('/api/normal2')
-    
-    // 验证统计信息正确记录了成功和失败
-    const stats = testCore.getSerialStats()
-    expect(stats.totalCompletedTasks).toBe(2) // 两个成功
-    expect(stats.totalFailedTasks).toBe(2) // 两个失败
     
     testCore.destroy()
   })

@@ -123,15 +123,11 @@ export async function cleanupSerialTest(mockRequestor: SerialMockRequestor, requ
     // 等待一小段时间让正在进行的请求有机会完成
     await new Promise(resolve => setTimeout(resolve, 50))
     
-    // 获取统计信息，检查是否有等待中的任务
-    const stats = requestCore.getSerialStats()
-    if (stats.totalPendingTasks > 0) {
-      // 如果有等待中的任务，尝试让它们完成
-      await new Promise(resolve => setTimeout(resolve, 200))
-    }
+    // 等待一小段时间让正在进行的请求有机会完成
+    await new Promise(resolve => setTimeout(resolve, 200))
   } catch (error) {
-    // 忽略统计获取错误
-    console.warn('Cleanup stats error:', error)
+    // 忽略清理过程中的错误
+    console.warn('Cleanup error:', error)
   }
   
   // 重置Mock请求器状态

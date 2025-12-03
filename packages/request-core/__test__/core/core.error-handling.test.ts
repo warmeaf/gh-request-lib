@@ -303,20 +303,20 @@ describe('RequestCore 错误处理集成测试', () => {
         code: 'MAX_RETRIES_EXCEEDED'
       })
 
-      const requestWithRetrySpy = vi.spyOn(requestCore, 'requestWithRetry')
-      requestWithRetrySpy.mockRejectedValue(retryError)
+      mockRequestor.getMock().mockRejectedValue(retryError)
 
       try {
-        await requestCore.requestWithRetry(
-          { url: CORE_TEST_URLS.ERROR, method: 'GET' },
-          { retries: 3 }
-        )
+        await requestCore.request({
+          url: CORE_TEST_URLS.ERROR,
+          method: 'GET',
+          metadata: {
+            retryConfig: { retries: 3 }
+          }
+        })
       } catch (error) {
-        expect(error).toBe(retryError)
+        expect(error).toBeInstanceOf(RequestError)
         expect((error as RequestError).type).toBe(RequestErrorType.RETRY_ERROR)
       }
-
-      requestWithRetrySpy.mockRestore()
     })
 
     test('缓存功能错误应该正确传播', async () => {
@@ -325,20 +325,20 @@ describe('RequestCore 错误处理集成测试', () => {
         code: 'CACHE_WRITE_FAILED'
       })
 
-      const requestWithCacheSpy = vi.spyOn(requestCore, 'requestWithCache')
-      requestWithCacheSpy.mockRejectedValue(cacheError)
+      mockRequestor.getMock().mockRejectedValue(cacheError)
 
       try {
-        await requestCore.requestWithCache(
-          { url: CORE_TEST_URLS.USERS, method: 'GET' },
-          { ttl: 300000 }
-        )
+        await requestCore.request({
+          url: CORE_TEST_URLS.USERS,
+          method: 'GET',
+          metadata: {
+            cacheConfig: { ttl: 300000 }
+          }
+        })
       } catch (error) {
-        expect(error).toBe(cacheError)
+        expect(error).toBeInstanceOf(RequestError)
         expect((error as RequestError).type).toBe(RequestErrorType.CACHE_ERROR)
       }
-
-      requestWithCacheSpy.mockRestore()
     })
 
     test('并发请求中的部分错误应该正确处理', async () => {
@@ -393,8 +393,7 @@ describe('RequestCore 错误处理集成测试', () => {
 
     test('链式调用中的功能特性错误应该正确处理', async () => {
       const retryError = new RequestError('Retry configuration invalid')
-      const requestWithRetrySpy = vi.spyOn(requestCore, 'requestWithRetry')
-      requestWithRetrySpy.mockRejectedValue(retryError)
+      mockRequestor.getMock().mockRejectedValue(retryError)
 
       try {
         await requestCore
@@ -403,10 +402,8 @@ describe('RequestCore 错误处理集成测试', () => {
           .retry(3)
           .send()
       } catch (error) {
-        expect(error).toBe(retryError)
+        expect(error).toBeInstanceOf(RequestError)
       }
-
-      requestWithRetrySpy.mockRestore()
     })
   })
 

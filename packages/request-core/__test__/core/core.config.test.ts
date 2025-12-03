@@ -162,16 +162,16 @@ describe('RequestCore 配置管理测试', () => {
     })
   })
 
-  describe('配置统计', () => {
-    test('应该能够获取配置统计信息', () => {
+  describe('配置管理', () => {
+    test('应该能够获取全局配置', () => {
       const globalConfig = createTestGlobalConfig()
       requestCore.setGlobalConfig(globalConfig)
 
-      const stats = requestCore.getAllStats()
-      expect(stats.config).toBeDefined()
+      const retrievedConfig = requestCore.getGlobalConfig()
+      expect(retrievedConfig).toEqual(globalConfig)
     })
 
-    test('配置重置后统计信息应该更新', () => {
+    test('配置重置后应该清空', () => {
       const globalConfig = createTestGlobalConfig()
       requestCore.setGlobalConfig(globalConfig)
 
@@ -180,8 +180,8 @@ describe('RequestCore 配置管理测试', () => {
 
       // 重新创建实例来测试重置
       const newCore = new RequestCore(mockRequestor)
-      const stats = newCore.getAllStats()
-      expect(stats.config).toBeDefined()
+      const newConfig = newCore.getGlobalConfig()
+      expect(Object.keys(newConfig).length).toBe(0)
 
       newCore.destroy()
     })
