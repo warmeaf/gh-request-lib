@@ -363,34 +363,7 @@ function generateFallbackKey(config: RequestConfig): string {
 }
 ```
 
-#### 5.4.2. 缓存操作模块（cache-ops.ts）
-
-提供安全的缓存操作封装，支持错误处理和降级。
-
-```typescript
-async function safeCacheOperation<T>(
-  operation: () => Promise<T | null>,
-  context: IdempotentRequestContext,
-  fallbackValue?: T
-): Promise<CacheOperationResult<T | null>> {
-  try {
-    const data = await operation()
-    return { success: true, data }
-  } catch (error) {
-    if (fallbackValue !== undefined) {
-      return { 
-        success: false, 
-        data: fallbackValue, 
-        error, 
-        fallbackUsed: true 
-      }
-    }
-    return { success: false, error, fallbackUsed: false }
-  }
-}
-```
-
-#### 5.4.3. 统计模块（stats.ts）
+#### 5.4.2. 统计模块（stats.ts）
 
 **平均响应时间计算**：
 ```typescript
