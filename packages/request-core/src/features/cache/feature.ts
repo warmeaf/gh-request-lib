@@ -7,7 +7,6 @@ import {
   MemoryStorageAdapter,
   LocalStorageAdapter,
   IndexedDBAdapter,
-  WebSQLAdapter,
   CacheKeyStrategy,
   LRUInvalidationPolicy,
   StorageType,
@@ -15,13 +14,6 @@ import {
 import type { CacheInvalidationPolicy } from '../../cache'
 import type { CacheConfig } from './types'
 
-// 声明全局的 openDatabase 函数
-declare const openDatabase: (
-  name: string,
-  version: string,
-  displayName: string,
-  estimatedSize: number
-) => any | undefined
 
 export class CacheFeature {
   private storageAdapter: StorageAdapter
@@ -513,11 +505,6 @@ export class CacheFeature {
           return new IndexedDBAdapter()
         }
         return this.fallbackToMemoryStorage('IndexedDB is not available')
-      case StorageType.WEB_SQL:
-        if (typeof openDatabase !== 'undefined' && openDatabase !== undefined) {
-          return new WebSQLAdapter()
-        }
-        return this.fallbackToMemoryStorage('WebSQL is not available')
       default:
         return new MemoryStorageAdapter()
     }

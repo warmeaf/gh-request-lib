@@ -9,8 +9,7 @@
 export enum StorageType {
   MEMORY = 'memory',
   LOCAL_STORAGE = 'localStorage',
-  INDEXED_DB = 'indexedDB',
-  WEB_SQL = 'webSQL'
+  INDEXED_DB = 'indexedDB'
 }
 
 /**

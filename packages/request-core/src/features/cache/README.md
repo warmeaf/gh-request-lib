@@ -7,7 +7,7 @@
 ## 2. 设计目标
 
 - **高性能**: 采用优化的缓存键生成算法（FNV-1a），支持哈希缓存避免重复计算。
-- **灵活性**: 支持多种存储适配器（内存、LocalStorage、IndexedDB、WebSQL）和缓存策略。
+- **灵活性**: 支持多种存储适配器（内存、LocalStorage、IndexedDB）和缓存策略。
 - **智能管理**: 自动清理过期缓存，支持 LRU 等多种缓存淘汰策略。
 - **并发控制**: 防止相同请求的重复发送，避免资源浪费。
 - **数据安全**: 支持深拷贝、浅拷贝、不拷贝三种数据克隆模式，防止缓存数据被意外修改。
@@ -53,8 +53,7 @@ interface CacheKeyConfig {
 enum StorageType {
   MEMORY = 'memory',              // 内存存储
   LOCAL_STORAGE = 'localStorage', // 浏览器 LocalStorage
-  INDEXED_DB = 'indexedDB',       // IndexedDB
-  WEB_SQL = 'webSQL'              // WebSQL（已废弃）
+  INDEXED_DB = 'indexedDB'       // IndexedDB
 }
 ```
 
@@ -148,7 +147,7 @@ console.log('Hit rate:', stats.hitRate);
 
 3. **`StorageAdapter` (存储适配器接口)**:
    - 定义统一的存储接口。
-   - 支持多种实现：Memory、LocalStorage、IndexedDB、WebSQL。
+   - 支持多种实现：Memory、LocalStorage、IndexedDB。
 
 4. **`CacheInvalidationPolicy` (缓存失效策略)**:
    - 定义缓存何时应该被淘汰。
@@ -508,11 +507,6 @@ private hashObject(obj: any): string {
 
 **推荐使用**：这是默认且推荐的存储方式。
 
-### 6.4. WebSQLAdapter（WebSQL）
-
-**注意**：WebSQL 已被废弃，仅为兼容旧浏览器保留。
-
-**不推荐使用**。
 
 ## 7. 缓存失效策略
 
@@ -672,7 +666,6 @@ const customStrategy = new CustomKeyStrategy((config) => {
 - ✅ Memory 存储适配器
 - ✅ LocalStorage 存储适配器
 - ✅ IndexedDB 存储适配器
-- ✅ WebSQL 存储适配器
 
 **缓存策略测试**：
 - ✅ LRU 失效策略
@@ -1038,7 +1031,6 @@ for (let page = 1; page <= 5; page++) {
 | Memory | 受内存限制 | ❌ | ⭐⭐⭐⭐⭐ |
 | LocalStorage | 5-10MB | ✅ | ⭐⭐⭐⭐ |
 | IndexedDB | 50MB+ | ✅ | ⭐⭐⭐⭐⭐ |
-| WebSQL | 5-10MB | ✅ | ⭐⭐⭐ |
 
 ### 12.3. 安全性
 

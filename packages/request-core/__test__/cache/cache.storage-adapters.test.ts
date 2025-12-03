@@ -4,7 +4,6 @@ import {
   MemoryStorageAdapter,
   LocalStorageAdapter,
   IndexedDBAdapter,
-  WebSQLAdapter,
   StorageType
 } from '../../src/cache'
 import { MockStorageAdapter } from './cache-test-helpers'
@@ -436,57 +435,6 @@ describe('Storage Adapters Tests', () => {
     })
   })
 
-  describe('WebSQLAdapter', () => {
-    let webSQLAdapter: WebSQLAdapter
-
-    beforeEach(() => {
-      // Mock WebSQL (openDatabase) for testing
-      global.openDatabase = vi.fn(() => ({
-        transaction: vi.fn((callback: Function) => {
-          callback({
-            executeSql: vi.fn((sql: string, params: any[], success?: Function, error?: Function) => {
-              // Simple mock behavior
-              if (success) {
-                success({}, { rows: [], insertId: 1, rowsAffected: 1 })
-              }
-            })
-          })
-        }),
-        readTransaction: vi.fn((callback: Function) => {
-          callback({
-            executeSql: vi.fn((sql: string, params: any[], success?: Function, error?: Function) => {
-              if (success) {
-                success({}, { rows: { length: 0, item: () => null }, insertId: 1, rowsAffected: 0 })
-              }
-            })
-          })
-        })
-      })) as any
-
-      webSQLAdapter = new WebSQLAdapter()
-    })
-
-    afterEach(() => {
-      vi.restoreAllMocks()
-    })
-
-    it('should return correct storage type', () => {
-      expect(webSQLAdapter.getType()).toBe(StorageType.WEB_SQL)
-    })
-
-    it('should implement all storage adapter methods', () => {
-      expect(typeof webSQLAdapter.getItem).toBe('function')
-      expect(typeof webSQLAdapter.setItem).toBe('function')
-      expect(typeof webSQLAdapter.removeItem).toBe('function')
-      expect(typeof webSQLAdapter.clear).toBe('function')
-      expect(typeof webSQLAdapter.getKeys).toBe('function')
-      expect(typeof webSQLAdapter.getStats).toBe('function')
-      expect(typeof webSQLAdapter.destroy).toBe('function')
-    })
-
-    // Note: Full WebSQL testing would require more complex mocking
-    // This tests basic functionality without full database simulation
-  })
 
   describe('Storage Adapter Performance', () => {
     const testData = Array.from({ length: 1000 }, (_, i) => ({
@@ -609,12 +557,10 @@ describe('Storage Adapters Tests', () => {
       const memoryAdapter = new MemoryStorageAdapter()
       const localStorageAdapter = new LocalStorageAdapter()
       const indexedDBAdapter = new IndexedDBAdapter()
-      const webSQLAdapter = new WebSQLAdapter()
 
       expect(memoryAdapter.getType()).toBe(StorageType.MEMORY)
       expect(localStorageAdapter.getType()).toBe(StorageType.LOCAL_STORAGE)
       expect(indexedDBAdapter.getType()).toBe(StorageType.INDEXED_DB)
-      expect(webSQLAdapter.getType()).toBe(StorageType.WEB_SQL)
     })
 
     it('should maintain type consistency across operations', async () => {

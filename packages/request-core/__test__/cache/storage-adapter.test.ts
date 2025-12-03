@@ -19,7 +19,7 @@ describe('StorageType', () => {
         expect(StorageType.MEMORY).toBe('memory')
         expect(StorageType.LOCAL_STORAGE).toBe('localStorage')
         expect(StorageType.INDEXED_DB).toBe('indexedDB')
-        expect(StorageType.WEB_SQL).toBe('webSQL')
+        // WEB_SQL has been removed as it's deprecated
     })
 })
 

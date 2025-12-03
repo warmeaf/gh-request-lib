@@ -4,7 +4,7 @@
 
 ## 功能特性
 
-- **多种存储适配器**：支持内存、LocalStorage、IndexedDB 和 WebSQL 存储
+- **多种存储适配器**：支持内存、LocalStorage、IndexedDB 存储
 - **智能缓存键生成**：高性能缓存键生成器，支持多种哈希算法
 - **灵活的缓存策略**：支持 LRU、FIFO 和基于时间的缓存失效策略
 - **多样的缓存键策略**：URL路径、完整URL、参数化和自定义键策略
@@ -72,15 +72,6 @@ import { IndexedDBAdapter } from './adapters/indexeddb-adapter'
 const indexedDBAdapter = new IndexedDBAdapter()
 ```
 
-#### WebSQLAdapter
-
-基于浏览器 WebSQL 的存储实现（已废弃，但为了兼容性保留）。
-
-```typescript
-import { WebSQLAdapter } from './adapters/websql-adapter'
-
-const webSQLAdapter = new WebSQLAdapter()
-```
 
 ### Cache Strategies (缓存策略)
 
@@ -205,6 +196,5 @@ interface StorageItem<T = unknown> {
 | MemoryStorageAdapter | 全平台支持 |
 | LocalStorageAdapter | 全平台支持 |
 | IndexedDBAdapter | 现代浏览器支持 |
-| WebSQLAdapter | 已废弃，仅部分旧浏览器支持 |
 
 建议优先使用 IndexedDB 适配器，它提供了最好的性能和存储容量。
