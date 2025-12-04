@@ -5,13 +5,11 @@ import {
   RequestError,
   RequestErrorType,
   IdempotentConfig,
-  IdempotentStats,
 } from '../../interface'
 import { CacheFeature } from '../cache'
 import { CacheKeyConfig } from '../../cache/cache-key-generator'
 import { DEFAULT_IDEMPOTENT_CONFIG, DEFAULT_CACHE_KEY_CONFIG } from './constants'
 import { IdempotentRequestContext, NewRequestExecutionConfig } from './types'
-import { createInitialStats, updateAvgKeyGenTime, updateAvgResponseTime, withDuplicateRate } from './stats'
 import { createDeferred, safeCloneData } from './utils'
 import { generateFallbackKey, generateIdempotentKey } from './key'
 import { enhanceIdempotentError } from './errors'
@@ -22,7 +20,6 @@ import { enhanceIdempotentError } from './errors'
 export class IdempotentFeature {
   private cacheFeature: CacheFeature
   private pendingRequests: Map<string, Promise<unknown>>
-  private stats: IdempotentStats
   private readonly cacheKeyConfig: CacheKeyConfig
 
   constructor(private requestor: Requestor, config?: Partial<CacheKeyConfig>) {
@@ -37,7 +34,6 @@ export class IdempotentFeature {
       this.cacheKeyConfig
     )
     this.pendingRequests = new Map()
-    this.stats = createInitialStats()
   }
 
   /**
@@ -53,13 +49,9 @@ export class IdempotentFeature {
       // 验证配置
       this.validateIdempotentConfig(idempotentConfig)
 
-      // 配置验证通过后才增加统计计数
-      this.stats.totalRequests++
-
       return await this.processIdempotentRequest<T>(config, idempotentConfig, startTime)
     } catch (error) {
       const responseTime = Date.now() - startTime
-      this.updateStats({ responseTime })
       throw this.enhanceError(error, config, responseTime)
     }
   }
@@ -74,12 +66,11 @@ export class IdempotentFeature {
   ): Promise<T> {
     const processedConfig = this.prepareIdempotentConfig(idempotentConfig)
 
-    const { idempotentKey, keyGenTime } = this.generateIdempotentKeyWithStats(
+    const idempotentKey = this.generateIdempotentKey(
       config,
       processedConfig.keyGeneratorConfig,
       processedConfig.key
     )
-    this.updateStats({ keyGenTime })
 
     const requestContext: IdempotentRequestContext = {
       idempotentKey,
@@ -90,8 +81,6 @@ export class IdempotentFeature {
 
     const cachedResult = await this.checkCacheHit<T>(requestContext)
     if (cachedResult !== null) {
-      const responseTime = Date.now() - startTime
-      this.updateStats({ responseTime })
       return cachedResult
     }
 
@@ -144,21 +133,16 @@ export class IdempotentFeature {
   }
 
   /**
-   * @description 生成幂等键并计算统计信息（带错误处理）
+   * @description 生成幂等键（带错误处理）
    */
-  private generateIdempotentKeyWithStats(
+  private generateIdempotentKey(
     config: RequestConfig,
     keyConfig: CacheKeyConfig,
     customKey?: string
-  ): { idempotentKey: string; keyGenTime: number } {
-    const keyGenStartTime = performance.now()
-
+  ): string {
     try {
-      const idempotentKey = customKey || generateIdempotentKey(config, this.cacheKeyConfig, keyConfig)
-      const keyGenTime = performance.now() - keyGenStartTime
-      return { idempotentKey, keyGenTime }
+      return customKey || generateIdempotentKey(config, this.cacheKeyConfig, keyConfig)
     } catch (_error) {
-      const keyGenTime = performance.now() - keyGenStartTime
       const fallbackKey = generateFallbackKey(config)
       console.warn(
         `⚠️ [Idempotent] Key generation failed for ${config.method} ${config.url}, using fallback:`,
@@ -167,7 +151,7 @@ export class IdempotentFeature {
           customKey,
         }
       )
-      return { idempotentKey: fallbackKey, keyGenTime }
+      return fallbackKey
     }
   }
 
@@ -180,14 +164,11 @@ export class IdempotentFeature {
     const pendingRequest = this.pendingRequests.get(context.idempotentKey)
     if (!pendingRequest) return null
 
-    this.updateStats({ incrementDuplicates: true, incrementPendingReused: true })
     this.handleDuplicateCallback(context.config, context.onDuplicate)
 
     console.log(`🔄 [Idempotent] Waiting for pending request: ${context.config.method} ${context.config.url}`)
 
     const result = (await pendingRequest) as T
-    const responseTime = Date.now() - context.startTime
-    this.updateStats({ responseTime })
     return result
   }
 
@@ -199,12 +180,7 @@ export class IdempotentFeature {
   ): Promise<T> {
     const existing = this.pendingRequests.get(execConfig.idempotentKey)
     if (existing) {
-      // 发现重复的并发请求，增加统计计数
-      this.updateStats({ incrementDuplicates: true, incrementPendingReused: true })
-
       const result = (await existing) as T
-      const responseTime = Date.now() - execConfig.startTime
-      this.updateStats({ responseTime })
       return result
     }
 
@@ -218,13 +194,9 @@ export class IdempotentFeature {
       execConfig.keyGeneratorConfig
     )
 
-    this.updateStats({ incrementNetworkRequests: true })
-
   try {
     const result = await requestPromise
     deferred.resolve(result)
-    const responseTime = Date.now() - execConfig.startTime
-    this.updateStats({ responseTime })
     return result
   } catch (error) {
     deferred.reject(error)
@@ -327,27 +299,12 @@ export class IdempotentFeature {
   }
 
   /**
-   * @description 获取幂等统计信息
-   */
-  getIdempotentStats(): IdempotentStats {
-    return withDuplicateRate(this.stats)
-  }
-
-  /**
-   * @description 重置统计信息
-   */
-  resetStats(): void {
-    this.stats = createInitialStats()
-  }
-
-  /**
    * @description 销毁幂等功能
    */
   async destroy(): Promise<void> {
     try {
       this.pendingRequests.clear()
       await this.cacheFeature.destroy()
-      this.resetStats()
       console.log('[IdempotentFeature] Resources cleaned up successfully')
     } catch (error) {
       console.error('[IdempotentFeature] Error during cleanup:', error)
@@ -408,7 +365,6 @@ export class IdempotentFeature {
     if (!cachedItem) return null
 
     if (this.cacheFeature.isCacheItemValid(cachedItem)) {
-      this.updateStats({ incrementDuplicates: true, incrementCacheHits: true })
       this.handleDuplicateCallback(context.config, context.onDuplicate)
       console.log(`💾 [Idempotent] Cache hit: ${context.config.method} ${context.config.url}`, {
         ttlRemaining: `${Math.round((cachedItem.ttl - (Date.now() - cachedItem.timestamp)) / 1000)}s`,
@@ -476,36 +432,6 @@ export class IdempotentFeature {
 
   private enhanceError(error: unknown, config: RequestConfig, responseTime: number): RequestError {
     return enhanceIdempotentError(error, config, responseTime)
-  }
-
-  private updateStats(options: {
-    responseTime?: number
-    keyGenTime?: number
-    incrementDuplicates?: boolean
-    incrementCacheHits?: boolean
-    incrementPendingReused?: boolean
-    incrementNetworkRequests?: boolean
-  }): void {
-    const {
-      responseTime,
-      keyGenTime,
-      incrementDuplicates,
-      incrementCacheHits,
-      incrementPendingReused,
-      incrementNetworkRequests,
-    } = options
-
-    if (incrementDuplicates) this.stats.duplicatesBlocked++
-    if (incrementCacheHits) this.stats.cacheHits++
-    if (incrementPendingReused) this.stats.pendingRequestsReused++
-    if (incrementNetworkRequests) this.stats.actualNetworkRequests++
-
-    if (responseTime !== undefined) {
-      updateAvgResponseTime(this.stats, responseTime)
-    }
-    if (keyGenTime !== undefined) {
-      updateAvgKeyGenTime(this.stats, keyGenTime)
-    }
   }
 
   private handleDuplicateCallback(

@@ -19,92 +19,6 @@ describe('ConcurrentFeature - 高级功能测试', () => {
     concurrentFeature = new ConcurrentFeature(mockRequestor)
   })
 
-  describe('ConcurrentStats 统计信息', () => {
-    it('应该正确收集并发执行统计信息', async () => {
-      const configs = ConcurrentTestDataGenerator.generateRequestConfigs(6)
-      mockRequestor.setGlobalDelay(80)
-
-      await concurrentFeature.requestConcurrent(configs, { maxConcurrency: 3 })
-
-      const stats = concurrentFeature.getConcurrentStats()
-      
-      expect(stats.total).toBe(6)
-      expect(stats.completed).toBe(6)
-      expect(stats.successful).toBe(6)
-      expect(stats.failed).toBe(0)
-      expect(stats.averageDuration).toBeGreaterThan(70)
-      expect(stats.averageDuration).toBeLessThan(100)
-      expect(stats.maxConcurrencyUsed).toBe(3)
-    })
-
-    it('应该正确统计成功和失败的请求', async () => {
-      const configs = ConcurrentTestDataGenerator.generateRequestConfigs(8)
-      
-      // 设置3个请求失败
-      mockRequestor.setUrlFailure(configs[2].url!, true)
-      mockRequestor.setUrlFailure(configs[4].url!, true)
-      mockRequestor.setUrlFailure(configs[6].url!, true)
-      mockRequestor.setGlobalDelay(60)
-
-      await concurrentFeature.requestConcurrent(configs, { maxConcurrency: 4 })
-
-      const stats = concurrentFeature.getConcurrentStats()
-
-      expect(stats.total).toBe(8)
-      expect(stats.completed).toBe(8)
-      expect(stats.successful).toBe(5)
-      expect(stats.failed).toBe(3)
-      expect(stats.maxConcurrencyUsed).toBe(4)
-    })
-
-    it('应该正确计算平均持续时间', async () => {
-      const configs = ConcurrentTestDataGenerator.generateRequestConfigs(4)
-      
-      // 设置不同的延迟
-      mockRequestor.setUrlDelay(configs[0].url!, 50)
-      mockRequestor.setUrlDelay(configs[1].url!, 100)
-      mockRequestor.setUrlDelay(configs[2].url!, 150)
-      mockRequestor.setUrlDelay(configs[3].url!, 200)
-
-      await concurrentFeature.requestConcurrent(configs)
-
-      const stats = concurrentFeature.getConcurrentStats()
-      
-      // 平均应该约为 (50+100+150+200)/4 = 125ms
-      expect(stats.averageDuration).toBeGreaterThan(110)
-      expect(stats.averageDuration).toBeLessThan(140)
-    })
-
-    it('应该正确记录最大并发使用量', async () => {
-      const configs = ConcurrentTestDataGenerator.generateRequestConfigs(10)
-      mockRequestor.setGlobalDelay(100)
-
-      // 测试无限制并发
-      await concurrentFeature.requestConcurrent(configs)
-      let stats = concurrentFeature.getConcurrentStats()
-      expect(stats.maxConcurrencyUsed).toBe(10)
-
-      // 重置并测试限制并发
-      mockRequestor.reset()
-      await concurrentFeature.requestConcurrent(configs, { maxConcurrency: 3 })
-      stats = concurrentFeature.getConcurrentStats()
-      expect(stats.maxConcurrencyUsed).toBe(3)
-    })
-
-    it('应该处理空请求的统计信息', async () => {
-      await concurrentFeature.requestConcurrent([])
-
-      const stats = concurrentFeature.getConcurrentStats()
-
-      expect(stats.total).toBe(0)
-      expect(stats.completed).toBe(0)
-      expect(stats.successful).toBe(0)
-      expect(stats.failed).toBe(0)
-      expect(stats.averageDuration).toBe(0)
-      expect(stats.maxConcurrencyUsed).toBe(0)
-    })
-  })
-
   describe('结果分析和过滤工具', () => {
     it('应该正确提取成功结果的数据', async () => {
       const configs = ConcurrentTestDataGenerator.generateRequestConfigs(5)
@@ -187,22 +101,6 @@ describe('ConcurrentFeature - 高级功能测试', () => {
       mockRequestor.setUrlDelay(configs[7].url!, 110)
 
       const results = await concurrentFeature.requestConcurrent(configs)
-
-      const stats = concurrentFeature.getResultsStats(results)
-
-      expect(stats.total).toBe(8)
-      expect(stats.successful).toBe(6)
-      expect(stats.failed).toBe(2)
-      expect(stats.successRate).toBe(75) // 6/8 * 100 = 75%
-
-      // 验证持续时间统计 (50, 100, 75, 125, 90, 110 for successful requests)
-      // 考虑到JavaScript异步执行开销，给期望值留出合理余量
-      expect(stats.averageDuration).toBeGreaterThan(80)
-      expect(stats.averageDuration).toBeLessThan(120)
-      expect(stats.minDuration).toBeGreaterThan(40)
-      expect(stats.minDuration).toBeLessThan(70)  // 50ms + 20ms开销余量
-      expect(stats.maxDuration).toBeGreaterThan(120)
-      expect(stats.maxDuration).toBeLessThan(150)  // 125ms + 25ms开销余量
     })
 
     it('应该处理全成功和全失败的结果统计', async () => {
@@ -211,11 +109,6 @@ describe('ConcurrentFeature - 高级功能测试', () => {
       mockRequestor.setGlobalDelay(80)
 
       const results1 = await concurrentFeature.requestConcurrent(configs1)
-      const stats1 = concurrentFeature.getResultsStats(results1)
-
-      expect(stats1.successful).toBe(4)
-      expect(stats1.failed).toBe(0)
-      expect(stats1.successRate).toBe(100)
 
       mockRequestor.reset()
 
@@ -227,11 +120,6 @@ describe('ConcurrentFeature - 高级功能测试', () => {
       mockRequestor.setGlobalDelay(60)
 
       const results2 = await concurrentFeature.requestConcurrent(configs2)
-      const stats2 = concurrentFeature.getResultsStats(results2)
-
-      expect(stats2.successful).toBe(0)
-      expect(stats2.failed).toBe(3)
-      expect(stats2.successRate).toBe(0)
     })
   })
 
@@ -466,11 +354,6 @@ describe('ConcurrentFeature - 高级功能测试', () => {
       // 验证性能 - 100个请求，20并发，10ms延迟，应该约50ms
       expect(duration).toBeGreaterThan(40)
       expect(duration).toBeLessThan(100)
-
-      // 验证统计信息
-      const stats = concurrentFeature.getConcurrentStats()
-      expect(stats.maxConcurrencyUsed).toBe(20)
-      expect(stats.averageDuration).toBeLessThan(30)
     })
 
     it('应该正确处理内存使用和资源清理', async () => {
@@ -488,10 +371,6 @@ describe('ConcurrentFeature - 高级功能测试', () => {
       
       // 验证资源清理
       concurrentFeature.destroy()
-      
-      const stats = concurrentFeature.getConcurrentStats()
-      expect(stats.total).toBe(0)
-      expect(stats.completed).toBe(0)
     })
 
     it('应该正确测量和报告执行时间分布', async () => {
@@ -504,18 +383,6 @@ describe('ConcurrentFeature - 高级功能测试', () => {
       })
 
       const result = await concurrentFeature.requestConcurrent(configs, { maxConcurrency: 5 })
-
-      const stats = concurrentFeature.getResultsStats(result)
-      
-      expect(stats.minDuration).toBeGreaterThan(45)
-      expect(stats.minDuration).toBeLessThan(70)  // 50ms + 20ms开销余量
-      
-      expect(stats.maxDuration).toBeGreaterThan(230)
-      expect(stats.maxDuration).toBeLessThan(270)  // 240ms + 30ms开销余量
-      
-      // 平均时间应该在中间范围
-      expect(stats.averageDuration).toBeGreaterThan(130)
-      expect(stats.averageDuration).toBeLessThan(180)  // 调整平均时间上限
     })
 
     it('应该优化并发批处理性能', async () => {
@@ -579,15 +446,6 @@ describe('ConcurrentFeature - 高级功能测试', () => {
 
       expect(result).toHaveLength(15)
       ConcurrentTestAssertions.verifyResultCompleteness(result, 15)
-
-      const stats = concurrentFeature.getResultsStats(result)
-      expect(stats.total).toBe(15)
-      expect(stats.failed).toBe(3) // 索引 0, 5, 10
-      expect(stats.successful).toBe(12)
-      expect(stats.successRate).toBe(80)
-
-      // 验证统计信息一致性
-      ConcurrentTestAssertions.verifyStatsConsistency(result, stats)
 
       // 验证并发限制
       ConcurrentTestAssertions.verifyConcurrencyLimit(mockRequestor, 4)

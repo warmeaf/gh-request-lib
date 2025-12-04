@@ -26,9 +26,6 @@ describe('串行请求管理器详细功能测试', () => {
             }
         })
 
-        const stats = manager.getStats()
-        expect(stats.totalQueues).toBe(0)
-        expect(stats.totalTasks).toBe(0)
         expect(manager.getQueueKeys()).toEqual([])
 
         manager.destroy()
@@ -58,13 +55,6 @@ describe('串行请求管理器详细功能测试', () => {
         expect(queueKeys).toContain('queue1')
         expect(queueKeys).toContain('queue2')
         expect(queueKeys).toHaveLength(2)
-
-        // 验证统计信息
-        const stats = manager.getStats()
-        expect(stats.totalQueues).toBe(2)
-        expect(stats.totalCompletedTasks).toBe(3)
-        expect(stats.queues['queue1'].completedTasks).toBe(2)
-        expect(stats.queues['queue2'].completedTasks).toBe(1)
 
         manager.destroy()
     })
@@ -114,9 +104,6 @@ describe('串行请求管理器详细功能测试', () => {
         // 验证队列被创建
         expect(manager.hasQueue('default-config-test')).toBe(true)
 
-        const stats = manager.getStats()
-        expect(stats.queues['default-config-test']).toBeDefined()
-
         manager.destroy()
     })
 
@@ -155,10 +142,6 @@ describe('串行请求管理器详细功能测试', () => {
             manager.enqueueRequest('clear-test-2', { url: '/api/clear2', method: 'GET' }),
             manager.enqueueRequest('clear-test-1', { url: '/api/clear1-2', method: 'GET' })
         ])
-
-        let stats = manager.getStats()
-        expect(stats.totalQueues).toBe(2)
-        expect(stats.totalCompletedTasks).toBe(3)
 
         // 清空特定队列
         const cleared1 = manager.clearQueue('clear-test-1')
@@ -205,40 +188,6 @@ describe('串行请求管理器详细功能测试', () => {
         manager.destroy()
     })
 
-    test('应该正确计算统计信息', async () => {
-        const manager = new SerialRequestManager(mockRequestor, { debug: true })
-
-        // 创建多个队列和任务
-        const promises = [
-            manager.enqueueRequest('stats-queue-1', { url: '/api/stats1', method: 'GET' }),
-            manager.enqueueRequest('stats-queue-1', { url: '/api/stats2', method: 'GET' }),
-            manager.enqueueRequest('stats-queue-2', { url: '/api/stats3', method: 'GET' }),
-        ]
-
-        // 设置一个请求失败
-        mockRequestor.setFailForUrls(['/api/stats2'])
-
-        const results = await Promise.all(promises.map(p => p.catch(e => ({ error: e.message }))))
-
-        const stats = manager.getStats()
-
-        // 验证总体统计
-        expect(stats.totalQueues).toBe(2)
-        expect(stats.totalTasks).toBe(3)
-        expect(stats.totalCompletedTasks).toBe(2) // 成功的任务
-        expect(stats.totalFailedTasks).toBe(1) // 失败的任务
-        expect(stats.totalPendingTasks).toBe(0) // 所有任务都已完成
-        expect(stats.avgProcessingTime).toBeGreaterThan(0)
-
-        // 验证队列级别统计
-        expect(stats.queues['stats-queue-1']).toBeDefined()
-        expect(stats.queues['stats-queue-2']).toBeDefined()
-        expect(stats.queues['stats-queue-1'].totalTasks).toBe(2)
-        expect(stats.queues['stats-queue-2'].totalTasks).toBe(1)
-
-        manager.destroy()
-    })
-
     test('应该正确处理活跃队列统计', async () => {
         const manager = new SerialRequestManager(mockRequestor, { debug: true })
 
@@ -254,18 +203,9 @@ describe('串行请求管理器详细功能测试', () => {
         // 等待任务入队并确保它们被暂停
         await new Promise(resolve => setTimeout(resolve, 50))
 
-        let stats = manager.getStats()
-        expect(stats.totalQueues).toBe(2)
-        expect(stats.activeQueues).toBe(2) // 两个队列都有等待中的任务
-        expect(stats.totalPendingTasks).toBe(2)
-
         // 恢复处理器完成任务
         mockRequestor.resume()
         await Promise.all(promises)
-
-        stats = manager.getStats()
-        expect(stats.totalPendingTasks).toBe(0)
-        expect(stats.totalCompletedTasks).toBe(2)
 
         manager.destroy()
     })
@@ -285,10 +225,6 @@ describe('串行请求管理器详细功能测试', () => {
         // 手动触发清理
         manager.cleanup()
 
-        // 验证清理后的状态
-        const stats = manager.getStats()
-        expect(stats).toBeDefined()
-
         manager.destroy()
     })
 
@@ -299,8 +235,7 @@ describe('串行请求管理器详细功能测试', () => {
         })
 
         // 验证管理器正常工作
-        const stats = manager.getStats()
-        expect(stats.totalQueues).toBe(0)
+        expect(manager.getQueueKeys()).toHaveLength(0)
 
         manager.destroy()
     })
@@ -311,15 +246,8 @@ describe('串行请求管理器详细功能测试', () => {
         // 创建队列
         await manager.enqueueRequest('queue-stats-test', { url: '/api/queue-stats', method: 'GET' })
 
-        // 获取存在的队列统计
-        const queueStats = manager.getQueueStats('queue-stats-test')
-        expect(queueStats).not.toBeNull()
-        expect(queueStats!.completedTasks).toBe(1)
-        expect(queueStats!.totalTasks).toBe(1)
-
-        // 获取不存在的队列统计
-        const nonExistentStats = manager.getQueueStats('non-existent')
-        expect(nonExistentStats).toBeNull()
+        // 验证队列存在
+        expect(manager.hasQueue('queue-stats-test')).toBe(true)
 
         manager.destroy()
     })
@@ -339,10 +267,6 @@ describe('串行请求管理器详细功能测试', () => {
 
         // 验证所有队列都被创建
         expect(manager.getQueueKeys()).toHaveLength(5)
-
-        const stats = manager.getStats()
-        expect(stats.totalQueues).toBe(5)
-        expect(stats.totalCompletedTasks).toBe(5)
 
         manager.destroy()
     })
@@ -366,7 +290,6 @@ describe('串行请求管理器详细功能测试', () => {
         manager.destroy()
 
         // 销毁后调用方法不应该抛出异常
-        expect(() => manager.getStats()).not.toThrow()
         expect(() => manager.getQueueKeys()).not.toThrow()
         expect(() => manager.hasQueue('destroy-queue-1')).not.toThrow()
     })
@@ -404,8 +327,8 @@ describe('串行请求管理器详细功能测试', () => {
             timeout: 1000     // 这个也应该被忽略
         })
 
-        const stats = manager.getStats()
-        expect(stats.queues['config-merge-test'].totalTasks).toBe(2)
+        // 验证队列仍然存在
+        expect(manager.hasQueue('config-merge-test')).toBe(true)
 
         manager.destroy()
     })

@@ -7,7 +7,6 @@ import {
   IDEMPOTENT_TEST_CONFIGS,
   IDEMPOTENT_CONFIGS,
   IDEMPOTENT_TEST_RESPONSES,
-  IdempotentTestAssertions,
 } from './idempotent-test-helpers'
 
 describe('IdempotentFeature - Basic Functionality', () => {
@@ -38,13 +37,6 @@ describe('IdempotentFeature - Basic Functionality', () => {
       // 验证结果
       expect(result).toEqual(expectedResponse)
 
-      // 验证统计信息
-      const stats = idempotentFeature.getIdempotentStats()
-      expect(stats.totalRequests).toBe(1)
-      expect(stats.actualNetworkRequests).toBe(1)
-      expect(stats.duplicatesBlocked).toBe(0)
-      expect(stats.cacheHits).toBe(0)
-
       // 验证请求被正确调用
       const callHistory = mockRequestor.getCallHistory()
       expect(callHistory).toHaveLength(1)
@@ -64,13 +56,6 @@ describe('IdempotentFeature - Basic Functionality', () => {
       // 验证两次请求结果相同
       expect(result1).toEqual(expectedResponse)
       expect(result2).toEqual(expectedResponse)
-
-      // 验证统计信息 - 第二次请求应该被阻止
-      const stats = idempotentFeature.getIdempotentStats()
-      expect(stats.totalRequests).toBe(2)
-      expect(stats.actualNetworkRequests).toBe(1) // 只有一次真实网络请求
-      expect(stats.duplicatesBlocked).toBe(1)
-      expect(stats.cacheHits).toBe(1)
 
       // 验证只有一次实际的网络调用
       const callHistory = mockRequestor.getCallHistory()
@@ -95,11 +80,6 @@ describe('IdempotentFeature - Basic Functionality', () => {
         const result = await idempotentFeature.requestIdempotent(config)
         expect(result).toEqual(expectedResponse)
       }
-
-      // 验证统计信息
-      const stats = idempotentFeature.getIdempotentStats()
-      expect(stats.totalRequests).toBe(methods.length)
-      expect(stats.actualNetworkRequests).toBe(methods.length)
     })
   })
 
@@ -208,19 +188,6 @@ describe('IdempotentFeature - Basic Functionality', () => {
       expect(result1).toEqual(expectedResponse)
       expect(result2).toEqual(expectedResponse)
       expect(result3).toEqual(expectedResponse)
-
-      // 验证统计信息
-      const stats = idempotentFeature.getIdempotentStats()
-      expect(stats.totalRequests).toBe(3)
-      expect(stats.actualNetworkRequests).toBe(1)
-      expect(stats.duplicatesBlocked).toBe(2)
-      expect(stats.cacheHits).toBe(2)
-
-      // 验证重复率计算
-      const expectedDuplicateRate = (2 / 3) * 100
-      expect(
-        Math.abs(stats.duplicateRate - expectedDuplicateRate)
-      ).toBeLessThan(0.01)
     })
 
     it('应该在TTL过期后重新执行请求', async () => {
@@ -246,13 +213,6 @@ describe('IdempotentFeature - Basic Functionality', () => {
         shortTTLConfig
       )
       expect(result2).toEqual(expectedResponse)
-
-      // 验证统计信息 - 应该有两次网络请求
-      const stats = idempotentFeature.getIdempotentStats()
-      expect(stats.totalRequests).toBe(2)
-      expect(stats.actualNetworkRequests).toBe(2)
-      expect(stats.duplicatesBlocked).toBe(0)
-      expect(stats.cacheHits).toBe(0)
     })
 
     it('应该正确处理缓存清除操作', async () => {
@@ -268,12 +228,6 @@ describe('IdempotentFeature - Basic Functionality', () => {
 
       // 再次执行相同请求 - 应该重新执行网络请求
       await idempotentFeature.requestIdempotent(config)
-
-      // 验证统计信息
-      const stats = idempotentFeature.getIdempotentStats()
-      expect(stats.totalRequests).toBe(2)
-      expect(stats.actualNetworkRequests).toBe(2)
-      expect(stats.duplicatesBlocked).toBe(0)
     })
   })
 
@@ -291,11 +245,6 @@ describe('IdempotentFeature - Basic Functionality', () => {
         customTTLConfig
       )
       expect(result).toEqual(expectedResponse)
-
-      // 验证请求成功执行
-      const stats = idempotentFeature.getIdempotentStats()
-      expect(stats.totalRequests).toBe(1)
-      expect(stats.actualNetworkRequests).toBe(1)
     })
 
     it('应该支持自定义键配置', async () => {
@@ -318,12 +267,6 @@ describe('IdempotentFeature - Basic Functionality', () => {
         customKeyConfig
       )
       expect(result2).toEqual(expectedResponse)
-
-      // 验证统计信息
-      const stats = idempotentFeature.getIdempotentStats()
-      expect(stats.totalRequests).toBe(2)
-      expect(stats.actualNetworkRequests).toBe(1)
-      expect(stats.duplicatesBlocked).toBe(1)
     })
 
     it('应该支持包含头部信息的键生成', async () => {
@@ -357,84 +300,6 @@ describe('IdempotentFeature - Basic Functionality', () => {
         headersConfig
       )
       expect(result2).toEqual(expectedResponse)
-
-      // 验证统计信息 - 应该有两次网络请求（因为头部不同）
-      const stats = idempotentFeature.getIdempotentStats()
-      expect(stats.totalRequests).toBe(2)
-      expect(stats.actualNetworkRequests).toBe(2)
-      expect(stats.duplicatesBlocked).toBe(0)
-    })
-  })
-
-  describe('统计信息测试', () => {
-    it('应该正确维护统计信息', async () => {
-      const config = IDEMPOTENT_TEST_CONFIGS.BASIC_GET
-      const expectedResponse = IDEMPOTENT_TEST_RESPONSES.SUCCESS
-      mockRequestor.setUrlResponse(config.url, expectedResponse)
-
-      // 执行多次相同请求
-      await idempotentFeature.requestIdempotent(config)
-      await idempotentFeature.requestIdempotent(config)
-      await idempotentFeature.requestIdempotent(config)
-
-      const stats = idempotentFeature.getIdempotentStats()
-
-      // 使用测试断言工具验证统计信息
-      IdempotentTestAssertions.verifyStatsConsistency(stats, {
-        totalRequests: 3,
-        duplicatesBlocked: 2,
-        actualNetworkRequests: 1,
-      })
-
-      IdempotentTestAssertions.verifyCacheHits(stats, 2, 0)
-      IdempotentTestAssertions.verifyKeyGenerationTime(stats, 100) // 100ms内应该足够
-    })
-
-    it('应该能够重置统计信息', async () => {
-      const config = IDEMPOTENT_TEST_CONFIGS.BASIC_GET
-      const expectedResponse = IDEMPOTENT_TEST_RESPONSES.SUCCESS
-      mockRequestor.setUrlResponse(config.url, expectedResponse)
-
-      // 执行一些请求
-      await idempotentFeature.requestIdempotent(config)
-      await idempotentFeature.requestIdempotent(config)
-
-      // 验证统计信息不为空
-      let stats = idempotentFeature.getIdempotentStats()
-      expect(stats.totalRequests).toBeGreaterThan(0)
-
-      // 重置统计信息
-      idempotentFeature.resetStats()
-
-      // 验证统计信息已重置
-      stats = idempotentFeature.getIdempotentStats()
-      expect(stats.totalRequests).toBe(0)
-      expect(stats.duplicatesBlocked).toBe(0)
-      expect(stats.actualNetworkRequests).toBe(0)
-      expect(stats.cacheHits).toBe(0)
-      expect(stats.duplicateRate).toBe(0)
-    })
-
-    it('应该正确计算平均响应时间', async () => {
-      const config = IDEMPOTENT_TEST_CONFIGS.BASIC_GET
-      const expectedResponse = IDEMPOTENT_TEST_RESPONSES.SUCCESS
-
-      // 设置延迟以便测试响应时间
-      mockRequestor.setGlobalDelay(100)
-      mockRequestor.setUrlResponse(config.url, expectedResponse)
-
-      // 执行请求并等待所有定时器完成
-      const requestPromise = idempotentFeature.requestIdempotent(config)
-
-      // 运行所有定时器以完成延迟
-      await vi.runAllTimersAsync()
-
-      await requestPromise
-
-      // 验证响应时间统计
-      const stats = idempotentFeature.getIdempotentStats()
-      IdempotentTestAssertions.verifyResponseTimeStats(stats, 50, 200) // 50-200ms范围内
-      expect(stats.avgResponseTime).toBeGreaterThan(0)
     })
   })
 
@@ -448,16 +313,8 @@ describe('IdempotentFeature - Basic Functionality', () => {
       await idempotentFeature.requestIdempotent(config)
       await idempotentFeature.requestIdempotent(config)
 
-      // 验证有统计信息
-      let stats = idempotentFeature.getIdempotentStats()
-      expect(stats.totalRequests).toBeGreaterThan(0)
-
       // 销毁实例
       await expect(idempotentFeature.destroy()).resolves.not.toThrow()
-
-      // 验证统计信息被重置
-      stats = idempotentFeature.getIdempotentStats()
-      expect(stats.totalRequests).toBe(0)
     })
 
     it('应该正确处理销毁过程中的错误', async () => {

@@ -1,5 +1,5 @@
 import { RequestConfig, Requestor, RequestError, RequestErrorType } from '../../interface'
-import { SerialTask, SerialConfig, SerialQueueStats } from './types'
+import { SerialTask, SerialConfig } from './types'
 import { safeCloneData } from '../idempotent/utils'
 
 /**
@@ -8,15 +8,6 @@ import { safeCloneData } from '../idempotent/utils'
 export class SerialQueue {
   private tasks: SerialTask[] = [] // 任务队列
   private isProcessing = false // 是否正在处理任务
-  private stats: SerialQueueStats = {
-    totalTasks: 0,
-    pendingTasks: 0,
-    completedTasks: 0,
-    failedTasks: 0,
-    processingTime: 0,
-    isProcessing: false
-  }
-  private totalProcessingTime = 0 // 总处理时间，用于计算平均值
   private readonly serialKey: string // 队列标识
   private readonly config: SerialConfig // 队列配置
   private readonly requestor: Requestor // 请求执行器
@@ -82,8 +73,6 @@ export class SerialQueue {
 
       // 添加到队列
       this.tasks.push(task)
-      this.stats.totalTasks++
-      this.stats.pendingTasks++
 
       if (this.config.debug) {
         console.log(`[SerialQueue] Task enqueued: ${task.id} in queue: ${this.serialKey}`)
@@ -111,7 +100,6 @@ export class SerialQueue {
 
     // 设置处理状态
     this.isProcessing = true
-    this.stats.isProcessing = true
 
     const startTime = Date.now()
 
@@ -147,12 +135,6 @@ export class SerialQueue {
       const endTime = Date.now()
       const executionTime = endTime - startTime
 
-      // 更新统计信息
-      this.stats.completedTasks++
-      this.totalProcessingTime += executionTime
-      this.stats.processingTime = Math.round(this.totalProcessingTime / this.stats.completedTasks)
-      this.stats.lastProcessedAt = endTime
-
       if (this.config.debug) {
         console.log(`[SerialQueue] Task completed: ${task.id} in ${executionTime}ms`)
       }
@@ -166,15 +148,6 @@ export class SerialQueue {
 
       // 标记请求已开始（即使失败了）
       requestStarted = true
-
-      // 更新统计信息
-      this.stats.failedTasks++
-      this.totalProcessingTime += executionTime
-      const totalTasks = this.stats.completedTasks + this.stats.failedTasks
-      if (totalTasks > 0) {
-        this.stats.processingTime = Math.round(this.totalProcessingTime / totalTasks)
-      }
-      this.stats.lastProcessedAt = endTime
 
       if (this.config.debug) {
         console.log(`[SerialQueue] Task failed: ${task.id} in ${executionTime}ms`, error)
@@ -190,13 +163,8 @@ export class SerialQueue {
       // 拒绝Promise
       task.reject(error)
     } finally {
-      // 无论成功还是失败，只要请求开始了就减少待处理任务数
-      if (requestStarted) {
-        this.stats.pendingTasks--
-      }
       // 重置处理状态
       this.isProcessing = false
-      this.stats.isProcessing = false
 
       // 继续处理下一个任务
       setTimeout(() => this.processNext(), 0)
@@ -225,18 +193,10 @@ export class SerialQueue {
 
     // 重置状态
     this.tasks = []
-    this.stats.pendingTasks = 0
 
     if (this.config.debug) {
       console.log(`[SerialQueue] Queue cleared: ${this.serialKey}`)
     }
-  }
-
-  /**
-   * 获取队列统计信息
-   */
-  getStats(): SerialQueueStats {
-    return { ...this.stats }
   }
 
   /**

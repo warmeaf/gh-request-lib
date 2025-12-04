@@ -23,14 +23,3 @@ export interface ConcurrentResult<T> {
   retryCount?: number
 }
 
-/**
- * @description 并发性能统计
- */
-export interface ConcurrentStats {
-  total: number
-  completed: number
-  successful: number
-  failed: number
-  averageDuration: number
-  maxConcurrencyUsed: number
-}

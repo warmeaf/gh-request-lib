@@ -47,10 +47,6 @@ describe('ConcurrentFeature - 错误处理测试', () => {
       
       // 应该在第一个失败后立即返回，而不是等待所有请求完成
       expect(duration).toBeLessThan(100) // 远小于其他请求的延迟时间
-      
-      const callStats = mockRequestor.getCallStats()
-      // 可能有一些请求已经开始但未完成
-      expect(callStats.totalCalls).toBeLessThanOrEqual(8)
     })
 
     it('应该在failFast模式下保持错误信息', async () => {
@@ -369,20 +365,8 @@ describe('ConcurrentFeature - 错误处理测试', () => {
       // 执行一些请求以建立内部状态
       await concurrentFeature.requestConcurrent(configs, { maxConcurrency: 3 })
 
-      const statsBeforeDestroy = concurrentFeature.getConcurrentStats()
-      expect(statsBeforeDestroy.total).toBe(10)
-
       // 销毁feature
       concurrentFeature.destroy()
-
-      // 验证统计信息被重置
-      const statsAfterDestroy = concurrentFeature.getConcurrentStats()
-      expect(statsAfterDestroy.total).toBe(0)
-      expect(statsAfterDestroy.completed).toBe(0)
-      expect(statsAfterDestroy.successful).toBe(0)
-      expect(statsAfterDestroy.failed).toBe(0)
-      expect(statsAfterDestroy.averageDuration).toBe(0)
-      expect(statsAfterDestroy.maxConcurrencyUsed).toBe(0)
     })
 
     it('应该处理大量失败请求而不泄漏内存', async () => {
@@ -434,10 +418,6 @@ describe('ConcurrentFeature - 错误处理测试', () => {
 
       // 应该在第一个错误时快速失败
       await expect(requestPromise).rejects.toThrow(MockConcurrentNetworkError)
-
-      // 验证资源已被清理
-      const stats = concurrentFeature.getConcurrentStats()
-      expect(stats.completed).toBeGreaterThan(0) // 至少一些请求完成了
       
       // 销毁以确保完全清理
       concurrentFeature.destroy()
@@ -457,10 +437,6 @@ describe('ConcurrentFeature - 错误处理测试', () => {
 
       // 验证并发控制
       ConcurrentTestAssertions.verifyConcurrencyLimit(mockRequestor, 50)
-
-      // 验证统计信息
-      const stats = concurrentFeature.getConcurrentStats()
-      expect(stats.maxConcurrencyUsed).toBe(50)
 
       // 清理资源
       concurrentFeature.destroy()
@@ -580,12 +556,6 @@ describe('ConcurrentFeature - 错误处理测试', () => {
       const failureCount = result.filter(r => !r.success).length
       expect(failureCount).toBeGreaterThan(10) // 至少有一些失败
       expect(failureCount).toBeLessThan(25) // 但不是全部失败
-
-      // 系统应该仍然能够正常运行
-      const stats = concurrentFeature.getConcurrentStats()
-      expect(stats.total).toBe(50)
-      expect(stats.completed).toBe(50)
-      expect(stats.successful + stats.failed).toBe(50)
     })
   })
 })

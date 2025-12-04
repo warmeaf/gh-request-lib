@@ -121,36 +121,6 @@ export class LocalStorageAdapter<T = unknown> implements StorageAdapter<T> {
     return [...this.meta.keys]
   }
 
-  async getStats(): Promise<{
-    size: number
-    maxSize?: number
-    [key: string]: unknown
-  }> {
-    if (!this.isAvailable()) {
-      throw new Error('LocalStorage is not available')
-    }
-
-    try {
-      // 估算 LocalStorage 使用量
-      let size = 0
-      for (const key in localStorage) {
-        if (key.startsWith(LocalStorageAdapter.PREFIX)) {
-          size += localStorage[key].length
-        }
-      }
-      
-      return {
-        size: this.meta.keys.length,
-        maxSize: size
-      }
-    } catch (error) {
-      console.error('Failed to get LocalStorage stats:', error)
-      return {
-        size: this.meta.keys.length
-      }
-    }
-  }
-
   async destroy(): Promise<void> {
     if (!this.isAvailable()) {
       return

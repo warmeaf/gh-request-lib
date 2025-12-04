@@ -1,10 +1,8 @@
 // 类型定义导出
 export type {
   SerialTask,
-  SerialQueueStats,
   SerialConfig,
   SerialManagerConfig,
-  SerialManagerStats,
   TaskResult
 } from './types'
 

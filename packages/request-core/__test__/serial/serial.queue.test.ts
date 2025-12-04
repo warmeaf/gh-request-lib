@@ -25,13 +25,6 @@ describe('串行队列详细功能测试', () => {
     expect(queue.isEmpty()).toBe(true)
     expect(queue.getQueueLength()).toBe(0)
     
-    const stats = queue.getStats()
-    expect(stats.totalTasks).toBe(0)
-    expect(stats.pendingTasks).toBe(0)
-    expect(stats.completedTasks).toBe(0)
-    expect(stats.failedTasks).toBe(0)
-    expect(stats.isProcessing).toBe(false)
-    
     queue.destroy()
   })
 
@@ -159,41 +152,6 @@ describe('串行队列详细功能测试', () => {
     queue.destroy()
   })
 
-  test('应该正确更新统计信息', async () => {
-    const queue = new SerialQueue('stats-test', mockRequestor, { debug: true })
-    
-    // 初始统计
-    let stats = queue.getStats()
-    expect(stats.totalTasks).toBe(0)
-    expect(stats.completedTasks).toBe(0)
-    
-    // 执行成功的任务
-    await queue.enqueue({ url: '/api/success', method: 'GET' })
-    
-    stats = queue.getStats()
-    expect(stats.totalTasks).toBe(1)
-    expect(stats.completedTasks).toBe(1)
-    expect(stats.failedTasks).toBe(0)
-    expect(stats.processingTime).toBeGreaterThan(0)
-    expect(stats.lastProcessedAt).toBeDefined()
-    
-    // 执行失败的任务
-    mockRequestor.setFailForUrls(['/api/fail'])
-    
-    try {
-      await queue.enqueue({ url: '/api/fail', method: 'GET' })
-    } catch (error) {
-      // 预期的失败
-    }
-    
-    stats = queue.getStats()
-    expect(stats.totalTasks).toBe(2)
-    expect(stats.completedTasks).toBe(1)
-    expect(stats.failedTasks).toBe(1)
-    
-    queue.destroy()
-  })
-
   test('应该正确处理队列清空操作', async () => {
     const queue = new SerialQueue('clear-test', mockRequestor, { debug: true })
     
@@ -258,12 +216,6 @@ describe('串行队列详细功能测试', () => {
       expect(requests[i].config.url).toBe(`/api/concurrent-${i}`)
     }
     
-    // 验证统计信息
-    const stats = queue.getStats()
-    expect(stats.totalTasks).toBe(taskCount)
-    expect(stats.completedTasks).toBe(taskCount)
-    expect(stats.failedTasks).toBe(0)
-    
     queue.destroy()
   })
 
@@ -300,14 +252,10 @@ describe('串行队列详细功能测试', () => {
     // 添加一些任务
     await queue.enqueue({ url: '/api/before-destroy', method: 'GET' })
     
-    // 验证队列正常工作
-    expect(queue.getStats().completedTasks).toBe(1)
-    
     // 销毁队列
     queue.destroy()
     
     // 销毁后调用方法不应该抛出异常
-    expect(() => queue.getStats()).not.toThrow()
     expect(() => queue.isEmpty()).not.toThrow()
     expect(() => queue.getQueueLength()).not.toThrow()
     expect(() => queue.getSerialKey()).not.toThrow()
@@ -353,12 +301,6 @@ describe('串行队列详细功能测试', () => {
     expect((results[0] as any).error).toContain('Mock request failed')
     expect((results[1] as any).error).toContain('Mock request failed')
     expect((results[2] as SerialTestResponse).url).toBe('/api/success')
-    
-    // 验证统计信息正确记录成功和失败
-    const stats = queue.getStats()
-    expect(stats.completedTasks).toBe(1)
-    expect(stats.failedTasks).toBe(2)
-    expect(stats.totalTasks).toBe(3)
     
     queue.destroy()
   })

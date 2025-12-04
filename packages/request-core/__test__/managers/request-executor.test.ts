@@ -461,21 +461,6 @@ describe('RequestExecutor', () => {
     })
   })
 
-  describe('执行统计', () => {
-    it('should return executor stats', () => {
-      const stats = executor.getStats()
-
-      expect(stats.hasRequestor).toBe(true)
-      expect(stats.requestorType).toBeTruthy()
-    })
-
-    it('should track requestor type', () => {
-      const stats = executor.getStats()
-
-      expect(stats.requestorType).toBe('MockRequestor')
-    })
-  })
-
   describe('请求器信息', () => {
     it('should return requestor info', () => {
       const info = executor.getRequestorInfo()

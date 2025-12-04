@@ -1,6 +1,6 @@
 import { Requestor } from '../../interface'
 import { SerialQueue } from './queue'
-import { SerialConfig, SerialManagerConfig, SerialManagerStats } from './types'
+import { SerialConfig, SerialManagerConfig } from './types'
 
 /**
  * @description 串行请求管理器 - 管理多个串行队列
@@ -139,57 +139,6 @@ export class SerialRequestManager {
    */
   hasQueue(serialKey: string): boolean {
     return this.queues.has(serialKey)
-  }
-
-  /**
-   * 获取指定队列的统计信息
-   */
-  getQueueStats(serialKey: string) {
-    const queue = this.queues.get(serialKey)
-    return queue ? queue.getStats() : null
-  }
-
-  /**
-   * 获取管理器统计信息
-   */
-  getStats(): SerialManagerStats {
-    const queues: Record<string, any> = {}
-    let totalTasks = 0
-    let totalPendingTasks = 0
-    let totalCompletedTasks = 0
-    let totalFailedTasks = 0
-    let totalProcessingTime = 0
-    let activeQueues = 0
-
-    this.queues.forEach((queue, serialKey) => {
-      const stats = queue.getStats()
-      queues[serialKey] = stats
-
-      totalTasks += stats.totalTasks
-      totalPendingTasks += stats.pendingTasks
-      totalCompletedTasks += stats.completedTasks
-      totalFailedTasks += stats.failedTasks
-      totalProcessingTime += stats.processingTime * (stats.completedTasks + stats.failedTasks)
-
-      // 如果队列有任务或正在处理，则认为是活跃的
-      if (!queue.isEmpty() || stats.isProcessing) {
-        activeQueues++
-      }
-    })
-
-    const completedAndFailedTasks = totalCompletedTasks + totalFailedTasks
-    const avgProcessingTime = completedAndFailedTasks > 0 ? totalProcessingTime / completedAndFailedTasks : 0
-
-    return {
-      totalQueues: this.queues.size,
-      activeQueues,
-      totalTasks,
-      totalPendingTasks,
-      totalCompletedTasks,
-      totalFailedTasks,
-      avgProcessingTime: Math.round(avgProcessingTime),
-      queues
-    }
   }
 
   /**

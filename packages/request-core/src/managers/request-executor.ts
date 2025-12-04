@@ -231,19 +231,6 @@ export class RequestExecutor {
   }
 
   /**
-   * 获取执行器统计信息
-   */
-  getStats(): {
-    requestorType: string
-    hasRequestor: boolean
-  } {
-    return {
-      requestorType: this.requestor.constructor.name,
-      hasRequestor: !!this.requestor
-    }
-  }
-
-  /**
    * 测试连接（发送一个简单的OPTIONS请求）
    */
   async testConnection(baseUrl?: string): Promise<boolean> {

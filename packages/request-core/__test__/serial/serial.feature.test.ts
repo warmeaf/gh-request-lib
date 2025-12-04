@@ -26,7 +26,6 @@ describe('串行请求功能类测试', () => {
     })
 
     expect(feature.isEnabled()).toBe(true)
-    expect(feature.getStats()).toBeDefined()
     expect(feature.getQueueKeys()).toEqual([])
     
     feature.destroy()
@@ -56,9 +55,8 @@ describe('串行请求功能类测试', () => {
     expect((serialResult as SerialTestResponse).url).toBe('/api/serial')
     expect((serialResult as SerialTestResponse).serialKey).toBe('handle-test')
     
-    // 验证队列统计
-    const stats = feature.getStats()
-    expect(stats.totalCompletedTasks).toBe(1) // 只有串行请求会被统计
+    // 验证队列被创建
+    expect(feature.hasQueue('handle-test')).toBe(true)
     
     feature.destroy()
   })
@@ -172,18 +170,6 @@ describe('串行请求功能类测试', () => {
     expect(queueKeys).toContain(queue2)
     expect(queueKeys).toHaveLength(2)
     
-    // 获取队列统计
-    const queue1Stats = feature.getQueueStats(queue1)
-    const queue2Stats = feature.getQueueStats(queue2)
-    expect(queue1Stats).toBeDefined()
-    expect(queue1Stats!.completedTasks).toBe(2)
-    expect(queue2Stats).toBeDefined()
-    expect(queue2Stats!.completedTasks).toBe(1)
-    
-    // 获取不存在队列的统计
-    const nonExistentStats = feature.getQueueStats('non-existent')
-    expect(nonExistentStats).toBeNull()
-    
     // 清空特定队列
     const cleared1 = feature.clearQueue(queue1)
     expect(cleared1).toBe(true)
@@ -262,11 +248,6 @@ describe('串行请求功能类测试', () => {
     // 手动触发清理
     feature.cleanup()
     
-    // 由于队列是空的，应该被清理掉
-    // 注意：这取决于具体的清理实现
-    const stats = feature.getStats()
-    expect(stats).toBeDefined()
-    
     feature.destroy()
   })
 
@@ -287,7 +268,6 @@ describe('串行请求功能类测试', () => {
     feature.destroy()
     
     // 销毁后调用方法不应该抛出异常
-    expect(() => feature.getStats()).not.toThrow()
     expect(() => feature.getQueueKeys()).not.toThrow()
     expect(() => feature.isEnabled()).not.toThrow()
   })

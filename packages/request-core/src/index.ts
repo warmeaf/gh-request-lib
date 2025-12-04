@@ -11,8 +11,7 @@ export type {
   PaginationParams,
   PaginatedResponse,
   RestfulOptions,
-  IdempotentConfig,
-  IdempotentStats
+  IdempotentConfig
 } from './interface'
 export { RequestError, RequestErrorType } from './interface'
 export type { RetryConfig } from './features/retry'

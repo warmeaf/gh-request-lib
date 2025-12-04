@@ -64,15 +64,6 @@ export interface StorageAdapter<T = unknown> {
   getKeys(): Promise<string[]>
 
   /**
-   * 获取存储统计信息
-   */
-  getStats(): Promise<{
-    size: number
-    maxSize?: number
-    [key: string]: unknown
-  }>
-
-  /**
    * 销毁存储适配器，清理资源
    */
   destroy(): Promise<void>

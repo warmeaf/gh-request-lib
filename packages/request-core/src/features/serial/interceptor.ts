@@ -120,13 +120,6 @@ export class SerialRequestInterceptor {
   }
 
   /**
-   * 获取管理器统计信息
-   */
-  getStats() {
-    return this.serialManager.getStats()
-  }
-
-  /**
    * 清空指定队列
    */
   clearQueue(serialKey: string): boolean {

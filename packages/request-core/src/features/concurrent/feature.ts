@@ -1,19 +1,10 @@
 import { Requestor, RequestConfig, RequestError } from '../../interface'
 import { LogFormatter } from '../../utils/error-handler'
-import { ConcurrentConfig, ConcurrentResult, ConcurrentStats } from './types'
+import { ConcurrentConfig, ConcurrentResult } from './types'
 import { Semaphore } from './semaphore'
 import { ResultCollector } from './collector'
 
 export class ConcurrentFeature {
-  private stats: ConcurrentStats = {
-    total: 0,
-    completed: 0,
-    successful: 0,
-    failed: 0,
-    averageDuration: 0,
-    maxConcurrencyUsed: 0,
-  }
-  private durations: number[] = []
   private activeSemaphores: Set<Semaphore> = new Set()
 
   constructor(private requestor: Requestor) {}
@@ -48,10 +39,7 @@ export class ConcurrentFeature {
     failFast: boolean,
     timeout?: number
   ): Promise<ConcurrentResult<T>[]> {
-    this.resetStats(configs.length)
-
     const collector = new ResultCollector<T>(configs.length)
-    const startTime = Date.now()
 
     const tasks = configs.map((config, index) =>
       this.executeSingleRequest<T>(config, index, configs.length, collector, failFast)
@@ -62,9 +50,6 @@ export class ConcurrentFeature {
     } catch (error) {
       this.handleTimeoutError(error, failFast, timeout)
     }
-
-    this.stats.maxConcurrencyUsed = configs.length
-    this.updateFinalStats(Date.now() - startTime, configs.length)
 
     return collector.getResults()
   }
@@ -79,12 +64,9 @@ export class ConcurrentFeature {
       throw new RequestError('Max concurrency must be positive')
     }
 
-    this.resetStats(configs.length)
-
     const semaphore = new Semaphore(maxConcurrency)
     this.activeSemaphores.add(semaphore)
     const collector = new ResultCollector<T>(configs.length)
-    const startTime = Date.now()
 
     const tasks = configs.map((config, index) =>
       this.executeSingleRequest<T>(config, index, configs.length, collector, failFast, {
@@ -102,8 +84,6 @@ export class ConcurrentFeature {
       
       this.handleTimeoutError(error, failFast, timeout)
     }
-
-    this.updateFinalStats(Date.now() - startTime, maxConcurrency)
 
     this.activeSemaphores.delete(semaphore)
     semaphore.destroy()
@@ -195,14 +175,8 @@ export class ConcurrentFeature {
       if (semaphore) {
         await semaphore.acquire()
 
-        // 更新并发数统计
         if (maxConcurrency !== undefined) {
           const currentConcurrency = maxConcurrency - semaphore.available()
-          this.stats.maxConcurrencyUsed = Math.max(
-            this.stats.maxConcurrencyUsed,
-            currentConcurrency
-          )
-
           console.log(
             LogFormatter.formatConcurrentLog('start', index, total, config.url, {
               'active requests': currentConcurrency,
@@ -247,9 +221,6 @@ export class ConcurrentFeature {
       console.log(
         LogFormatter.formatConcurrentLog('complete', index, total, config.url, logExtra)
       )
-
-      // 更新成功统计
-      this.updateSuccessStats(duration)
     } catch (error) {
       // 计算持续时间
       // 如果在请求执行过程中出错，计算从请求开始到出错的时间
@@ -281,9 +252,6 @@ export class ConcurrentFeature {
         retryCount: 0,
       }
       collector.setResult(index, result)
-
-      // 更新失败统计
-      this.updateFailureStats(duration)
     } finally {
       // 如果有信号量，需要释放
       if (semaphore) {
@@ -307,49 +275,6 @@ export class ConcurrentFeature {
     }))
 
     return this.requestConcurrent<T>(configs, concurrentConfig)
-  }
-
-  private resetStats(total: number): void {
-    this.stats = {
-      total,
-      completed: 0,
-      successful: 0,
-      failed: 0,
-      averageDuration: 0,
-      maxConcurrencyUsed: 0,
-    }
-    this.durations = []
-  }
-
-  private updateSuccessStats(duration: number): void {
-    this.stats.completed++
-    this.stats.successful++
-    this.durations.push(duration)
-    this.updateAverageDuration()
-  }
-
-  private updateFailureStats(duration: number): void {
-    this.stats.completed++
-    this.stats.failed++
-    this.durations.push(duration)
-    this.updateAverageDuration()
-  }
-
-  private updateAverageDuration(): void {
-    if (this.durations.length > 0) {
-      this.stats.averageDuration = Math.round(
-        this.durations.reduce((sum, d) => sum + d, 0) / this.durations.length
-      )
-    }
-  }
-
-  private updateFinalStats(totalTime: number, maxConcurrency: number): void {
-    console.log(
-      `[Concurrent] Batch completed: ${this.stats.successful}/${this.stats.total} successful, ` +
-        `avg duration: ${this.stats.averageDuration}ms, ` +
-        `max concurrency used: ${this.stats.maxConcurrencyUsed}/${maxConcurrency}, ` +
-        `total time: ${totalTime}ms`
-    )
   }
 
   getSuccessfulResults<T>(results: ConcurrentResult<T>[]): T[] {
@@ -378,50 +303,10 @@ export class ConcurrentFeature {
     return results.some((result) => !result.success)
   }
 
-  getConcurrentStats(): ConcurrentStats {
-    return { ...this.stats }
-  }
-
-  getResultsStats<T>(results: ConcurrentResult<T>[]): {
-    total: number
-    successful: number
-    failed: number
-    averageDuration: number
-    minDuration: number
-    maxDuration: number
-    successRate: number
-  } {
-    const successful = results.filter((r) => r.success)
-    const failed = results.filter((r) => !r.success)
-    // 只统计成功请求的执行时间，失败请求的时间不计入统计
-    const durations = successful.map((r) => r.duration || 0).filter((d) => d > 0)
-
-    return {
-      total: results.length,
-      successful: successful.length,
-      failed: failed.length,
-      averageDuration:
-        durations.length > 0
-          ? Math.round(
-              durations.reduce((sum, d) => sum + d, 0) / durations.length
-            )
-          : 0,
-      minDuration: durations.length > 0 ? Math.min(...durations) : 0,
-      maxDuration: durations.length > 0 ? Math.max(...durations) : 0,
-      successRate:
-        results.length > 0
-          ? Math.round((successful.length / results.length) * 100)
-          : 0,
-    }
-  }
-
   destroy(): void {
     this.activeSemaphores.forEach((semaphore) => {
       semaphore.destroy()
     })
     this.activeSemaphores.clear()
-
-    this.resetStats(0)
-    this.durations = []
   }
 }

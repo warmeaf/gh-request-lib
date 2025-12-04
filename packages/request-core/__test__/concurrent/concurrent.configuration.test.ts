@@ -86,8 +86,6 @@ describe('ConcurrentFeature - 配置相关测试', () => {
 
       // 应该表现为无限制并发
       expect(duration).toBeLessThan(100) // 接近单个请求时间
-      const stats = mockRequestor.getCallStats()
-      expect(stats.maxActiveCalls).toBe(3) // 所有请求同时执行
     })
 
     it('应该拒绝无效的并发限制配置', async () => {
@@ -339,10 +337,6 @@ describe('ConcurrentFeature - 配置相关测试', () => {
       expect(result).toHaveLength(5)
       ConcurrentTestAssertions.verifyResultCompleteness(result, 5)
       ConcurrentTestAssertions.verifySuccessRate(result, 5)
-
-      // 应该表现为无限制并发
-      const stats = mockRequestor.getCallStats()
-      expect(stats.maxActiveCalls).toBe(5)
     })
 
     it('应该使用合理的默认配置', async () => {
@@ -355,10 +349,6 @@ describe('ConcurrentFeature - 配置相关测试', () => {
       expect(result).toHaveLength(4)
       ConcurrentTestAssertions.verifyResultCompleteness(result, 4)
       ConcurrentTestAssertions.verifySuccessRate(result, 4)
-
-      // 验证默认为无限制并发
-      const stats = mockRequestor.getCallStats()
-      expect(stats.maxActiveCalls).toBe(4)
     })
 
     it('应该处理部分配置提供的情况', async () => {
@@ -402,10 +392,6 @@ describe('ConcurrentFeature - 配置相关测试', () => {
 
       expect(result).toHaveLength(5)
       ConcurrentTestAssertions.verifyResultCompleteness(result, 5)
-      
-      // 应该表现为无限制并发
-      const stats = mockRequestor.getCallStats()
-      expect(stats.maxActiveCalls).toBe(5)
     })
 
     it('应该处理极大的超时值', async () => {

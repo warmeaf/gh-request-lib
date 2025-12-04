@@ -28,13 +28,6 @@ export interface CacheKeyConfig {
 interface HashContext {
   seed: number
   cache: Map<string, string>
-  stats: {
-    cacheHits: number
-    cacheMisses: number
-    totalGenerations: number
-    totalGenerationTime: number
-    lastCleanupTime: number
-  }
 }
 
 /**
@@ -70,14 +63,7 @@ export class CacheKeyGenerator {
 
     this.context = {
       seed: 0x9e3779b1, // 固定种子（黄金分割比例），确保幂等键一致性
-      cache: new Map(),
-      stats: {
-        cacheHits: 0,
-        cacheMisses: 0,
-        totalGenerations: 0,
-        totalGenerationTime: 0,
-        lastCleanupTime: 0
-      }
+      cache: new Map()
     }
   }
 
@@ -85,14 +71,9 @@ export class CacheKeyGenerator {
    * 生成缓存键
    */
   generateCacheKey(config: RequestConfig, customKey?: string): string {
-    const startTime = performance.now()
-    this.context.stats.totalGenerations++
-
     // 使用自定义键
     if (customKey !== undefined) {
-      const result = this.validateAndNormalizeKey(customKey)
-      this.context.stats.totalGenerationTime += performance.now() - startTime
-      return result
+      return this.validateAndNormalizeKey(customKey)
     }
 
     // 构建键组件
@@ -104,7 +85,6 @@ export class CacheKeyGenerator {
     // 长度检查和哈希缩短
     const finalKey = key.length > this.config.maxKeyLength ? this.hashLongKey(key, config) : key
 
-    this.context.stats.totalGenerationTime += performance.now() - startTime
     return finalKey
   }
 
@@ -331,7 +311,6 @@ export class CacheKeyGenerator {
     
     // 检查哈希缓存
     if (this.config.enableHashCache && this.context.cache.has(cacheKey)) {
-      this.context.stats.cacheHits++
       return this.context.cache.get(cacheKey)!
     }
 
@@ -348,7 +327,6 @@ export class CacheKeyGenerator {
     // 缓存结果
     if (this.config.enableHashCache) {
       this.context.cache.set(cacheKey, hash)
-      this.context.stats.cacheMisses++
       
       // 防止缓存过大
       if (this.context.cache.size > 1000) {
@@ -617,38 +595,6 @@ export class CacheKeyGenerator {
 
     for (let i = entries.length - keepCount; i < entries.length; i++) {
       cache.set(entries[i][0], entries[i][1])
-    }
-
-    this.context.stats.lastCleanupTime = Date.now()
-  }
-
-  /**
-   * 获取统计信息（简化版，仅保留核心指标）
-   */
-  getStats() {
-    const baseStats = this.context.stats
-    const totalGenerations = baseStats.totalGenerations
-    return {
-      totalGenerations,
-      cacheHits: baseStats.cacheHits,
-      cacheMisses: baseStats.cacheMisses,
-      hitRate: totalGenerations > 0
-        ? Number((baseStats.cacheHits / totalGenerations * 100).toFixed(2))
-        : 0,
-      cacheSize: this.context.cache.size
-    }
-  }
-
-  /**
-   * 重置统计信息
-   */
-  resetStats(): void {
-    this.context.stats = {
-      cacheHits: 0,
-      cacheMisses: 0,
-      totalGenerations: 0,
-      totalGenerationTime: 0,
-      lastCleanupTime: 0
     }
   }
 

@@ -26,7 +26,6 @@ describe('Storage Adapters Tests', () => {
       expect(typeof mockAdapter.removeItem).toBe('function')
       expect(typeof mockAdapter.clear).toBe('function')
       expect(typeof mockAdapter.getKeys).toBe('function')
-      expect(typeof mockAdapter.getStats).toBe('function')
       expect(typeof mockAdapter.destroy).toBe('function')
       expect(typeof mockAdapter.getType).toBe('function')
     })
@@ -52,10 +51,6 @@ describe('Storage Adapters Tests', () => {
       const keys = await mockAdapter.getKeys()
       expect(keys).toContain('test-key')
 
-      // Get stats
-      const stats = await mockAdapter.getStats()
-      expect(stats.size).toBe(1)
-
       // Remove item
       await mockAdapter.removeItem('test-key')
       
@@ -74,14 +69,8 @@ describe('Storage Adapters Tests', () => {
         await mockAdapter.setItem(item)
       }
 
-      let stats = await mockAdapter.getStats()
-      expect(stats.size).toBe(2)
-
       // Clear all
       await mockAdapter.clear()
-
-      stats = await mockAdapter.getStats()
-      expect(stats.size).toBe(0)
 
       const keys = await mockAdapter.getKeys()
       expect(keys).toHaveLength(0)
@@ -161,8 +150,8 @@ describe('Storage Adapters Tests', () => {
         expect(result).toEqual(items[index])
       })
 
-      const stats = await memoryAdapter.getStats()
-      expect(stats.size).toBe(items.length)
+      const keys = await memoryAdapter.getKeys()
+      expect(keys).toHaveLength(items.length)
     })
 
     it('should handle large data correctly', async () => {
@@ -430,7 +419,6 @@ describe('Storage Adapters Tests', () => {
       expect(typeof indexedDBAdapter.removeItem).toBe('function')
       expect(typeof indexedDBAdapter.clear).toBe('function')
       expect(typeof indexedDBAdapter.getKeys).toBe('function')
-      expect(typeof indexedDBAdapter.getStats).toBe('function')
       expect(typeof indexedDBAdapter.destroy).toBe('function')
     })
   })
@@ -468,8 +456,8 @@ describe('Storage Adapters Tests', () => {
       console.log(`Memory adapter - Insert: ${insertTime}ms, Read: ${readTime}ms`)
 
       // Verify all items were stored
-      const stats = await memoryAdapter.getStats()
-      expect(stats.size).toBe(testData.length)
+      const keys = await memoryAdapter.getKeys()
+      expect(keys).toHaveLength(testData.length)
 
       // Performance should be reasonable (adjust thresholds as needed)
       expect(insertTime).toBeLessThan(1000) // Less than 1 second for 1000 items
@@ -493,8 +481,8 @@ describe('Storage Adapters Tests', () => {
 
       console.log(`Memory adapter - Clear: ${clearTime}ms`)
 
-      const stats = await memoryAdapter.getStats()
-      expect(stats.size).toBe(0)
+      const keys = await memoryAdapter.getKeys()
+      expect(keys).toHaveLength(0)
 
       // Clear should be fast
       expect(clearTime).toBeLessThan(100)
@@ -521,7 +509,6 @@ describe('Storage Adapters Tests', () => {
       await expect(failingAdapter.removeItem('test')).rejects.toThrow()
       await expect(failingAdapter.clear()).rejects.toThrow()
       await expect(failingAdapter.getKeys()).rejects.toThrow()
-      await expect(failingAdapter.getStats()).rejects.toThrow()
       await expect(failingAdapter.destroy()).rejects.toThrow()
     })
 
@@ -535,8 +522,8 @@ describe('Storage Adapters Tests', () => {
       }
 
       // Verify partial success
-      const stats = await memoryAdapter.getStats()
-      expect(stats.size).toBe(5)
+      const keys = await memoryAdapter.getKeys()
+      expect(keys).toHaveLength(5)
 
       // Items that were added should be retrievable
       for (let i = 0; i < 5; i++) {
@@ -585,7 +572,6 @@ describe('Storage Adapters Tests', () => {
         await adapter.setItem(testItem)
         await adapter.getItem('type-test')
         await adapter.getKeys()
-        await adapter.getStats()
         await adapter.removeItem('type-test')
         
         // Type should remain consistent

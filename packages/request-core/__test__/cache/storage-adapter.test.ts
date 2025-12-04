@@ -659,10 +659,6 @@ class MockStorageAdapter implements StorageAdapter<any> {
         return Array.from(this.storage.keys())
     }
 
-    async getStats(): Promise<{ size: number; maxSize?: number }> {
-        return { size: this.storage.size }
-    }
-
     async destroy(): Promise<void> {
         this.storage.clear()
     }
@@ -683,7 +679,6 @@ describe('StorageAdapter Interface', () => {
         expect(typeof adapter.removeItem).toBe('function')
         expect(typeof adapter.clear).toBe('function')
         expect(typeof adapter.getKeys).toBe('function')
-        expect(typeof adapter.getStats).toBe('function')
         expect(typeof adapter.destroy).toBe('function')
     })
 
@@ -707,10 +702,6 @@ describe('StorageAdapter Interface', () => {
         // 获取所有键
         const keys = await adapter.getKeys()
         expect(keys).toContain('test-key')
-
-        // 获取统计信息
-        const stats = await adapter.getStats()
-        expect(stats.size).toBe(1)
 
         // 删除项目
         await adapter.removeItem('test-key')
@@ -740,13 +731,7 @@ describe('StorageAdapter Interface', () => {
         await adapter.setItem(item1)
         await adapter.setItem(item2)
 
-        let stats = await adapter.getStats()
-        expect(stats.size).toBe(2)
-
         await adapter.clear()
-
-        stats = await adapter.getStats()
-        expect(stats.size).toBe(0)
 
         const keys = await adapter.getKeys()
         expect(keys).toHaveLength(0)
@@ -765,7 +750,7 @@ describe('StorageAdapter Interface', () => {
         await adapter.setItem(item)
         await adapter.destroy()
 
-        const stats = await adapter.getStats()
-        expect(stats.size).toBe(0)
+        const keys = await adapter.getKeys()
+        expect(keys).toHaveLength(0)
     })
 })

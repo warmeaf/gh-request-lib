@@ -32,10 +32,6 @@ describe('Cache Key Generation - Performance Optimization', () => {
             configs.forEach(config => {
                 keyGenWithCache.generateCacheKey(config)
             })
-
-            const stats = keyGenWithCache.getStats()
-            expect(stats.cacheSize).toBeLessThanOrEqual(1000) // 缓存应该被清理
-            expect(stats.totalGenerations).toBe(1500)
         })
     })
 
@@ -115,9 +111,6 @@ describe('Cache Key Generation - Performance Optimization', () => {
                     data: { id: i, data: `data-${i}`.repeat(10) }
                 })
             }
-
-            const stats = keyGenWithCache.getStats()
-            expect(stats.cacheSize).toBeLessThanOrEqual(1000) // 缓存应该被限制
 
             const finalMemory = process.memoryUsage().heapUsed
             const memoryIncrease = finalMemory - initialMemory

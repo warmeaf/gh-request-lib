@@ -1,5 +1,5 @@
 import { vi } from 'vitest'
-import { RequestConfig, Requestor, RequestError, RequestErrorType, IdempotentConfig, IdempotentStats } from '../../src/interface'
+import { RequestConfig, Requestor, RequestError, RequestErrorType, IdempotentConfig } from '../../src/interface'
 import { IdempotentFeature } from '../../src/features/idempotent'
 import { CacheItem } from '../../src/features/idempotent/types'
 
@@ -176,18 +176,6 @@ export class IdempotentMockRequestor implements Requestor {
     return new Promise(resolve => setTimeout(resolve, ms))
   }
 
-  // 获取调用统计信息
-  getCallStats() {
-    const idempotentCalls = this.calls.filter(call => call.fromIdempotent)
-    return {
-      totalCalls: this.callCount,
-      callsRecorded: this.calls.length,
-      idempotentCalls: idempotentCalls.length,
-      regularCalls: this.calls.length - idempotentCalls.length,
-      averageCallTime: 0 // 简化实现
-    }
-  }
-
   // 获取调用历史
   getCallHistory() {
     return [...this.calls]
@@ -283,84 +271,7 @@ export class IdempotentTestDataGenerator {
 
 // 断言和验证工具
 export class IdempotentTestAssertions {
-  // 验证幂等统计信息的一致性
-  static verifyStatsConsistency(
-    stats: IdempotentStats,
-    expectedTotals: {
-      totalRequests: number
-      duplicatesBlocked: number
-      actualNetworkRequests: number
-    }
-  ): boolean {
-    if (stats.totalRequests !== expectedTotals.totalRequests) {
-      throw new Error(`Expected ${expectedTotals.totalRequests} total requests, got ${stats.totalRequests}`)
-    }
-
-    if (stats.duplicatesBlocked !== expectedTotals.duplicatesBlocked) {
-      throw new Error(`Expected ${expectedTotals.duplicatesBlocked} duplicates blocked, got ${stats.duplicatesBlocked}`)
-    }
-
-    if (stats.actualNetworkRequests !== expectedTotals.actualNetworkRequests) {
-      throw new Error(`Expected ${expectedTotals.actualNetworkRequests} network requests, got ${stats.actualNetworkRequests}`)
-    }
-
-    // 验证重复率计算
-    const expectedDuplicateRate = expectedTotals.totalRequests > 0 
-      ? (expectedTotals.duplicatesBlocked / expectedTotals.totalRequests) * 100
-      : 0
-    
-    const rateDiff = Math.abs(stats.duplicateRate - expectedDuplicateRate)
-    if (rateDiff > 0.01) { // 允许0.01的误差
-      throw new Error(`Expected duplicate rate ${expectedDuplicateRate}%, got ${stats.duplicateRate}%`)
-    }
-
-    return true
-  }
-
-  // 验证缓存命中情况
-  static verifyCacheHits(
-    stats: IdempotentStats,
-    expectedCacheHits: number,
-    expectedPendingReused: number = 0
-  ): boolean {
-    if (stats.cacheHits !== expectedCacheHits) {
-      throw new Error(`Expected ${expectedCacheHits} cache hits, got ${stats.cacheHits}`)
-    }
-
-    if (stats.pendingRequestsReused !== expectedPendingReused) {
-      throw new Error(`Expected ${expectedPendingReused} pending requests reused, got ${stats.pendingRequestsReused}`)
-    }
-
-    return true
-  }
-
-  // 验证键生成时间合理性
-  static verifyKeyGenerationTime(stats: IdempotentStats, maxExpectedTime: number = 10): boolean {
-    if (stats.keyGenerationTime > maxExpectedTime) {
-      throw new Error(`Key generation time ${stats.keyGenerationTime}ms exceeds maximum expected ${maxExpectedTime}ms`)
-    }
-
-    if (stats.keyGenerationTime < 0) {
-      throw new Error(`Invalid key generation time: ${stats.keyGenerationTime}ms`)
-    }
-
-    return true
-  }
-
-  // 验证响应时间统计
-  static verifyResponseTimeStats(
-    stats: IdempotentStats,
-    minExpected: number = 0,
-    maxExpected: number = 10000
-  ): boolean {
-    if (stats.avgResponseTime < minExpected || stats.avgResponseTime > maxExpected) {
-      throw new Error(
-        `Average response time ${stats.avgResponseTime}ms is outside expected range [${minExpected}, ${maxExpected}]`
-      )
-    }
-
-    return true
-  }
+  // 占位类，保留用于未来扩展
 }
 
 // 性能和时序测试工具
@@ -370,13 +281,12 @@ export class IdempotentPerformanceHelper {
     idempotentFeature: IdempotentFeature,
     config: RequestConfig,
     idempotentConfig?: IdempotentConfig
-  ): Promise<{ result: T; duration: number; stats: IdempotentStats }> {
+  ): Promise<{ result: T; duration: number }> {
     const start = Date.now()
     const result = await idempotentFeature.requestIdempotent<T>(config, idempotentConfig)
     const duration = Date.now() - start
-    const stats = idempotentFeature.getIdempotentStats()
     
-    return { result, duration, stats }
+    return { result, duration }
   }
 
   // 并发幂等请求测试
@@ -388,8 +298,6 @@ export class IdempotentPerformanceHelper {
   ): Promise<{
     results: T[]
     totalDuration: number
-    stats: IdempotentStats
-    duplicatesDetected: number
   }> {
     const start = Date.now()
     
@@ -399,16 +307,10 @@ export class IdempotentPerformanceHelper {
     
     const results = await Promise.all(promises)
     const totalDuration = Date.now() - start
-    const stats = idempotentFeature.getIdempotentStats()
-    
-    // 计算检测到的重复请求数量
-    const duplicatesDetected = stats.duplicatesBlocked
     
     return {
       results,
-      totalDuration,
-      stats,
-      duplicatesDetected
+      totalDuration
     }
   }
 
@@ -421,7 +323,6 @@ export class IdempotentPerformanceHelper {
     withCacheDuration: number
     withoutCacheDuration: number
     performanceImprovement: number
-    cacheHitRate: number
   }> {
     // 测试有缓存的情况
     const idempotentFeature = createIdempotentFeature()
@@ -432,7 +333,6 @@ export class IdempotentPerformanceHelper {
     }
     
     const withCacheDuration = Date.now() - withCacheStart
-    const cacheStats = idempotentFeature.getIdempotentStats()
     
     // 清理缓存，重新测试（模拟无缓存情况）
     await idempotentFeature.clearIdempotentCache()
@@ -446,13 +346,11 @@ export class IdempotentPerformanceHelper {
     const withoutCacheDuration = Date.now() - withoutCacheStart
     
     const performanceImprovement = withoutCacheDuration / withCacheDuration
-    const cacheHitRate = requestCount > 0 ? (cacheStats.cacheHits / requestCount) * 100 : 0
     
     return {
       withCacheDuration,
       withoutCacheDuration,
-      performanceImprovement,
-      cacheHitRate
+      performanceImprovement
     }
   }
 }

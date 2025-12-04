@@ -80,18 +80,6 @@ export class CacheFeature {
   }
 
   /**
-   * 安全地获取存储统计信息，统一处理错误
-   */
-  private async safeGetStats(): Promise<{ size: number; [key: string]: unknown } | null> {
-    try {
-      return await this.storageAdapter.getStats()
-    } catch (error) {
-      this.handleStorageError('get stats', 'stats', error, 'using default values')
-      return null
-    }
-  }
-
-  /**
    * 降级到内存存储适配器
    */
   private fallbackToMemoryStorage(reason: string): MemoryStorageAdapter {
@@ -400,14 +388,10 @@ export class CacheFeature {
       // 在添加新缓存项后立即检查是否需要清理
       await this.incrementalCleanupIfNeeded()
 
-      const stats = await this.safeGetStats()
-      if (stats) {
-        this.logCacheEvent('set', cacheKey, {
-          ttl: `${Math.round(ttl / 1000)}s`,
-          'cache size': stats.size,
-          'max entries': this.maxEntries,
-        })
-      }
+      this.logCacheEvent('set', cacheKey, {
+        ttl: `${Math.round(ttl / 1000)}s`,
+        'max entries': this.maxEntries,
+      })
     } catch (error) {
       // 缓存存储失败，但不影响数据返回
       this.logCacheEvent('error', cacheKey, {
@@ -434,27 +418,11 @@ export class CacheFeature {
         return // 移除失败时，不需要继续获取统计信息
       }
 
-      // 获取统计信息并记录，失败时只记录错误
-      if (existed) {
-        const stats = await this.safeGetStats()
-        if (stats) {
-          this.logCacheEvent('clear', key, {
-            'remaining items': stats.size,
-          })
-        }
-      }
     } else {
       // 清除所有缓存
-      const stats = await this.safeGetStats()
-      const previousSize = stats ? stats.size : 0
-
       try {
         await this.storageAdapter.clear()
-        if (previousSize > 0) {
-          this.logCacheEvent('clear', 'all items', {
-            'cleared count': previousSize,
-          })
-        }
+        this.logCacheEvent('clear', 'all items', {})
       } catch (error) {
         this.handleStorageError('clear all items', 'clear all', error, 'clear operation failed')
       }
@@ -501,41 +469,12 @@ export class CacheFeature {
     }
   }
 
-  async getCacheStats(): Promise<{
-    size: number
-    maxEntries: number
-    hitRate?: number
-    keyGeneratorStats: ReturnType<CacheKeyGenerator['getStats']>
-    lastCleanup: number
-    cleanupInterval: number
-    storageType: StorageType
-  }> {
-    const stats = await this.safeGetStats()
-    
-    return {
-      size: stats?.size || 0,
-      maxEntries: this.maxEntries,
-      keyGeneratorStats: this.keyGenerator.getStats(),
-      lastCleanup: this.lastCleanupTime,
-      cleanupInterval: this.cleanupInterval,
-      storageType: this.storageAdapter.getType(),
-    }
-  }
-
-  getKeyGeneratorStats() {
-    return this.keyGenerator.getStats()
-  }
-
   updateKeyGeneratorConfig(config: Partial<CacheKeyConfig>): void {
     this.keyGenerator.updateConfig(config)
   }
 
   clearKeyGeneratorCache(): void {
     this.keyGenerator.clearCache()
-  }
-
-  resetKeyGeneratorStats(): void {
-    this.keyGenerator.resetStats()
   }
 
   warmupKeyGeneratorCache(configs: RequestConfig[]): void {

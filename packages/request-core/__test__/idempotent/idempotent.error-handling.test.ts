@@ -49,11 +49,6 @@ describe('IdempotentFeature - Error Handling', () => {
         expect(reqError.message).toContain('Network connection failed')
         expect(reqError.type).toBe(RequestErrorType.NETWORK_ERROR)
       }
-
-      // 验证统计信息记录了错误
-      const stats = idempotentFeature.getIdempotentStats()
-      expect(stats.totalRequests).toBe(1)
-      expect(stats.actualNetworkRequests).toBe(1)
     })
 
     it('应该处理HTTP状态错误', async () => {
@@ -149,12 +144,6 @@ describe('IdempotentFeature - Error Handling', () => {
       // 第二次请求应该成功（失败的请求不应该被缓存）
       const result = await idempotentFeature.requestIdempotent(config)
       expect(result).toEqual(IDEMPOTENT_TEST_RESPONSES.SUCCESS)
-
-      // 验证统计信息
-      const stats = idempotentFeature.getIdempotentStats()
-      expect(stats.totalRequests).toBe(2)
-      expect(stats.actualNetworkRequests).toBe(2)
-      expect(stats.cacheHits).toBe(0)
     })
   })
 
@@ -284,9 +273,6 @@ describe('IdempotentFeature - Error Handling', () => {
       // 执行请求 - 即使缓存有问题，请求也应该成功
       const result = await idempotentFeature.requestIdempotent(config)
       expect(result).toEqual(expectedResponse)
-
-      const stats = idempotentFeature.getIdempotentStats()
-      expect(stats.actualNetworkRequests).toBe(1)
     })
 
     it('应该处理缓存清理操作的错误', async () => {
@@ -346,12 +332,6 @@ describe('IdempotentFeature - Error Handling', () => {
         problematicConfig
       )
       expect(result2).toEqual(expectedResponse)
-
-      const stats = idempotentFeature.getIdempotentStats()
-      expect(stats.totalRequests).toBe(2)
-      // 由于使用fallback键，仍然应该有缓存效果
-      expect(stats.actualNetworkRequests).toBe(1)
-      expect(stats.cacheHits).toBe(1)
     })
 
     it('应该记录键生成失败的警告', async () => {
@@ -407,11 +387,6 @@ describe('IdempotentFeature - Error Handling', () => {
       results.forEach((result) => {
         expect(result).toEqual(IDEMPOTENT_TEST_RESPONSES.SUCCESS)
       })
-
-      const stats = idempotentFeature.getIdempotentStats()
-      expect(stats.actualNetworkRequests).toBe(1) // 只有一次实际网络请求
-      expect(stats.totalRequests).toBe(3) // 总共3次请求
-      expect(stats.duplicatesBlocked).toBe(2) // 2次重复被阻止
     })
 
     it('应该处理并发请求中pending请求失败的情况', async () => {
@@ -434,10 +409,6 @@ describe('IdempotentFeature - Error Handling', () => {
       for (const promise of promises) {
         await expect(promise).rejects.toThrow(RequestError)
       }
-
-      const stats = idempotentFeature.getIdempotentStats()
-      expect(stats.actualNetworkRequests).toBe(1) // 只有一次实际网络请求
-      expect(stats.pendingRequestsReused).toBe(2) // 两个请求复用了pending请求
     })
   })
 
@@ -467,9 +438,6 @@ describe('IdempotentFeature - Error Handling', () => {
 
       // 验证回调被调用了，但错误被捕获
       expect(faultyCallback).toHaveBeenCalledTimes(1)
-
-      const stats = idempotentFeature.getIdempotentStats()
-      expect(stats.cacheHits).toBe(1)
     })
 
     it('应该记录回调错误的警告', async () => {
@@ -512,25 +480,6 @@ describe('IdempotentFeature - Error Handling', () => {
       // destroy即使遇到内部错误也不应该抛出异常到用户代码
       await expect(idempotentFeature.destroy()).resolves.not.toThrow()
     })
-
-    it('应该在destroy错误后仍然清理基本状态', async () => {
-      const config = IDEMPOTENT_TEST_CONFIGS.BASIC_GET
-      const expectedResponse = IDEMPOTENT_TEST_RESPONSES.SUCCESS
-      mockRequestor.setUrlResponse(config.url, expectedResponse)
-
-      await idempotentFeature.requestIdempotent(config)
-
-      // 验证有状态
-      let stats = idempotentFeature.getIdempotentStats()
-      expect(stats.totalRequests).toBeGreaterThan(0)
-
-      // 执行destroy
-      await idempotentFeature.destroy()
-
-      // 验证状态被重置
-      stats = idempotentFeature.getIdempotentStats()
-      expect(stats.totalRequests).toBe(0)
-    })
   })
 
   describe('边界条件错误处理', () => {
@@ -553,9 +502,6 @@ describe('IdempotentFeature - Error Handling', () => {
       // 第二次请求应该命中缓存
       const result2 = await idempotentFeature.requestIdempotent(config)
       expect(result2).toEqual(expectedResponse)
-
-      const stats = idempotentFeature.getIdempotentStats()
-      expect(stats.cacheHits).toBe(1)
     })
 
     it('应该处理包含特殊字符的URL', async () => {
@@ -600,9 +546,6 @@ describe('IdempotentFeature - Error Handling', () => {
       // 相同的null/undefined值应该产生相同的键
       const result2 = await idempotentFeature.requestIdempotent(config)
       expect(result2).toEqual(expectedResponse)
-
-      const stats = idempotentFeature.getIdempotentStats()
-      expect(stats.cacheHits).toBe(1)
     })
   })
 

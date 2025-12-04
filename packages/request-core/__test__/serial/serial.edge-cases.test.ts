@@ -242,7 +242,7 @@ describe('串行请求边界情况和极端场景测试', () => {
       } else {
         // 其他配置应该正常工作
         const manager = new SerialRequestManager(testRequestor, config)
-        expect(manager.getStats()).toBeDefined()
+        expect(manager.getQueueKeys()).toBeDefined()
         manager.destroy()
       }
     }
@@ -266,9 +266,6 @@ describe('串行请求边界情况和极端场景测试', () => {
     
     // 这些操作不应该抛出异常
     await expect(Promise.all(destroyPromises)).resolves.toBeDefined()
-    
-    // 销毁后的调用也不应该抛出异常
-    expect(() => feature.getStats()).not.toThrow()
   })
 
   test('应该正确处理metadata中的复杂配置', async () => {

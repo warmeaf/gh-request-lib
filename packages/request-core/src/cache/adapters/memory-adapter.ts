@@ -37,16 +37,6 @@ export class MemoryStorageAdapter<T = unknown> implements StorageAdapter<T> {
     return Array.from(this.storage.keys())
   }
 
-  async getStats(): Promise<{
-    size: number
-    maxSize?: number
-    [key: string]: unknown
-  }> {
-    return {
-      size: this.storage.size
-    }
-  }
-
   async destroy(): Promise<void> {
     this.storage.clear()
   }

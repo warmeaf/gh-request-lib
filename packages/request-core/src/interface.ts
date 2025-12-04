@@ -224,20 +224,6 @@ export interface IdempotentConfig {
 }
 
 /**
- * @description 幂等统计信息
- */
-export interface IdempotentStats {
-  totalRequests: number          // 总请求数
-  duplicatesBlocked: number      // 阻止的重复请求数（包括缓存命中和等待正在进行的请求）
-  pendingRequestsReused: number  // 复用正在进行请求的次数
-  cacheHits: number             // 纯缓存命中次数
-  actualNetworkRequests: number // 实际发起的网络请求数
-  duplicateRate: number         // 重复率 = (duplicatesBlocked / totalRequests) * 100
-  avgResponseTime: number       // 平均响应时间
-  keyGenerationTime: number     // 键生成平均时间
-}
-
-/**
  * @description 全局配置接口
  */
 export interface GlobalConfig {

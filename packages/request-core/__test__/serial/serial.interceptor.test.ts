@@ -32,7 +32,6 @@ describe('串行请求拦截器功能测试', () => {
         })
 
         expect(interceptor.isEnabled()).toBe(true)
-        expect(interceptor.getStats()).toBeDefined()
 
         interceptor.destroy()
     })
@@ -244,10 +243,6 @@ describe('串行请求拦截器功能测试', () => {
 
         await Promise.all([promise1, promise2])
 
-        // 验证统计信息
-        const stats = interceptor.getStats()
-        expect(stats.totalCompletedTasks).toBe(2)
-
         // 测试清空队列
         const cleared = interceptor.clearQueue('test-queue')
         expect(cleared).toBe(true)
@@ -269,6 +264,5 @@ describe('串行请求拦截器功能测试', () => {
 
         // 销毁后应该仍能调用基本方法（不应该抛出异常）
         expect(() => interceptor.isEnabled()).not.toThrow()
-        expect(() => interceptor.getStats()).not.toThrow()
     })
 })

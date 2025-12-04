@@ -1,7 +1,7 @@
 import { RequestConfig, Requestor } from '../../interface'
 import { SerialRequestManager } from './manager'
 import { SerialRequestInterceptor } from './interceptor'
-import { SerialConfig, SerialManagerConfig, SerialManagerStats } from './types'
+import { SerialConfig, SerialManagerConfig } from './types'
 
 /**
  * @description 串行请求功能类 - 对外提供串行请求的完整功能
@@ -205,20 +205,6 @@ export class SerialFeature {
    */
   getManager(): SerialRequestManager {
     return this.manager
-  }
-
-  /**
-   * 获取统计信息
-   */
-  getStats(): SerialManagerStats {
-    return this.manager.getStats()
-  }
-
-  /**
-   * 获取指定队列的统计信息
-   */
-  getQueueStats(serialKey: string) {
-    return this.manager.getQueueStats(serialKey)
   }
 
   /**

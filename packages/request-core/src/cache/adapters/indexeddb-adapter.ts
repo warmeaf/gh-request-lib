@@ -156,23 +156,6 @@ export class IndexedDBAdapter<T = unknown> implements StorageAdapter<T> {
     })
   }
 
-  async getStats(): Promise<{
-    size: number
-    maxSize?: number
-    [key: string]: unknown
-  }> {
-    if (!this.isAvailable()) {
-      throw new Error('IndexedDB is not available')
-    }
-
-    // 获取键列表来估算大小
-    const keys = await this.getKeys()
-    
-    return {
-      size: keys.length
-    }
-  }
-
   async destroy(): Promise<void> {
     if (!this.isAvailable()) {
       return
