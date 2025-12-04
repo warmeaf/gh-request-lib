@@ -18,8 +18,7 @@
 
 - ✅ **统一的 API 客户端**：将多个 API 类组合成单一的客户端对象
 - ✅ **灵活的配置方式**：支持全局配置和单个请求配置
-- ✅ **缓存管理**：提供统一的缓存清理和状态查询接口
-- ✅ **拦截器支持**：支持请求和响应拦截器的添加和清理
+- ✅ **缓存管理**：提供统一的缓存清理接口
 - ✅ **生命周期管理**：提供 destroy 方法用于资源清理
 - ✅ **类型推断**：完整的类型推断，开发体验友好
 
@@ -97,17 +96,8 @@ const products = await apiClient.product.getProducts()
 // 5. 管理缓存
 apiClient.clearCache() // 清除所有缓存
 apiClient.clearCache('user-123') // 清除特定缓存
-const stats = apiClient.getCacheStats() // 查看缓存统计
 
-// 6. 添加拦截器
-apiClient.addInterceptor({
-  onRequest: async (config) => {
-    console.log('Request:', config)
-    return config
-  },
-})
-
-// 7. 清理资源
+// 6. 清理资源
 apiClient.destroy()
 ```
 
@@ -135,7 +125,6 @@ function createApiClient<T extends Record<string, ApiClass<any>>>(
   - `requestor?`: 请求执行器（推荐使用）
   - `requestCore?`: RequestCore 实例（内部使用）
   - `globalConfig?`: 全局配置
-  - `interceptors?`: 拦截器数组
 
 **返回值：**
 
@@ -144,7 +133,6 @@ function createApiClient<T extends Record<string, ApiClass<any>>>(
 - 所有 API 实例（根据 `apis` 参数的 key）
 - 缓存管理方法
 - 配置管理方法
-- 拦截器管理方法
 - 生命周期管理方法
 
 **推荐用法：** 使用 `requestor` 选项创建客户端，所有类型（包括 `RequestCore`）都从 `request-api` 导入，无需从 `request-core` 导入任何内容。
@@ -158,9 +146,6 @@ function createApiClient<T extends Record<string, ApiClass<any>>>(
 ```typescript
 // 清除缓存
 clearCache(key?: string): void
-
-// 获取缓存统计信息
-getCacheStats(): any
 ```
 
 #### 配置管理
@@ -170,22 +155,9 @@ getCacheStats(): any
 setGlobalConfig(config: GlobalConfig): void
 ```
 
-#### 拦截器管理
-
-```typescript
-// 添加拦截器
-addInterceptor(interceptor: RequestInterceptor): void
-
-// 清除所有拦截器
-clearInterceptors(): void
-```
-
 #### 其他方法
 
 ```typescript
-// 获取所有统计信息
-getAllStats(): any
-
 // 销毁客户端，清理资源
 destroy(): void
 ```
@@ -222,7 +194,6 @@ interface ApiClientOptions {
   requestor?: Requestor // 请求执行器（推荐使用）
   requestCore?: RequestCore // RequestCore 实例（内部使用）
   globalConfig?: GlobalConfig // 全局配置（可选）
-  interceptors?: RequestInterceptor[] // 拦截器数组（可选）
 }
 ```
 
@@ -238,15 +209,10 @@ type ApiClient<T extends Record<string, ApiClass<any>>> = {
 } & {
   // 缓存管理
   clearCache(key?: string): void
-  getCacheStats(): any
   // 配置管理
   setGlobalConfig(config: GlobalConfig): void
-  // 拦截器管理
-  addInterceptor(interceptor: RequestInterceptor): void
-  clearInterceptors(): void
   // 工具方法
   destroy(): void
-  getAllStats(): any
 }
 ```
 
@@ -261,7 +227,6 @@ export type {
   PaginatedResponse, // 分页响应类型
   RestfulOptions, // RESTful 请求选项
   GlobalConfig, // 全局配置类型
-  RequestInterceptor, // 拦截器类型
   Requestor, // 请求执行器类型
   ApiClass, // API 类接口
   ApiInstance, // API 实例接口
@@ -280,7 +245,6 @@ import {
   createApiClient,
   type RequestCore,
   type GlobalConfig,
-  type RequestInterceptor,
 } from 'request-api'
 import { createAxiosRequestor } from 'request-imp-axios'
 
@@ -299,21 +263,12 @@ const config: GlobalConfig = {
   baseURL: 'https://api.example.com',
 }
 
-// 拦截器（使用 request-api 导出的类型）
-const interceptor: RequestInterceptor = {
-  onRequest: async (config) => {
-    console.log('Request intercepted')
-    return config
-  },
-}
-
 // 创建客户端
 const apiClient = createApiClient(
   { user: UserApi },
   {
     requestor: createAxiosRequestor(),
     globalConfig: config,
-    interceptors: [interceptor],
   }
 )
 ```
@@ -379,7 +334,6 @@ import {
   createApiClient,
   type RequestCore,
   type GlobalConfig,
-  type RequestInterceptor,
 } from 'request-api'
 import { createAxiosRequestor } from 'request-imp-axios'
 
@@ -409,24 +363,6 @@ const globalConfig: GlobalConfig = {
   },
 }
 
-// 请求拦截器
-const authInterceptor: RequestInterceptor = {
-  onRequest: async (config) => {
-    const token = localStorage.getItem('token')
-    if (token) {
-      config.headers = {
-        ...config.headers,
-        Authorization: `Bearer ${token}`,
-      }
-    }
-    return config
-  },
-  onResponse: async (response) => {
-    console.log('Response received:', response)
-    return response
-  },
-}
-
 // 创建 API 客户端
 const apiClient = createApiClient(
   {
@@ -436,7 +372,6 @@ const apiClient = createApiClient(
   {
     requestor: createAxiosRequestor(),
     globalConfig,
-    interceptors: [authInterceptor],
   }
 )
 
@@ -445,49 +380,6 @@ const user = await apiClient.user.getUser('123')
 const products = await apiClient.product.getProducts()
 ```
 
-### 动态拦截器管理
-
-```typescript
-import {
-  createApiClient,
-  type RequestCore,
-  type RequestInterceptor,
-} from 'request-api'
-import { createAxiosRequestor } from 'request-imp-axios'
-
-class UserApi {
-  constructor(public requestCore: RequestCore) {}
-
-  async login(username: string, password: string) {
-    return this.requestCore.post('/auth/login', {
-      data: { username, password },
-    })
-  }
-}
-
-const apiClient = createApiClient(
-  { user: UserApi },
-  { requestor: createAxiosRequestor() }
-)
-
-// 创建一个带认证的拦截器
-const createAuthInterceptor = (token: string): RequestInterceptor => ({
-  onRequest: async (config) => {
-    config.headers = {
-      ...config.headers,
-      Authorization: `Bearer ${token}`,
-    }
-    return config
-  },
-})
-
-// 登录后添加认证拦截器
-const loginResponse = await apiClient.user.login('user', 'pass')
-apiClient.addInterceptor(createAuthInterceptor(loginResponse.token))
-
-// 登出时清除拦截器
-apiClient.clearInterceptors()
-```
 
 ## 🔗 相关模块
 

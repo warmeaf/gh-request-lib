@@ -238,31 +238,6 @@ describe('LocalStorageAdapter', () => {
         })
     })
 
-    describe('统计信息', () => {
-        it('空存储应该返回正确的统计信息', async () => {
-            const stats = await adapter.getStats()
-            expect(stats.size).toBe(0)
-            expect(typeof stats.maxSize).toBe('number')
-        })
-
-        it('有数据时应该返回正确的统计信息', async () => {
-            const mockItem: StorageItem<string> = {
-                key: 'stats-test-key',
-                data: 'stats-test-data',
-                timestamp: Date.now(),
-                ttl: 60000,
-                accessTime: Date.now(),
-                accessCount: 1
-            }
-
-            await adapter.setItem(mockItem)
-            const stats = await adapter.getStats()
-
-            expect(stats.size).toBe(1)
-            expect(typeof stats.maxSize).toBe('number')
-            expect(stats.maxSize).toBeGreaterThanOrEqual(0)
-        })
-    })
 
     describe('销毁操作', () => {
         it('应该能够销毁适配器并清理所有数据', async () => {
@@ -309,7 +284,7 @@ describe('LocalStorageAdapter', () => {
             await expect(adapter.removeItem('test-key')).rejects.toThrow('LocalStorage is not available')
             await expect(adapter.clear()).rejects.toThrow('LocalStorage is not available')
             await expect(adapter.getKeys()).rejects.toThrow('LocalStorage is not available')
-            await expect(adapter.getStats()).rejects.toThrow('LocalStorage is not available')
+            // 统计功能已移除
         })
 
         it('应该处理 setItem 时的存储异常', async () => {

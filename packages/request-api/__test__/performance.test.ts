@@ -7,12 +7,8 @@ import { RequestCore } from 'request-core'
 vi.mock('request-core', () => ({
     RequestCore: vi.fn().mockImplementation(() => ({
         setGlobalConfig: vi.fn(),
-        addInterceptor: vi.fn(),
         clearCache: vi.fn(),
-        getCacheStats: vi.fn().mockReturnValue({ hits: 0, misses: 0 }),
-        clearInterceptors: vi.fn(),
         destroy: vi.fn(),
-        getAllStats: vi.fn().mockReturnValue({ requests: 0 }),
     })),
 }))
 
@@ -28,12 +24,8 @@ describe('Performance Tests', () => {
         } as any
         mockRequestCore = {
             setGlobalConfig: vi.fn(),
-            addInterceptor: vi.fn(),
             clearCache: vi.fn(),
-            getCacheStats: vi.fn().mockReturnValue({ hits: 0, misses: 0 }),
-            clearInterceptors: vi.fn(),
             destroy: vi.fn(),
-            getAllStats: vi.fn().mockReturnValue({ requests: 0 }),
         } as any
 
         vi.mocked(RequestCore).mockReturnValue(mockRequestCore)
@@ -61,7 +53,7 @@ describe('Performance Tests', () => {
             console.log(`Created client with 1000 APIs in ${creationTime.toFixed(2)}ms`)
 
             // 验证所有API都被正确创建
-            expect(Object.keys(client)).toHaveLength(1000 + 7) // +7 for management methods
+            expect(Object.keys(client)).toHaveLength(1000 + 3) // +3 for management methods (clearCache, setGlobalConfig, destroy)
             expect(client.api0.method()).toBe('api0')
             expect(client.api999.method()).toBe('api999')
 
@@ -284,49 +276,6 @@ describe('Performance Tests', () => {
     })
 
     describe('Scalability tests', () => {
-        it('should scale with increasing number of interceptors', () => {
-            class ScalableApi implements ApiInstance {
-                requestCore: RequestCore
-                constructor(requestCore: RequestCore) {
-                    this.requestCore = requestCore
-                }
-            }
-
-            // 测试不同数量的拦截器对性能的影响
-            const interceptorCounts = [1, 10, 50, 100]
-            const results: Array<{ count: number; time: number }> = []
-
-            interceptorCounts.forEach(count => {
-                const interceptors = Array.from({ length: count }, (_, i) => ({
-                    onRequest: vi.fn(),
-                    onResponse: vi.fn()
-                }))
-
-                const startTime = performance.now()
-                const client = createApiClient(
-                    { scalable: ScalableApi },
-                    {
-                        requestor: mockRequestor,
-                        interceptors
-                    }
-                )
-                const endTime = performance.now()
-
-                const creationTime = endTime - startTime
-                results.push({ count, time: creationTime })
-
-                console.log(`Client with ${count} interceptors created in ${creationTime.toFixed(2)}ms`)
-
-                // 验证所有拦截器都被添加
-                expect(mockRequestCore.addInterceptor).toHaveBeenCalledTimes(count)
-
-                vi.clearAllMocks()
-            })
-
-            // 验证性能随拦截器数量线性增长（而不是指数增长）
-            const timeIncrease = results[results.length - 1].time - results[0].time
-            expect(timeIncrease).toBeLessThan(50) // 100个拦截器的额外开销应该小于50ms
-        })
 
         it('should handle mixed API complexity efficiently', async () => {
             // 创建不同复杂度的API

@@ -107,29 +107,6 @@ describe('MemoryStorageAdapter', () => {
         })
     })
 
-    describe('统计信息', () => {
-        it('空存储应该返回正确的统计信息', async () => {
-            const stats = await adapter.getStats()
-            expect(stats.size).toBe(0)
-            expect(stats.maxSize).toBeUndefined()
-        })
-
-        it('有数据时应该返回正确的统计信息', async () => {
-            const mockItem: StorageItem<string> = {
-                key: 'test-key',
-                data: 'test-data',
-                timestamp: Date.now(),
-                ttl: 60000,
-                accessTime: Date.now(),
-                accessCount: 1
-            }
-
-            await adapter.setItem(mockItem)
-            const stats = await adapter.getStats()
-
-            expect(stats.size).toBe(1)
-        })
-    })
 
     describe('销毁操作', () => {
         it('应该能够销毁适配器并清理所有数据', async () => {

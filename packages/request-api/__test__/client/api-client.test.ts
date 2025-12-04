@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import type { ApiInstance } from '../../src/types'
 import type { ApiClientOptions } from '../../src/client/api-client'
-import { RequestCore, type Requestor, type GlobalConfig, type RequestInterceptor } from 'request-core'
+import { RequestCore, type Requestor, type GlobalConfig } from 'request-core'
 
 // 模拟factory模块
 const mockCreateRequestCore = vi.fn()
@@ -21,12 +21,8 @@ describe('ApiClient', () => {
         } as any
         mockRequestCore = {
             clearCache: vi.fn(),
-            getCacheStats: vi.fn().mockReturnValue({ hits: 10, misses: 5 }),
             setGlobalConfig: vi.fn(),
-            addInterceptor: vi.fn(),
-            clearInterceptors: vi.fn(),
             destroy: vi.fn(),
-            getAllStats: vi.fn().mockReturnValue({ requests: 100 }),
         } as any
 
         mockCreateRequestCore.mockReturnValue(mockRequestCore)
@@ -71,7 +67,6 @@ describe('ApiClient', () => {
 
             expect(mockCreateRequestCore).toHaveBeenCalledWith(mockRequestor, {
                 globalConfig: undefined,
-                interceptors: undefined,
             })
             expect(client.user).toBeInstanceOf(TestUserApi)
             expect(client.order).toBeInstanceOf(TestOrderApi)
@@ -95,20 +90,17 @@ describe('ApiClient', () => {
             const { createApiClient } = await import('../../src/client/api-client')
 
             const globalConfig: GlobalConfig = { baseURL: 'https://api.test.com' }
-            const interceptor: RequestInterceptor = { onRequest: vi.fn(), onResponse: vi.fn() }
 
             const apis = { user: TestUserApi }
             const options: ApiClientOptions = {
                 requestor: mockRequestor,
                 globalConfig,
-                interceptors: [interceptor],
             }
 
             const client = createApiClient(apis, options)
 
             expect(mockCreateRequestCore).toHaveBeenCalledWith(mockRequestor, {
                 globalConfig,
-                interceptors: [interceptor],
             })
             expect(client.user.requestCore).toBe(mockRequestCore)
         })
@@ -138,11 +130,6 @@ describe('ApiClient', () => {
 
             client.clearCache()
             expect(mockRequestCore.clearCache).toHaveBeenCalledWith(undefined)
-
-            // 测试getCacheStats
-            const stats = client.getCacheStats()
-            expect(mockRequestCore.getCacheStats).toHaveBeenCalled()
-            expect(stats).toEqual({ hits: 10, misses: 5 })
         })
 
         it('should provide global config management', async () => {
@@ -158,21 +145,6 @@ describe('ApiClient', () => {
             expect(mockRequestCore.setGlobalConfig).toHaveBeenCalledWith(newConfig)
         })
 
-        it('should provide interceptor management', async () => {
-            const { createApiClient } = await import('../../src/client/api-client')
-
-            const apis = { user: TestUserApi }
-            const options: ApiClientOptions = { requestCore: mockRequestCore }
-
-            const client = createApiClient(apis, options)
-            const interceptor: RequestInterceptor = { onRequest: vi.fn(), onResponse: vi.fn() }
-
-            client.addInterceptor(interceptor)
-            expect(mockRequestCore.addInterceptor).toHaveBeenCalledWith(interceptor)
-
-            client.clearInterceptors()
-            expect(mockRequestCore.clearInterceptors).toHaveBeenCalled()
-        })
 
         it('should provide utility methods', async () => {
             const { createApiClient } = await import('../../src/client/api-client')
@@ -185,11 +157,6 @@ describe('ApiClient', () => {
             // 测试destroy
             client.destroy()
             expect(mockRequestCore.destroy).toHaveBeenCalled()
-
-            // 测试getAllStats
-            const stats = client.getAllStats()
-            expect(mockRequestCore.getAllStats).toHaveBeenCalled()
-            expect(stats).toEqual({ requests: 100 })
         })
 
         it('should create multiple API instances correctly', async () => {
@@ -382,11 +349,6 @@ describe('ApiClient', () => {
             // 初始状态
             expect(client.lifecycle.checkStatus()).toBe('active')
 
-            // 添加拦截器
-            const interceptor: RequestInterceptor = { onRequest: vi.fn() }
-            client.addInterceptor(interceptor)
-            expect(mockRequestCore.addInterceptor).toHaveBeenCalledWith(interceptor)
-
             // 更新配置
             const newConfig: GlobalConfig = { baseURL: 'https://updated.com' }
             client.setGlobalConfig(newConfig)
@@ -395,10 +357,6 @@ describe('ApiClient', () => {
             // 清理缓存
             client.clearCache('test-key')
             expect(mockRequestCore.clearCache).toHaveBeenCalledWith('test-key')
-
-            // 获取统计信息
-            const stats = client.getAllStats()
-            expect(stats).toEqual({ requests: 100 })
 
             // 标记为已销毁（模拟业务逻辑）
             client.lifecycle.markDestroyed()

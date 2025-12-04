@@ -1,18 +1,14 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { createApiClient } from '../src/index'
-import type { ApiInstance, Requestor, GlobalConfig, RequestInterceptor } from '../src/index'
+import type { ApiInstance, Requestor, GlobalConfig } from '../src/index'
 import { RequestCore } from 'request-core'
 
 // 模拟request-core
 vi.mock('request-core', () => ({
   RequestCore: vi.fn().mockImplementation(() => ({
     setGlobalConfig: vi.fn(),
-    addInterceptor: vi.fn(),
     clearCache: vi.fn(),
-    getCacheStats: vi.fn().mockReturnValue({ hits: 0, misses: 0 }),
-    clearInterceptors: vi.fn(),
     destroy: vi.fn(),
-    getAllStats: vi.fn().mockReturnValue({ requests: 0 }),
   })),
 }))
 
@@ -28,12 +24,8 @@ describe('Integration Tests', () => {
     } as any
     mockRequestCore = {
       setGlobalConfig: vi.fn(),
-      addInterceptor: vi.fn(),
       clearCache: vi.fn(),
-      getCacheStats: vi.fn().mockReturnValue({ hits: 5, misses: 2 }),
-      clearInterceptors: vi.fn(),
       destroy: vi.fn(),
-      getAllStats: vi.fn().mockReturnValue({ requests: 50 }),
     } as any
     
     vi.mocked(RequestCore).mockReturnValue(mockRequestCore)
@@ -78,17 +70,6 @@ describe('Integration Tests', () => {
         timeout: 5000,
       }
 
-      const requestInterceptor: RequestInterceptor = {
-        onRequest: vi.fn((config) => {
-          console.log('Request interceptor called')
-          return config
-        }),
-        onResponse: vi.fn((response) => {
-          console.log('Response interceptor called')
-          return response
-        }),
-      }
-
       // 创建API客户端
       const client = createApiClient(
         {
@@ -98,14 +79,12 @@ describe('Integration Tests', () => {
         {
           requestor: mockRequestor,
           globalConfig,
-          interceptors: [requestInterceptor],
         }
       )
 
       // 验证RequestCore创建和配置
       expect(RequestCore).toHaveBeenCalledWith(mockRequestor)
       expect(mockRequestCore.setGlobalConfig).toHaveBeenCalledWith(globalConfig)
-      expect(mockRequestCore.addInterceptor).toHaveBeenCalledWith(requestInterceptor)
 
       // 验证API实例
       expect(client.user).toBeInstanceOf(UserApi)
@@ -123,12 +102,6 @@ describe('Integration Tests', () => {
       // 测试客户端管理功能
       client.clearCache('user-cache')
       expect(mockRequestCore.clearCache).toHaveBeenCalledWith('user-cache')
-
-      const cacheStats = client.getCacheStats()
-      expect(cacheStats).toEqual({ hits: 5, misses: 2 })
-
-      const allStats = client.getAllStats()
-      expect(allStats).toEqual({ requests: 50 })
     })
 
     it('should work with existing RequestCore instance', async () => {
@@ -158,14 +131,6 @@ describe('Integration Tests', () => {
         { requestor: mockRequestor }
       )
 
-      // 动态添加拦截器
-      const newInterceptor: RequestInterceptor = {
-        onRequest: vi.fn(),
-        onResponse: vi.fn(),
-      }
-      client.addInterceptor(newInterceptor)
-      expect(mockRequestCore.addInterceptor).toHaveBeenCalledWith(newInterceptor)
-
       // 动态更新全局配置
       const newConfig: GlobalConfig = {
         baseURL: 'https://new-api.com',
@@ -173,10 +138,6 @@ describe('Integration Tests', () => {
       }
       client.setGlobalConfig(newConfig)
       expect(mockRequestCore.setGlobalConfig).toHaveBeenCalledWith(newConfig)
-
-      // 清理拦截器
-      client.clearInterceptors()
-      expect(mockRequestCore.clearInterceptors).toHaveBeenCalled()
 
       // 销毁客户端
       client.destroy()
@@ -259,23 +220,11 @@ describe('Integration Tests', () => {
         }
       }
 
-      const loggingInterceptor: RequestInterceptor = {
-        onRequest: vi.fn((config) => {
-          console.log('Complex request interceptor:', config)
-          return config
-        }),
-        onResponse: vi.fn((response) => {
-          console.log('Complex response interceptor:', response)
-          return response
-        }),
-      }
-
       const client = createApiClient(
         { user: ComplexUserApi },
         {
           requestor: mockRequestor,
           globalConfig,
-          interceptors: [loggingInterceptor]
         }
       )
 
@@ -298,7 +247,6 @@ describe('Integration Tests', () => {
 
       // 验证RequestCore配置
       expect(mockRequestCore.setGlobalConfig).toHaveBeenCalledWith(globalConfig)
-      expect(mockRequestCore.addInterceptor).toHaveBeenCalledWith(loggingInterceptor)
     })
 
     it('should handle real-world API patterns', async () => {
@@ -374,24 +322,6 @@ describe('Integration Tests', () => {
         }
       }
 
-      // 创建带有认证拦截器的客户端
-      const authInterceptor: RequestInterceptor = {
-        onRequest: vi.fn((config) => {
-          console.log('Adding auth header to request')
-          return {
-            ...config,
-            headers: {
-              ...config.headers,
-              'Authorization': 'Bearer jwt-token-example'
-            }
-          }
-        }),
-        onResponse: vi.fn((response) => {
-          console.log('Processing auth response')
-          return response
-        })
-      }
-
       const client = createApiClient(
         {
           users: RestfulUserApi,
@@ -407,7 +337,6 @@ describe('Integration Tests', () => {
               'X-Client-Version': '1.0.0'
             }
           },
-          interceptors: [authInterceptor]
         }
       )
 
@@ -444,9 +373,6 @@ describe('Integration Tests', () => {
       // 测试token刷新
       const refreshResult = await client.auth.refreshToken('old-token')
       expect(refreshResult.token).toBe('new-jwt-token-example')
-
-      // 验证拦截器被正确添加到RequestCore
-      expect(mockRequestCore.addInterceptor).toHaveBeenCalledWith(authInterceptor)
     })
 
     it('should handle microservices architecture pattern', async () => {
@@ -618,28 +544,6 @@ describe('Integration Tests', () => {
       expect(errorClient.error).toBeInstanceOf(ErrorProneApi)
     })
 
-    it('should handle interceptor errors', async () => {
-      const faultyInterceptor: RequestInterceptor = {
-        onRequest: vi.fn().mockImplementation(() => {
-          throw new Error('Interceptor error')
-        }),
-        onResponse: vi.fn(),
-      }
-
-      // 创建客户端时不应该抛出错误
-      expect(() => {
-        createApiClient(
-          { user: UserApi },
-          {
-            requestor: mockRequestor,
-            interceptors: [faultyInterceptor]
-          }
-        )
-      }).not.toThrow()
-
-      // 验证拦截器被正确添加
-      expect(mockRequestCore.addInterceptor).toHaveBeenCalledWith(faultyInterceptor)
-    })
 
     it('should handle cache operation errors', () => {
       // 模拟缓存操作错误
@@ -648,9 +552,6 @@ describe('Integration Tests', () => {
         clearCache: vi.fn().mockImplementation(() => {
           throw new Error('Cache clear error')
         }),
-        getCacheStats: vi.fn().mockImplementation(() => {
-          throw new Error('Cache stats error')
-        })
       } as any
 
       const client = createApiClient(
@@ -660,7 +561,6 @@ describe('Integration Tests', () => {
 
       // 缓存操作错误应该被传播
       expect(() => client.clearCache()).toThrow('Cache clear error')
-      expect(() => client.getCacheStats()).toThrow('Cache stats error')
     })
 
     it('should handle large number of APIs', () => {

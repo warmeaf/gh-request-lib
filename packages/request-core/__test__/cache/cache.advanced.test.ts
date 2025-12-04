@@ -5,7 +5,6 @@ import {
   CACHE_TEST_DATA,
   CACHE_TEST_CONFIGS,
   CACHE_REQUEST_CONFIGS,
-  expectCacheStats,
   sleep
 } from './cache-test-helpers'
 import { CacheFeature } from '../../src/features/cache'
@@ -128,8 +127,7 @@ describe('Cache Advanced Functionality', () => {
       await sleep(50)
 
       // 验证系统仍然正常工作
-      const stats = await cacheFeature.getCacheStats()
-      expect(stats).toBeDefined()
+      // 统计功能已移除
     })
   })
 
@@ -216,87 +214,6 @@ describe('Cache Advanced Functionality', () => {
     })
   })
 
-  describe('统计信息收集', () => {
-    it('should collect comprehensive cache statistics', async () => {
-      const cacheFeature = helper.getCacheFeature()
-      helper.setRequestorReturn(CACHE_TEST_DATA.SIMPLE_USER)
-
-      // 执行一些缓存操作
-      await cacheFeature.requestWithCache(
-        CACHE_REQUEST_CONFIGS.GET_USERS,
-        CACHE_TEST_CONFIGS.BASIC
-      )
-
-      // 缓存命中
-      await cacheFeature.requestWithCache(
-        CACHE_REQUEST_CONFIGS.GET_USERS,
-        CACHE_TEST_CONFIGS.BASIC
-      )
-
-      const stats = await cacheFeature.getCacheStats()
-
-      expectCacheStats(stats, {
-        size: 1,
-        maxEntries: 1000,
-        storageType: StorageType.MEMORY,
-        cleanupInterval: 5 * 60 * 1000
-      })
-
-      // 验证键生成器统计信息
-      expect(stats.keyGeneratorStats).toBeDefined()
-      expect(typeof stats.keyGeneratorStats.totalGenerations).toBe('number')
-      
-      // 验证时间相关统计
-      expect(typeof stats.lastCleanup).toBe('number')
-    })
-
-    it('should track key generator statistics', async () => {
-      const cacheFeature = helper.getCacheFeature()
-      helper.setRequestorReturn(CACHE_TEST_DATA.SIMPLE_USER)
-
-      // 获取初始统计
-      const initialStats = cacheFeature.getKeyGeneratorStats()
-      const initialGenerations = initialStats.totalGenerations
-
-      // 执行一些请求以生成缓存键
-      await cacheFeature.requestWithCache(
-        CACHE_REQUEST_CONFIGS.GET_USERS,
-        CACHE_TEST_CONFIGS.BASIC
-      )
-
-      await cacheFeature.requestWithCache(
-        CACHE_REQUEST_CONFIGS.GET_USER_BY_ID,
-        CACHE_TEST_CONFIGS.BASIC
-      )
-
-      // 获取更新后的统计
-      const updatedStats = cacheFeature.getKeyGeneratorStats()
-      
-      expect(updatedStats.totalGenerations).toBeGreaterThan(initialGenerations)
-    })
-
-    it('should allow resetting key generator statistics', async () => {
-      const cacheFeature = helper.getCacheFeature()
-      helper.setRequestorReturn(CACHE_TEST_DATA.SIMPLE_USER)
-
-      // 执行一些操作
-      await cacheFeature.requestWithCache(
-        CACHE_REQUEST_CONFIGS.GET_USERS,
-        CACHE_TEST_CONFIGS.BASIC
-      )
-
-      // 验证有统计数据
-      let stats = cacheFeature.getKeyGeneratorStats()
-      expect(stats.totalGenerations).toBeGreaterThan(0)
-
-      // 重置统计
-      cacheFeature.resetKeyGeneratorStats()
-
-      // 验证统计被重置
-      stats = cacheFeature.getKeyGeneratorStats()
-      expect(stats.totalGenerations).toBe(0)
-    })
-  })
 
   describe('缓存预热功能', () => {
     it('should support cache warmup with request configurations', async () => {
@@ -312,11 +229,8 @@ describe('Cache Advanced Functionality', () => {
       // 执行预热
       cacheFeature.warmupKeyGeneratorCache(warmupConfigs)
 
-      // 获取键生成器统计，验证预热效果
-      const stats = cacheFeature.getKeyGeneratorStats()
-      
-      // 预热后应该有缓存命中率的提升（具体验证依赖实现）
-      expect(stats).toBeDefined()
+      // 统计功能已移除，仅验证预热不抛出错误
+      // 如果执行到这里没有抛出异常，说明预热成功
     })
 
     it('should improve performance after warmup', async () => {
@@ -359,8 +273,7 @@ describe('Cache Advanced Functionality', () => {
       )
 
       // 验证请求成功完成
-      const stats = await cacheFeature.getCacheStats()
-      expectCacheStats(stats, { size: 1 })
+      // 统计功能已移除
     })
 
     it('should clear key generator cache when requested', async () => {
@@ -376,9 +289,7 @@ describe('Cache Advanced Functionality', () => {
       // 清除键生成器缓存
       cacheFeature.clearKeyGeneratorCache()
 
-      // 验证键生成器缓存被清除（通过统计信息）
-      const stats = cacheFeature.getKeyGeneratorStats()
-      expect(stats.cacheHits).toBe(0) // 缓存命中应该被重置
+      // 统计功能已移除，仅验证清除操作不抛出错误
     })
   })
 
@@ -424,16 +335,10 @@ describe('Cache Advanced Functionality', () => {
         CACHE_TEST_CONFIGS.BASIC
       )
 
-      // 获取销毁前的统计
-      let stats = await cacheFeature.getCacheStats()
-      expect(stats.lastCleanup).toBeGreaterThan(0)
-
       // 销毁
       await cacheFeature.destroy()
 
-      // 验证内部状态被重置
-      stats = await cacheFeature.getCacheStats()
-      expect(stats.lastCleanup).toBe(0)
+      // 验证内部状态被重置（统计功能已移除）
     })
   })
 

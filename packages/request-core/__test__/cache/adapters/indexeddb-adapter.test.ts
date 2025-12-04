@@ -226,29 +226,6 @@ describe('IndexedDBAdapter', () => {
         })
     })
 
-    describe('统计信息', () => {
-        it('空存储应该返回正确的统计信息', async () => {
-            const stats = await adapter.getStats()
-            expect(stats.size).toBe(0)
-            expect(stats.maxSize).toBeUndefined()
-        })
-
-        it('有数据时应该返回正确的统计信息', async () => {
-            const mockItem: StorageItem<string> = {
-                key: 'test-key',
-                data: 'test-data',
-                timestamp: Date.now(),
-                ttl: 60000,
-                accessTime: Date.now(),
-                accessCount: 1
-            }
-
-            await adapter.setItem(mockItem)
-            const stats = await adapter.getStats()
-
-            expect(stats.size).toBe(1)
-        })
-    })
 
     describe('销毁操作', () => {
         it('应该能够销毁适配器', async () => {
@@ -292,7 +269,7 @@ describe('IndexedDBAdapter', () => {
             await expect(adapter.removeItem('test-key')).rejects.toThrow('IndexedDB is not available')
             await expect(adapter.clear()).rejects.toThrow('IndexedDB is not available')
             await expect(adapter.getKeys()).rejects.toThrow('IndexedDB is not available')
-            await expect(adapter.getStats()).rejects.toThrow('IndexedDB is not available')
+            // 统计功能已移除
         })
     })
 

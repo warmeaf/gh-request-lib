@@ -16,7 +16,6 @@ export class MockStorageAdapter implements StorageAdapter {
     removeItem: vi.fn(),
     clear: vi.fn(),
     getKeys: vi.fn(),
-    getStats: vi.fn(),
     destroy: vi.fn(),
     isAvailable: vi.fn()
   }
@@ -51,12 +50,6 @@ export class MockStorageAdapter implements StorageAdapter {
     this.mockFunctions.getKeys()
     if (this.shouldFail) throw new Error('Storage getKeys failed')
     return Array.from(this.storage.keys())
-  }
-
-  async getStats(): Promise<{ size: number }> {
-    this.mockFunctions.getStats()
-    if (this.shouldFail) throw new Error('Storage getStats failed')
-    return { size: this.storage.size }
   }
 
   async destroy(): Promise<void> {
@@ -351,30 +344,6 @@ export function createTimeTestHelper(): TimeTestHelper {
   return new TimeTestHelper()
 }
 
-/**
- * 验证缓存统计信息的断言函数
- */
-export function expectCacheStats(stats: any, expected: Partial<{
-  size: number
-  maxEntries: number
-  keyGeneratorStats: any
-  lastCleanup: number
-  cleanupInterval: number
-  storageType: StorageType
-}>) {
-  if (expected.size !== undefined) {
-    expect(stats.size).toBe(expected.size)
-  }
-  if (expected.maxEntries !== undefined) {
-    expect(stats.maxEntries).toBe(expected.maxEntries)
-  }
-  if (expected.storageType !== undefined) {
-    expect(stats.storageType).toBe(expected.storageType)
-  }
-  if (expected.cleanupInterval !== undefined) {
-    expect(stats.cleanupInterval).toBe(expected.cleanupInterval)
-  }
-}
 
 /**
  * 等待指定时间（用于测试异步操作）

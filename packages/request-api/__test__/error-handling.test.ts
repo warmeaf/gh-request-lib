@@ -1,18 +1,14 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { createApiClient } from '../src/index'
-import type { ApiInstance, Requestor, GlobalConfig, RequestInterceptor } from '../src/index'
+import type { ApiInstance, Requestor, GlobalConfig } from '../src/index'
 import { RequestCore, RequestError, RequestErrorType } from 'request-core'
 
 // 模拟request-core
 vi.mock('request-core', () => ({
     RequestCore: vi.fn().mockImplementation(() => ({
         setGlobalConfig: vi.fn(),
-        addInterceptor: vi.fn(),
         clearCache: vi.fn(),
-        getCacheStats: vi.fn().mockReturnValue({ hits: 0, misses: 0 }),
-        clearInterceptors: vi.fn(),
         destroy: vi.fn(),
-        getAllStats: vi.fn().mockReturnValue({ requests: 0 }),
     })),
     RequestError: class MockRequestError extends Error {
         type: string
@@ -48,12 +44,8 @@ describe('Error Handling', () => {
         } as any
         mockRequestCore = {
             setGlobalConfig: vi.fn(),
-            addInterceptor: vi.fn(),
             clearCache: vi.fn(),
-            getCacheStats: vi.fn().mockReturnValue({ hits: 0, misses: 0 }),
-            clearInterceptors: vi.fn(),
             destroy: vi.fn(),
-            getAllStats: vi.fn().mockReturnValue({ requests: 0 }),
         } as any
 
         vi.mocked(RequestCore).mockReturnValue(mockRequestCore)
@@ -206,62 +198,6 @@ describe('Error Handling', () => {
         })
     })
 
-    describe('Interceptor errors', () => {
-        it('should handle request interceptor errors', () => {
-            const faultyRequestInterceptor: RequestInterceptor = {
-                onRequest: vi.fn().mockImplementation(() => {
-                    throw new Error('Request interceptor failed')
-                })
-            }
-
-            class TestApi implements ApiInstance {
-                requestCore: RequestCore
-                constructor(requestCore: RequestCore) {
-                    this.requestCore = requestCore
-                }
-            }
-
-            // 创建客户端时不应该抛出错误（拦截器错误在运行时处理）
-            expect(() => {
-                createApiClient(
-                    { test: TestApi },
-                    {
-                        requestor: mockRequestor,
-                        interceptors: [faultyRequestInterceptor]
-                    }
-                )
-            }).not.toThrow()
-
-            expect(mockRequestCore.addInterceptor).toHaveBeenCalledWith(faultyRequestInterceptor)
-        })
-
-        it('should handle response interceptor errors', () => {
-            const faultyResponseInterceptor: RequestInterceptor = {
-                onResponse: vi.fn().mockImplementation(() => {
-                    throw new Error('Response interceptor failed')
-                })
-            }
-
-            class TestApi implements ApiInstance {
-                requestCore: RequestCore
-                constructor(requestCore: RequestCore) {
-                    this.requestCore = requestCore
-                }
-            }
-
-            expect(() => {
-                createApiClient(
-                    { test: TestApi },
-                    {
-                        requestor: mockRequestor,
-                        interceptors: [faultyResponseInterceptor]
-                    }
-                )
-            }).not.toThrow()
-
-            expect(mockRequestCore.addInterceptor).toHaveBeenCalledWith(faultyResponseInterceptor)
-        })
-    })
 
     describe('Cache operation errors', () => {
         it('should propagate cache clear errors', () => {
@@ -284,25 +220,6 @@ describe('Error Handling', () => {
             expect(() => client.clearCache()).toThrow('Failed to clear cache')
         })
 
-        it('should propagate cache stats errors', () => {
-            const errorRequestCore = {
-                ...mockRequestCore,
-                getCacheStats: vi.fn().mockImplementation(() => {
-                    throw new Error('Failed to get cache stats')
-                })
-            } as any
-
-            class TestApi implements ApiInstance {
-                requestCore: RequestCore
-                constructor(requestCore: RequestCore) {
-                    this.requestCore = requestCore
-                }
-            }
-
-            const client = createApiClient({ test: TestApi }, { requestCore: errorRequestCore })
-
-            expect(() => client.getCacheStats()).toThrow('Failed to get cache stats')
-        })
     })
 
     describe('Configuration errors', () => {
@@ -327,26 +244,6 @@ describe('Error Handling', () => {
             expect(() => client.setGlobalConfig(invalidConfig)).toThrow('Invalid global configuration')
         })
 
-        it('should handle interceptor addition errors', () => {
-            const errorRequestCore = {
-                ...mockRequestCore,
-                addInterceptor: vi.fn().mockImplementation(() => {
-                    throw new Error('Failed to add interceptor')
-                })
-            } as any
-
-            class TestApi implements ApiInstance {
-                requestCore: RequestCore
-                constructor(requestCore: RequestCore) {
-                    this.requestCore = requestCore
-                }
-            }
-
-            const client = createApiClient({ test: TestApi }, { requestCore: errorRequestCore })
-
-            const interceptor: RequestInterceptor = { onRequest: vi.fn() }
-            expect(() => client.addInterceptor(interceptor)).toThrow('Failed to add interceptor')
-        })
     })
 
     describe('Async error handling', () => {

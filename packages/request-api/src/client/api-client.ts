@@ -4,7 +4,7 @@ import { createRequestCore } from '../core/factory'
 
 /**
  * 增强的 API 客户端类型 - 包含 API 实例和缓存管理功能
- * @description 提供API实例集合以及统一的缓存、配置、拦截器管理功能
+ * @description 提供API实例集合以及统一的缓存、配置管理功能
  */
 export type ApiClient<T extends Record<string, ApiClass<any>>> = {
   [K in keyof T]: InstanceType<T[K]>

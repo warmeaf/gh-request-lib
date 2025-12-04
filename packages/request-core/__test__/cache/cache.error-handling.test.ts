@@ -135,23 +135,16 @@ describe('Cache Error Handling Tests', () => {
       // 具体行为取决于实现细节
     })
 
-    it('should handle storage getStats failures', async () => {
+    it('should handle storage failures gracefully', async () => {
       const cacheFeature = helper.getCacheFeature()
 
-      // 设置getStats失败
+      // 设置存储失败
       helper.getMockStorageAdapter().setShouldFail(true)
 
-      const consoleSpy = vi.spyOn(console, 'warn').mockImplementation(() => { })
-
-      // 获取统计信息应该返回默认值
-      const stats = await cacheFeature.getCacheStats()
-
-      expect(stats).toBeDefined()
-      expect(stats.size).toBe(0) // 默认值
-
-      // 应该记录警告
-      expect(consoleSpy).toHaveBeenCalledWith(
-        expect.stringMatching(/Cache error: stats/)
+      // 统计功能已移除，仅验证其他功能正常工作
+      await cacheFeature.requestWithCache(
+        CACHE_REQUEST_CONFIGS.GET_USERS,
+        CACHE_TEST_CONFIGS.BASIC
       )
     })
 
@@ -326,8 +319,7 @@ describe('Cache Error Handling Tests', () => {
       ).rejects.toThrow('Request cancelled')
 
       // 确认没有缓存被创建
-      const stats = await cacheFeature.getCacheStats()
-      expect(stats.size).toBe(0)
+      // 统计功能已移除
     })
   })
 
@@ -516,8 +508,7 @@ describe('Cache Error Handling Tests', () => {
       })
 
       // 系统应该仍然响应
-      const stats = await cacheFeature.getCacheStats()
-      expect(stats).toBeDefined()
+      // 统计功能已移除
     })
 
     it('should handle rapid cache invalidation', async () => {
@@ -543,8 +534,7 @@ describe('Cache Error Handling Tests', () => {
       }
 
       // 系统应该正确处理快速失效而不崩溃
-      const stats = await cacheFeature.getCacheStats()
-      expect(stats).toBeDefined()
+      // 统计功能已移除
     })
   })
 
@@ -573,8 +563,7 @@ describe('Cache Error Handling Tests', () => {
       )
 
       // 内部状态应该被重置
-      const stats = await cacheFeature.getCacheStats()
-      expect(stats.lastCleanup).toBe(0)
+      // 统计功能已移除
     })
 
     it('should ensure cleanup even with multiple failures', async () => {

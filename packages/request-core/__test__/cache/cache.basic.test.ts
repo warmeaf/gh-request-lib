@@ -5,7 +5,6 @@ import {
   CACHE_TEST_DATA,
   CACHE_TEST_CONFIGS,
   CACHE_REQUEST_CONFIGS,
-  expectCacheStats
 } from './cache-test-helpers'
 
 describe('Cache Basic Functionality', () => {
@@ -375,52 +374,4 @@ describe('Cache Basic Functionality', () => {
     })
   })
 
-  describe('缓存统计信息', () => {
-    it('should return correct cache statistics', async () => {
-      helper.setRequestorReturn(CACHE_TEST_DATA.SIMPLE_USER)
-      const cacheFeature = helper.getCacheFeature()
-
-      // 添加一些缓存项
-      await cacheFeature.requestWithCache(
-        CACHE_REQUEST_CONFIGS.GET_USERS,
-        CACHE_TEST_CONFIGS.BASIC
-      )
-
-      const stats = await cacheFeature.getCacheStats()
-
-      expectCacheStats(stats, {
-        size: 1,
-        maxEntries: 1000,
-        cleanupInterval: 5 * 60 * 1000
-      })
-
-      expect(stats.keyGeneratorStats).toBeDefined()
-      expect(stats.lastCleanup).toBeDefined()
-      expect(stats.storageType).toBeDefined()
-    })
-
-    it('should update statistics after cache operations', async () => {
-      helper.setRequestorReturn(CACHE_TEST_DATA.SIMPLE_USER)
-      const cacheFeature = helper.getCacheFeature()
-
-      // 初始统计
-      let stats = await cacheFeature.getCacheStats()
-      expectCacheStats(stats, { size: 0 })
-
-      // 添加缓存项
-      await cacheFeature.requestWithCache(
-        CACHE_REQUEST_CONFIGS.GET_USERS,
-        CACHE_TEST_CONFIGS.BASIC
-      )
-
-      stats = await cacheFeature.getCacheStats()
-      expectCacheStats(stats, { size: 1 })
-
-      // 清除缓存
-      await cacheFeature.clearCache()
-
-      stats = await cacheFeature.getCacheStats()
-      expectCacheStats(stats, { size: 0 })
-    })
-  })
 })

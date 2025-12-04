@@ -19,7 +19,7 @@ features:
   - title: 🔌 适配多种请求库
     details: 底层请求库可根据业务需求任意选择，比如 axios、fetch
   - title: 🚀 高级功能
-    details: 内置缓存、重试、并发控制、拦截器等企业级功能
+    details: 内置缓存、重试、并发控制、串行控制功能
   - title: 🌲 树摇友好
     details: 工厂方法支持树摇优化，减少打包体积
   - title: 🛡️ 类型安全
