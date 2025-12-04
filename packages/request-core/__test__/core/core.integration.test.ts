@@ -1,11 +1,10 @@
 import { describe, test, expect, beforeEach, afterEach, vi } from 'vitest'
 import { RequestCore } from '../../src/core'
-import { RequestConfig, RequestInterceptor, GlobalConfig } from '../../src/interface'
+import { RequestConfig, GlobalConfig } from '../../src/interface'
 import { StorageType } from '../../src/cache/storage-adapter'
 import {
   CoreMockRequestor,
   createCoreMockRequestor,
-  createTestInterceptor,
   cleanupCoreTest,
   CORE_MOCK_RESPONSES,
   CORE_TEST_URLS,
@@ -38,28 +37,6 @@ describe('RequestCore 集成测试', () => {
       }
       requestCore.setGlobalConfig(globalConfig)
 
-      // 添加拦截器
-      const requestInterceptor: RequestInterceptor = {
-        onRequest: vi.fn((config: RequestConfig) => ({
-          ...config,
-          headers: {
-            ...config.headers,
-            'Authorization': 'Bearer intercepted-token'
-          }
-        }))
-      }
-
-      const responseInterceptor: RequestInterceptor = {
-        onResponse: vi.fn((data: any) => ({
-          ...data,
-          transformed: true,
-          timestamp: Date.now()
-        }))
-      }
-
-      requestCore.addInterceptor(requestInterceptor)
-      requestCore.addInterceptor(responseInterceptor)
-
       // 设置 mock 响应
       mockRequestor.getMock().mockResolvedValue(CORE_MOCK_RESPONSES.USER)
 
@@ -69,30 +46,14 @@ describe('RequestCore 集成测试', () => {
         timeout: 8000 // 覆盖全局超时
       })
 
-      // 验证拦截器被调用
-      expect(requestInterceptor.onRequest).toHaveBeenCalled()
-      // onResponse 接收两个参数：响应数据和配置对象
-      expect(responseInterceptor.onResponse).toHaveBeenCalledWith(
-        CORE_MOCK_RESPONSES.USER,
-        expect.objectContaining({
-          url: expect.stringContaining('/users/1'),
-          method: 'GET'
-        })
-      )
-
       // 验证最终结果
-      expect(result).toEqual({
-        ...CORE_MOCK_RESPONSES.USER,
-        transformed: true,
-        timestamp: expect.any(Number)
-      })
+      expect(result).toEqual(CORE_MOCK_RESPONSES.USER)
 
       // 验证最终请求配置
       const lastRequest = mockRequestor.getLastRequest()
       expect(lastRequest?.headers).toMatchObject({
         'X-API-Key': 'test-key',
         'Content-Type': 'application/json',
-        'Authorization': 'Bearer intercepted-token',
         'X-Request-ID': 'req-123'
       })
       expect(lastRequest?.timeout).toBe(8000)
@@ -305,17 +266,13 @@ describe('RequestCore 集成测试', () => {
 
   describe('复杂场景集成', () => {
     test('应该处理包含所有功能的复杂请求流程', async () => {
-      // 设置全局配置和拦截器
+      // 设置全局配置
       const globalConfig: GlobalConfig = {
         baseURL: 'https://api.test.com',
         timeout: 10000,
-        headers: { 'X-API-Version': 'v1' },
-        interceptors: [createTestInterceptor('global-interceptor')]
+        headers: { 'X-API-Version': 'v1' }
       }
       requestCore.setGlobalConfig(globalConfig)
-
-      // 添加额外拦截器
-      requestCore.addInterceptor(createTestInterceptor('additional-interceptor'))
 
       mockRequestor.getMock().mockResolvedValue(CORE_MOCK_RESPONSES.SUCCESS)
 
@@ -346,17 +303,13 @@ describe('RequestCore 集成测试', () => {
         CORE_MOCK_RESPONSES.CREATED
       ])
 
-      // 验证拦截器数量
-      expect(requestCore.getInterceptors()).toHaveLength(2)
-
       batchRequestsSpy.mockRestore()
     })
 
     test('应该正确处理资源清理', async () => {
-      // 添加各种配置和拦截器
+      // 添加各种配置
       requestCore.setGlobalConfig({
-        baseURL: 'https://api.test.com',
-        interceptors: [createTestInterceptor('test-interceptor')]
+        baseURL: 'https://api.test.com'
       })
 
       // Mock 一些操作
@@ -377,22 +330,6 @@ describe('RequestCore 集成测试', () => {
   })
 
   describe('错误传播集成', () => {
-    test('应该正确处理拦截器链中的错误', async () => {
-      // 添加一个会抛出错误的拦截器
-      const errorInterceptor: RequestInterceptor = {
-        onRequest: vi.fn(() => {
-          throw new Error('Interceptor validation failed')
-        })
-      }
-
-      requestCore.addInterceptor(errorInterceptor)
-
-      await expect(requestCore.get(CORE_TEST_URLS.USERS)).rejects.toThrow()
-
-      // 确保实际请求没有被执行
-      expect(mockRequestor.getRequestCount()).toBe(0)
-    })
-
     test('应该正确处理功能特性中的错误', async () => {
       // Mock 一个会失败的功能特性
       mockRequestor.getMock().mockRejectedValue(new Error('Retry failed after max attempts'))

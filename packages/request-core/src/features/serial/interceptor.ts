@@ -1,11 +1,11 @@
-import { RequestConfig, RequestInterceptor, Requestor } from '../../interface'
+import { RequestConfig, Requestor } from '../../interface'
 import { SerialRequestManager } from './manager'
 import { SerialConfig, SerialManagerConfig } from './types'
 
 /**
  * @description 串行请求拦截器 - 拦截带有 serialKey 的请求并加入对应的串行队列
  */
-export class SerialRequestInterceptor implements RequestInterceptor {
+export class SerialRequestInterceptor {
   private serialManager: SerialRequestManager
   private readonly isSharedManager: boolean // 标记 manager 是否是共享的
   private readonly config: {

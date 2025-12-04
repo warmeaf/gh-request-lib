@@ -4,7 +4,6 @@ import {
   RequestError, 
   RequestErrorType,
   GlobalConfig,
-  RequestInterceptor,
   RequestBuilder,
   RequestData,
   RequestParams,
@@ -20,7 +19,6 @@ import { IdempotentFeature } from './features/idempotent'
 import { SerialFeature } from './features/serial'
 
 // 导入管理器
-import { InterceptorManager } from './managers/interceptor-manager'
 import { ConfigManager } from './managers/config-manager'
 import { RequestExecutor } from './managers/request-executor'
 import { ConvenienceMethods, ConvenienceExecutor } from './managers/convenience-methods'
@@ -31,7 +29,6 @@ import { ConvenienceMethods, ConvenienceExecutor } from './managers/convenience-
 
 export class RequestCore implements ConvenienceExecutor {
   // 管理器组合
-  private interceptorManager: InterceptorManager
   private configManager: ConfigManager
   private requestExecutor: RequestExecutor
   private convenienceMethods: ConvenienceMethods
@@ -53,7 +50,6 @@ export class RequestCore implements ConvenienceExecutor {
     globalConfig?: GlobalConfig
   ) {
     // 初始化管理器
-    this.interceptorManager = new InterceptorManager()
     this.configManager = new ConfigManager()
     this.requestExecutor = new RequestExecutor(requestor)
     this.convenienceMethods = new ConvenienceMethods(this)
@@ -77,28 +73,6 @@ export class RequestCore implements ConvenienceExecutor {
    */
   setGlobalConfig(config: GlobalConfig): void {
     this.configManager.setGlobalConfig(config)
-    
-    // 处理拦截器 - 总是清除现有拦截器，然后添加新的（如果有）
-    this.interceptorManager.clear()
-    if (config.interceptors) {
-      config.interceptors.forEach(interceptor => {
-        this.interceptorManager.add(interceptor)
-      })
-    }
-  }
-  
-  /**
-   * 添加拦截器
-   */
-  addInterceptor(interceptor: RequestInterceptor): void {
-    this.interceptorManager.add(interceptor)
-  }
-  
-  /**
-   * 清除所有拦截器
-   */
-  clearInterceptors(): void {
-    this.interceptorManager.clear()
   }
 
   /**
@@ -143,13 +117,8 @@ export class RequestCore implements ConvenienceExecutor {
     }
     
     try {
-      // 执行拦截器链和实际请求
-      const result = await this.interceptorManager.executeChain(
-        mergedConfig,
-        (processedConfig) => this.requestExecutor.execute<T>(processedConfig)
-      )
-      
-      return result
+      // 直接执行请求
+      return await this.requestExecutor.execute<T>(mergedConfig)
     } catch (error) {
       // 记录请求失败
       const requestError = error instanceof RequestError ? error : new RequestError(
@@ -323,13 +292,6 @@ export class RequestCore implements ConvenienceExecutor {
   }
   
   /**
-   * 获取拦截器列表
-   */
-  getInterceptors(): RequestInterceptor[] {
-    return this.interceptorManager.getAll()
-  }
-
-  /**
    * 销毁请求核心实例，清理资源
    */
   destroy(): void {
@@ -339,7 +301,6 @@ export class RequestCore implements ConvenienceExecutor {
       this.idempotentFeature.destroy(),
       Promise.resolve(this.serialFeature.destroy())
     ]).then(() => {
-      this.clearInterceptors()
       this.configManager.reset()
       console.log('[RequestCore] All resources have been cleaned up')
     })

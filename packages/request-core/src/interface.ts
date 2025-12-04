@@ -212,15 +212,6 @@ export interface Requestor {
 }
 
 /**
- * @description 拦截器接口
- */
-export interface RequestInterceptor {
-  onRequest?: (config: RequestConfig) => RequestConfig | Promise<RequestConfig>
-  onResponse?: <T>(response: T, config: RequestConfig) => T | Promise<T>
-  onError?: (error: RequestError, config: RequestConfig) => any
-}
-
-/**
  * @description 幂等配置接口
  */
 export interface IdempotentConfig {
@@ -256,7 +247,6 @@ export interface GlobalConfig {
   debug?: boolean
   retries?: number
   cacheEnabled?: boolean
-  interceptors?: RequestInterceptor[]
   idempotentEnabled?: boolean    // 是否启用全局幂等
   idempotentTtl?: number        // 默认幂等TTL
   idempotentMethods?: string[]  // 启用幂等的HTTP方法

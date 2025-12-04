@@ -223,24 +223,17 @@ describe('RequestCore 配置管理测试', () => {
     test('应该正确处理配置中的函数引用', async () => {
       mockRequestor.getMock().mockResolvedValue(CORE_MOCK_RESPONSES.SUCCESS)
 
-      // 模拟包含拦截器的配置
-      const configWithInterceptors: GlobalConfig = {
-        baseURL: 'https://api.test.com',
-        interceptors: [
-          {
-            onRequest: (config: RequestConfig) => config,
-            onResponse: (data: any) => data
-          }
-        ]
+      // 模拟配置
+      const config: GlobalConfig = {
+        baseURL: 'https://api.test.com'
       }
 
-      requestCore.setGlobalConfig(configWithInterceptors)
+      requestCore.setGlobalConfig(config)
 
       const retrievedConfig = requestCore.getGlobalConfig()
-      expect(retrievedConfig.interceptors).toHaveLength(1)
-      expect(retrievedConfig.interceptors?.[0].onRequest).toBeDefined()
+      expect(retrievedConfig.baseURL).toBe('https://api.test.com')
 
-      // 测试拦截器是否正常工作
+      // 测试请求是否正常工作
       await requestCore.get(CORE_TEST_URLS.USERS)
       expect(mockRequestor.getRequestCount()).toBe(1)
     })

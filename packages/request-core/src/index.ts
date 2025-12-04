@@ -5,7 +5,6 @@ export type {
   RequestParams, 
   RequestData,
   RequestErrorContext,
-  RequestInterceptor,
   GlobalConfig,
   RequestBuilder,
   FileUploadOptions,
@@ -34,7 +33,6 @@ export { ErrorHandler, LogFormatter } from './utils/error-handler'
 
 // 导出管理器类（用于高级自定义）
 export { 
-  InterceptorManager,
   ConfigManager,
   RequestExecutor,
   ConvenienceMethods

@@ -67,15 +67,6 @@ describe('ConfigManager', () => {
       }).toThrow('headers must be a plain object')
     })
 
-    it('should throw error for invalid interceptors', () => {
-      const invalidConfig = {
-        interceptors: {} as any
-      }
-
-      expect(() => {
-        configManager.setGlobalConfig(invalidConfig)
-      }).toThrow('interceptors must be an array')
-    })
 
     it('should accept long timeout without warning', () => {
       // 警告机制已移除，长超时时间应该被接受
@@ -443,34 +434,7 @@ describe('ConfigManager', () => {
       expect(merged.headers?.['X-Custom']).toBe('request')
     })
 
-    it('should include global interceptors in metadata', () => {
-      const interceptor = {
-        onRequest: (config: RequestConfig) => config
-      }
-
-      configManager.setGlobalConfig({
-        interceptors: [interceptor]
-      })
-
-      const requestConfig: RequestConfig = {
-        url: 'https://api.example.com/users',
-        method: 'GET'
-      }
-
-      const merged = configManager.mergeConfigs(requestConfig)
-
-      expect(merged.metadata?.globalInterceptors).toEqual([interceptor])
-    })
-
     it('should preserve existing metadata when merging', () => {
-      const interceptor = {
-        onRequest: (config: RequestConfig) => config
-      }
-
-      configManager.setGlobalConfig({
-        interceptors: [interceptor]
-      })
-
       const requestConfig: RequestConfig = {
         url: 'https://api.example.com/users',
         method: 'GET',
@@ -482,7 +446,6 @@ describe('ConfigManager', () => {
       const merged = configManager.mergeConfigs(requestConfig)
 
       expect(merged.metadata?.customData).toBe('test')
-      expect(merged.metadata?.globalInterceptors).toEqual([interceptor])
     })
   })
 

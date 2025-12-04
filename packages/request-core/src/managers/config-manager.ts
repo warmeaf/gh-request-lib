@@ -4,7 +4,6 @@ import { RequestConfig, RequestError, RequestErrorType, GlobalConfig } from '../
  * @description 配置管理器
  * 
  * 负责请求配置的验证和合并。
- * 简化的实现，只保留核心验证逻辑。
  */
 export class ConfigManager {
   private globalConfig: GlobalConfig = {}
@@ -13,7 +12,6 @@ export class ConfigManager {
    * 设置全局配置
    */
   setGlobalConfig(config: GlobalConfig): void {
-    // 简化的验证：只检查基本类型
     if (config.baseURL !== undefined && typeof config.baseURL !== 'string') {
       throw new RequestError('baseURL must be a string', {
         type: RequestErrorType.VALIDATION_ERROR,
@@ -35,13 +33,6 @@ export class ConfigManager {
       })
     }
 
-    if (config.interceptors !== undefined && !Array.isArray(config.interceptors)) {
-      throw new RequestError('interceptors must be an array', {
-        type: RequestErrorType.VALIDATION_ERROR,
-        code: 'INVALID_GLOBAL_CONFIG'
-      })
-    }
-
     this.globalConfig = { ...this.globalConfig, ...config }
   }
 
@@ -53,7 +44,7 @@ export class ConfigManager {
   }
 
   /**
-   * 验证请求配置 - 简化的实现，只验证必填字段
+   * 验证请求配置
    */
   validateRequestConfig(config: RequestConfig): void {
     if (!config) {
@@ -135,14 +126,6 @@ export class ConfigManager {
       merged.headers = {
         ...this.globalConfig.headers,
         ...requestConfig.headers
-      }
-    }
-
-    // 合并拦截器到请求配置的metadata中，供调用者使用
-    if (this.globalConfig.interceptors && this.globalConfig.interceptors.length > 0) {
-      merged.metadata = {
-        ...merged.metadata,
-        globalInterceptors: this.globalConfig.interceptors
       }
     }
 

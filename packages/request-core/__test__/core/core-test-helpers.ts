@@ -1,5 +1,5 @@
 import { vi } from 'vitest'
-import { Requestor, RequestConfig, RequestInterceptor, GlobalConfig } from '../../src/interface'
+import { Requestor, RequestConfig, GlobalConfig } from '../../src/interface'
 import { RequestCore } from '../../src/core'
 
 /**
@@ -80,28 +80,6 @@ export function createCoreMockRequestor(): CoreMockRequestor {
 }
 
 /**
- * 创建测试用的拦截器
- */
-export function createTestInterceptor(name: string = 'test'): RequestInterceptor {
-  const interceptor: RequestInterceptor = {
-    onRequest: vi.fn((config: RequestConfig) => config),
-    onResponse: vi.fn((data: any) => data),
-    onError: vi.fn((error: any) => Promise.reject(error))
-  }
-  
-  return interceptor
-}
-
-/**
- * 创建多个测试拦截器
- */
-export function createTestInterceptors(count: number): RequestInterceptor[] {
-  return Array.from({ length: count }, (_, index) => 
-    createTestInterceptor(`interceptor-${index + 1}`)
-  )
-}
-
-/**
  * 创建测试用的全局配置
  */
 export function createTestGlobalConfig(): GlobalConfig {
@@ -111,8 +89,7 @@ export function createTestGlobalConfig(): GlobalConfig {
     headers: {
       'Content-Type': 'application/json',
       'X-Test-Header': 'test-value'
-    },
-    interceptors: createTestInterceptors(2)
+    }
   }
 }
 

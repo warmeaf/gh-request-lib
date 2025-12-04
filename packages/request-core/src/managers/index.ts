@@ -1,6 +1,4 @@
 // 导出所有管理器
-export { InterceptorManager } from './interceptor-manager'
-
 export { ConfigManager } from './config-manager'
 
 export { RequestExecutor } from './request-executor'

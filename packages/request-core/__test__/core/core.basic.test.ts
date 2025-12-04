@@ -34,7 +34,6 @@ describe('RequestCore 基础功能测试', () => {
       const coreWithConfig = new RequestCore(mockRequestor, globalConfig)
 
       expect(coreWithConfig.getGlobalConfig()).toEqual(globalConfig)
-      expect(coreWithConfig.getInterceptors()).toHaveLength(2)
 
       coreWithConfig.destroy()
     })
