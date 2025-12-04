@@ -3,7 +3,6 @@ import type { DefaultTheme } from 'vitepress'
 const themeConfig: DefaultTheme.Config = {
   nav: [
     { text: '指南', link: '/guide/getting-started' },
-    { text: '示例', link: '/examples/basic-requests' },
     { text: 'API', link: '/api/basic-requests' },
     { text: '概念', link: '/concepts/architecture' },
   ],
@@ -26,20 +25,6 @@ const themeConfig: DefaultTheme.Config = {
           { text: '架构设计', link: '/concepts/architecture' },
           { text: '依赖倒置', link: '/concepts/dip' },
           { text: '请求生命周期', link: '/concepts/request-lifecycle' },
-        ],
-      },
-    ],
-
-    '/examples/': [
-      {
-        text: '使用示例',
-        items: [
-          { text: '基础请求', link: '/examples/basic-requests' },
-          { text: '缓存请求', link: '/examples/caching' },
-          { text: '重试请求', link: '/examples/retry-logic' },
-          { text: '并发请求', link: '/examples/concurrent-requests' },
-          { text: '幂等请求', link: '/examples/idempotent-requests' },
-          { text: '串行请求', link: '/examples/serial-requests' },
         ],
       },
     ],

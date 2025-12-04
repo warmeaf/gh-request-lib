@@ -8,10 +8,7 @@
     "docs:preview": "vitepress preview"
   },
   "dependencies": {
-    "@vitepress-demo-preview/component": "^2.5.1",
-    "@vitepress-demo-preview/plugin": "^1.4.0",
     "highlight.js": "^11.11.1",
-    "naive-ui": "^2.43.1",
     "request-api": "workspace:*",
     "request-imp-axios": "workspace:*",
     "request-imp-fetch": "workspace:*",

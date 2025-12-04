@@ -1,8 +1,4 @@
 import { defineConfig } from 'vitepress'
-import {
-  containerPreview,
-  componentPreview,
-} from '@vitepress-demo-preview/plugin'
 
 import themeConfig from './themeConfig'
 
@@ -18,10 +14,6 @@ export default defineConfig({
 
   markdown: {
     lineNumbers: true,
-    config(md) {
-      md.use(containerPreview)
-      md.use(componentPreview)
-    },
   },
 
   vite: {

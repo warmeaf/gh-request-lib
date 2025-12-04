@@ -1,249 +1,108 @@
-# 串行请求API
+# 串行请求
 
-本文档介绍如何在 API 客户端中使用串行请求功能，确保特定请求按顺序依次执行，避免竞态条件。
+## 基本概念
 
-## 核心概念
+串行请求功能确保带有相同 `serialKey` 的请求按照 FIFO（先进先出）顺序依次执行，同一队列中的请求不会并发执行，从而保证请求的执行顺序。
 
-串行请求功能允许你控制请求的执行顺序，相同 `serialKey` 的请求会被放入队列，按照先进先出（FIFO）的顺序依次执行。这对于需要保证执行顺序的操作非常有用。
+### 核心特性
 
-### 主要特性
+- **多队列支持**：支持多个独立的串行队列，不同队列之间的请求互不阻塞，可以并行执行
+- **队列管理**：提供完整的队列管理 API，包括查询、清空、移除等操作
+- **队列大小限制**：支持设置队列最大容量，防止队列无限增长
+- **任务超时**：支持设置任务在队列中的最大等待时间，超时任务会被自动取消
+- **自动清理**：支持自动清理空队列，避免内存泄漏
+- **功能开关**：支持动态启用/禁用串行功能
+- **调试支持**：提供详细的调试日志，便于排查问题
 
-- **队列管理**：为不同的 serialKey 维护独立的请求队列
-- **顺序执行**：同一队列的请求按顺序依次执行
-- **队列限制**：可限制队列大小，防止内存溢出
-- **超时控制**：支持队列超时和任务超时
-- **统计信息**：提供详细的队列和任务执行统计
+### 工作原理
 
-## 在 API 类中使用串行请求
+串行请求通过队列机制实现：
 
-### 基础用法
+1. **队列标识**：通过 `serialKey` 标识不同的串行队列，相同 `serialKey` 的请求会被加入同一个队列
+2. **FIFO 执行**：队列中的任务按照先进先出的顺序依次执行，同一时刻只有一个任务在执行
+3. **独立队列**：不同 `serialKey` 的队列相互独立，可以并行执行
+4. **任务管理**：每个任务包含请求配置、Promise 的 resolve/reject 函数、创建时间等信息
+5. **自动处理**：当前任务完成后，自动处理队列中的下一个任务
+
+### 队列机制
+
+- **队列创建**：首次使用某个 `serialKey` 时会自动创建对应的队列
+- **队列配置**：支持为每个队列单独配置大小限制、超时时间等参数
+- **队列清理**：空队列会在指定时间间隔后自动清理，也可手动清理
+- **队列销毁**：队列销毁时会取消所有等待中的任务
+
+## 适用场景
+
+串行请求功能适用于以下场景：
+
+- **依赖关系请求**：后续请求依赖前一个请求的结果，必须按顺序执行
+- **顺序操作**：需要确保操作按特定顺序执行，如用户注册流程（验证邮箱 → 创建账号 → 发送欢迎邮件）
+- **资源竞争**：多个请求操作同一资源时，需要串行执行避免并发冲突
+- **API 限制**：某些 API 要求请求必须按顺序执行，不能并发
+- **状态更新**：需要按顺序更新状态，确保状态的一致性
+- **文件上传**：需要按顺序上传多个文件，避免服务器压力过大
+- **订单处理**：订单创建、支付、发货等操作需要按顺序执行
+
+### 不适用场景
+
+- **独立请求**：请求之间没有依赖关系，可以并发执行以提高性能
+- **数据查询**：对于只读的数据查询请求，通常不需要串行执行
+- **实时性要求高**：如果请求的实时性要求很高，串行执行可能会增加延迟
+
+## API
+
+### SerialFeature
+
+串行请求功能的核心类。
+
+#### 构造函数
 
 ```typescript
-import { type RequestCore } from 'request-api'
-
-class DataApi {
-  constructor(public requestCore: RequestCore) {}
-
-  // 使用串行键确保顺序执行
-  async updateData(id: string, data: any) {
-    return this.requestCore.postSerial(
-      `/data/${id}`,
-      'data-update', // serialKey，相同key的请求会串行执行
-      data
-    )
+constructor(
+  requestor: Requestor,
+  managerConfig?: SerialManagerConfig,
+  options?: {
+    debug?: boolean
   }
+)
+```
 
-  // 使用通用串行方法
-  async processQueue(queueId: string, item: any) {
-    return this.requestCore.requestSerial(
-      {
-        url: '/process',
-        method: 'POST',
-        data: item,
-        serialKey: queueId, // 必须指定 serialKey
-      }
-    )
-  }
+**参数**：
+
+- `requestor`: 实现了 `Requestor` 接口的请求器实例，用于执行实际的网络请求
+- `managerConfig`: 可选的串行管理器配置
+- `options`: 可选的选项对象
+  - `debug`: 是否启用调试模式，默认 `false`
+
+**managerConfig 配置**：
+
+```typescript
+interface SerialManagerConfig {
+  // 默认队列配置，新建队列时会使用此配置
+  defaultQueueConfig?: SerialConfig
+
+  // 最大队列数量，默认无限制
+  maxQueues?: number
+
+  // 清理间隔(毫秒)，默认30秒
+  cleanupInterval?: number
+
+  // 是否自动清理空队列，默认true
+  autoCleanup?: boolean
+
+  // 调试模式
+  debug?: boolean
 }
 ```
 
-### 不同队列独立执行
-
-不同 serialKey 的请求在不同队列中，互不影响：
-
-```typescript
-class UserApi {
-  constructor(public requestCore: RequestCore) {}
-
-  // 每个用户的操作独立串行
-  async updateUserProfile(userId: string, profileData: any) {
-    return this.requestCore.putSerial(
-      `/users/${userId}/profile`,
-      `user-${userId}`, // 每个用户有独立的队列
-      profileData
-    )
-  }
-
-  // 用户A和用户B的请求可以并行执行
-  async batchUpdateUsers(updates: Array<{ userId: string; data: any }>) {
-    const promises = updates.map(({ userId, data }) =>
-      this.updateUserProfile(userId, data)
-    )
-    // 不同用户的请求并行，同一用户的请求串行
-    return Promise.all(promises)
-  }
-}
-```
-
-### 配置队列大小
-
-限制队列大小，防止无限堆积：
-
-```typescript
-class TaskApi {
-  constructor(public requestCore: RequestCore) {}
-
-  async submitTask(taskData: any) {
-    return this.requestCore.requestSerial(
-      {
-        url: '/tasks',
-        method: 'POST',
-        data: taskData,
-        serialKey: 'task-queue',
-      },
-      {
-        maxQueueSize: 100, // 队列最多100个任务
-        onQueueFull: (key) => {
-          console.error(`队列 ${key} 已满`)
-          // 可以显示用户提示或采取其他措施
-        },
-      }
-    )
-  }
-}
-```
-
-### 设置超时
-
-为队列中的任务设置超时时间：
-
-```typescript
-class ProcessApi {
-  constructor(public requestCore: RequestCore) {}
-
-  async processItem(item: any) {
-    return this.requestCore.requestSerial(
-      {
-        url: '/process',
-        method: 'POST',
-        data: item,
-        serialKey: 'process-queue',
-      },
-      {
-        timeout: 30000, // 任务超时 30 秒
-        onTaskTimeout: (task) => {
-          console.error(`任务 ${task.id} 超时`)
-        },
-      }
-    )
-  }
-}
-```
-
-### 监控队列状态
-
-```typescript
-class MonitoredApi {
-  constructor(public requestCore: RequestCore) {}
-
-  async addToQueue(data: any) {
-    const serialKey = 'monitored-queue'
-
-    const result = await this.requestCore.requestSerial(
-      {
-        url: '/api/data',
-        method: 'POST',
-        data,
-        serialKey,
-      }
-    )
-
-    // 获取队列统计
-    const queueStats = this.getQueueStats(serialKey)
-    console.log('队列状态:', queueStats)
-
-    return result
-  }
-
-  private getQueueStats(serialKey: string) {
-    // 通过 FeatureManager 访问串行功能的统计信息
-    // 注意：需要访问底层的 FeatureManager
-    return {
-      serialKey,
-      // 这里简化处理，实际需要通过合适的接口获取
-    }
-  }
-}
-```
-
-### 批量串行操作
-
-```typescript
-class OrderApi {
-  constructor(public requestCore: RequestCore) {}
-
-  // 按顺序处理订单
-  async processOrders(orders: any[]) {
-    const results = []
-
-    for (const order of orders) {
-      const result = await this.requestCore.postSerial(
-        '/orders/process',
-        'order-processing', // 所有订单在同一队列中串行处理
-        order
-      )
-      results.push(result)
-    }
-
-    return results
-  }
-
-  // 使用 Promise 让请求自动排队
-  async processOrdersConcurrently(orders: any[]) {
-    // 所有请求会被加入队列，但不需要等待前一个完成
-    const promises = orders.map(order =>
-      this.requestCore.postSerial(
-        '/orders/process',
-        'order-processing',
-        order
-      )
-    )
-
-    // 实际执行是串行的，但代码是并发提交
-    return Promise.all(promises)
-  }
-}
-```
-
-## API 参考
-
-### requestSerial
-
-使用串行队列执行请求的通用方法。
-
-#### 类型签名
-
-```typescript
-async requestSerial<T>(
-  config: RequestConfig,
-  queueConfig?: SerialConfig
-): Promise<T>
-```
-
-#### 参数
-
-**config: RequestConfig**
-
-标准的请求配置对象，**必须包含 `serialKey` 字段**。
-
-```typescript
-interface RequestConfig {
-  url: string
-  method: 'GET' | 'POST' | 'PUT' | 'DELETE' | 'PATCH' | 'HEAD' | 'OPTIONS'
-  data?: any
-  // ...其他字段
-  serialKey: string // 串行队列标识（必填）
-}
-```
-
-**queueConfig: SerialConfig**（可选）
+**SerialConfig 配置**：
 
 ```typescript
 interface SerialConfig {
   // 最大队列大小，默认无限制
   maxQueueSize?: number
 
-  // 任务超时时间（毫秒），默认无超时
+  // 队列超时时间(毫秒)，默认无超时
   timeout?: number
 
   // 队列满时回调
@@ -260,82 +119,87 @@ interface SerialConfig {
 #### 示例
 
 ```typescript
-class DataApi {
-  constructor(public requestCore: RequestCore) {}
+import { SerialFeature } from '@request-core'
 
-  async updateData(id: string, data: any) {
-    return this.requestCore.requestSerial<DataResult>(
-      {
-        url: `/data/${id}`,
-        method: 'PUT',
-        data,
-        serialKey: 'data-update',
+// 基本使用
+const serialFeature = new SerialFeature(requestor)
+
+// 带配置的创建
+const serialFeature = new SerialFeature(
+  requestor,
+  {
+    defaultQueueConfig: {
+      maxQueueSize: 10,
+      timeout: 30000,
+      onQueueFull: (serialKey) => {
+        console.warn(`Queue ${serialKey} is full`)
       },
-      {
-        maxQueueSize: 50,
-        timeout: 30000,
-        onQueueFull: (key) => {
-          console.error(`队列 ${key} 已满`)
-        },
-      }
-    )
+    },
+    autoCleanup: true,
+    cleanupInterval: 30000,
+  },
+  {
+    debug: true,
   }
-}
+)
 ```
 
-### HTTP 方法便捷函数
+### requestSerial
 
-#### getSerial
+直接发起串行请求的通用方法。
+
+#### 类型签名
 
 ```typescript
-async getSerial<T>(
-  url: string,
-  serialKey: string,
-  config?: Partial<RequestConfig>,
+async requestSerial<T = any>(
+  config: RequestConfig,
   queueConfig?: SerialConfig
 ): Promise<T>
 ```
 
-#### postSerial
+#### 参数
+
+**config: RequestConfig**
+
+请求配置对象，必须包含 `serialKey` 字段用于标识队列。
+
+**queueConfig: SerialConfig**（可选）
+
+队列配置，用于覆盖默认配置。如果队列已存在，此配置不会影响已存在的队列。
+
+#### 示例
 
 ```typescript
-async postSerial<T>(
-  url: string,
-  serialKey: string,
-  data?: any,
-  config?: Partial<RequestConfig>,
-  queueConfig?: SerialConfig
-): Promise<T>
+// 基本使用
+const result = await serialFeature.requestSerial({
+  url: '/api/data',
+  method: 'GET',
+  serialKey: 'my-queue',
+})
+
+// 带队列配置
+const result = await serialFeature.requestSerial(
+  {
+    url: '/api/data',
+    method: 'POST',
+    data: { name: 'John' },
+    serialKey: 'user-queue',
+  },
+  {
+    maxQueueSize: 5,
+    timeout: 10000,
+  }
+)
 ```
 
-#### putSerial
+### getSerial
+
+GET 请求的串行便捷方法。
+
+#### 类型签名
 
 ```typescript
-async putSerial<T>(
-  url: string,
-  serialKey: string,
-  data?: any,
-  config?: Partial<RequestConfig>,
-  queueConfig?: SerialConfig
-): Promise<T>
-```
-
-#### patchSerial
-
-```typescript
-async patchSerial<T>(
-  url: string,
-  serialKey: string,
-  data?: any,
-  config?: Partial<RequestConfig>,
-  queueConfig?: SerialConfig
-): Promise<T>
-```
-
-#### deleteSerial
-
-```typescript
-async deleteSerial<T>(
+async getSerial<T = any>(
   url: string,
   serialKey: string,
   config?: Partial<RequestConfig>,
@@ -346,551 +210,440 @@ async deleteSerial<T>(
 #### 示例
 
 ```typescript
-class UserApi {
-  constructor(public requestCore: RequestCore) {}
-
-  async getUser(id: string) {
-    return this.requestCore.getSerial<User>(
-      `/users/${id}`,
-      `user-${id}`
-    )
-  }
-
-  async createUser(userData: any) {
-    return this.requestCore.postSerial<User>(
-      '/users',
-      'user-creation',
-      userData
-    )
-  }
-
-  async updateUser(id: string, userData: any) {
-    return this.requestCore.putSerial<User>(
-      `/users/${id}`,
-      `user-${id}`,
-      userData
-    )
-  }
-
-  async deleteUser(id: string) {
-    return this.requestCore.deleteSerial<void>(
-      `/users/${id}`,
-      `user-${id}`
-    )
-  }
-}
+const users = await serialFeature.getSerial('/api/users', 'user-queue')
 ```
 
-## 队列管理
+### postSerial
 
-虽然在 API 类中通常不需要直接管理队列，但了解队列管理概念有助于更好地使用串行功能。
+POST 请求的串行便捷方法。
 
-### 队列生命周期
-
-1. **创建**：首次使用某个 serialKey 时自动创建队列
-2. **任务入队**：请求被添加到队列末尾
-3. **顺序执行**：队列中的任务按顺序执行
-4. **自动清理**：队列为空时可能被自动清理
-
-### 队列统计信息
+#### 类型签名
 
 ```typescript
-interface SerialQueueStats {
-  totalTasks: number        // 总任务数
-  pendingTasks: number      // 等待中的任务数
-  completedTasks: number    // 已完成的任务数
-  failedTasks: number       // 失败的任务数
-  processingTime: number    // 平均处理时间
-  isProcessing: boolean     // 是否正在处理
-  lastProcessedAt?: number  // 最后处理时间
-}
+async postSerial<T = any>(
+  url: string,
+  serialKey: string,
+  data?: any,
+  config?: Partial<RequestConfig>,
+  queueConfig?: SerialConfig
+): Promise<T>
 ```
 
-## 完整示例
-
-### 顺序更新数据
+#### 示例
 
 ```typescript
-import { createApiClient, type RequestCore } from 'request-api'
-import { createAxiosRequestor } from 'request-imp-axios'
-
-class DataApi {
-  constructor(public requestCore: RequestCore) {}
-
-  // 保证数据更新的顺序性
-  async updateData(id: string, version: number, data: any) {
-    console.log(`提交更新: id=${id}, version=${version}`)
-
-    return this.requestCore.putSerial(
-      `/data/${id}`,
-      `data-${id}`, // 每个数据项有独立的更新队列
-      {
-        version,
-        ...data,
-      },
-      undefined,
-      {
-        timeout: 30000,
-        onTaskTimeout: (task) => {
-          console.error(`更新超时: ${task.id}`)
-        },
-      }
-    )
-  }
-
-  // 批量更新（自动排队）
-  async batchUpdate(updates: Array<{ id: string; version: number; data: any }>) {
-    // 并发提交，但相同 id 的更新会串行执行
-    const promises = updates.map(({ id, version, data }) =>
-      this.updateData(id, version, data)
-    )
-
-    return Promise.all(promises)
-  }
-}
-
-const apiClient = createApiClient(
-  { data: DataApi },
-  {
-    requestor: createAxiosRequestor({
-      baseURL: 'https://api.example.com',
-    }),
-  }
-)
-
-// 使用
-async function main() {
-  // 相同 ID 的更新会按顺序执行
-  await Promise.all([
-    apiClient.data.updateData('item-1', 1, { name: 'Update 1' }),
-    apiClient.data.updateData('item-1', 2, { name: 'Update 2' }),
-    apiClient.data.updateData('item-1', 3, { name: 'Update 3' }),
-  ])
-  // 执行顺序：版本1 -> 版本2 -> 版本3
-}
+const newUser = await serialFeature.postSerial('/api/users', 'user-queue', {
+  name: 'John',
+  email: 'john@example.com',
+})
 ```
 
-### 消息发送队列
+### putSerial
+
+PUT 请求的串行便捷方法。
+
+#### 类型签名
 
 ```typescript
-class MessageApi {
-  constructor(public requestCore: RequestCore) {}
+async putSerial<T = any>(
+  url: string,
+  serialKey: string,
+  data?: any,
+  config?: Partial<RequestConfig>,
+  queueConfig?: SerialConfig
+): Promise<T>
+```
 
-  // 为每个对话维护独立的发送队列
-  async sendMessage(conversationId: string, message: any) {
-    return this.requestCore.postSerial(
-      '/messages',
-      `conversation-${conversationId}`, // 每个对话独立队列
-      {
-        conversationId,
-        ...message,
-        timestamp: Date.now(),
-      },
-      undefined,
-      {
-        maxQueueSize: 100, // 限制队列大小
-        onQueueFull: (key) => {
-          console.error(`对话 ${key} 的消息队列已满`)
-          // 提示用户发送太快
-          alert('发送消息太快，请稍后再试')
-        },
-      }
-    )
-  }
+#### 示例
 
-  // 批量发送消息（保证顺序）
-  async sendMessages(conversationId: string, messages: any[]) {
-    const promises = messages.map(message =>
-      this.sendMessage(conversationId, message)
-    )
-
-    return Promise.all(promises)
-  }
-}
-
-const apiClient = createApiClient(
-  { message: MessageApi },
-  {
-    requestor: createAxiosRequestor(),
-  }
+```typescript
+const updatedUser = await serialFeature.putSerial(
+  '/api/users/1',
+  'user-queue',
+  { name: 'Jane' }
 )
 ```
 
-### 文件上传队列
+### deleteSerial
+
+DELETE 请求的串行便捷方法。
+
+#### 类型签名
 
 ```typescript
-class UploadApi {
-  constructor(public requestCore: RequestCore) {}
+async deleteSerial<T = any>(
+  url: string,
+  serialKey: string,
+  config?: Partial<RequestConfig>,
+  queueConfig?: SerialConfig
+): Promise<T>
+```
 
-  // 控制上传速度，避免占用过多带宽
-  async uploadFile(file: File, userId: string) {
-    console.log(`加入上传队列: ${file.name}`)
+#### 示例
 
-    return this.requestCore.requestSerial(
-      {
-        url: '/upload',
-        method: 'POST',
-        data: file,
-        headers: {
-          'Content-Type': file.type,
-        },
-        serialKey: 'file-upload', // 全局上传队列
-      },
-      {
-        maxQueueSize: 10, // 最多排队10个文件
-        timeout: 5 * 60 * 1000, // 5分钟超时
-        onQueueFull: (key) => {
-          console.warn('上传队列已满，请等待')
-        },
-        onTaskTimeout: (task) => {
-          console.error('上传超时:', task)
-        },
-      }
-    )
-  }
+```typescript
+await serialFeature.deleteSerial('/api/users/1', 'user-queue')
+```
 
-  // 批量上传文件
-  async uploadFiles(files: File[], userId: string) {
-    console.log(`准备上传 ${files.length} 个文件`)
+### patchSerial
 
-    const promises = files.map(file =>
-      this.uploadFile(file, userId)
-    )
+PATCH 请求的串行便捷方法。
 
-    const results = await Promise.allSettled(promises)
+#### 类型签名
 
-    const successful = results.filter(r => r.status === 'fulfilled')
-    const failed = results.filter(r => r.status === 'rejected')
+```typescript
+async patchSerial<T = any>(
+  url: string,
+  serialKey: string,
+  data?: any,
+  config?: Partial<RequestConfig>,
+  queueConfig?: SerialConfig
+): Promise<T>
+```
 
-    console.log(`上传完成: 成功 ${successful.length}, 失败 ${failed.length}`)
+#### 示例
 
-    return { successful, failed }
-  }
-}
-
-const apiClient = createApiClient(
-  { upload: UploadApi },
-  {
-    requestor: createAxiosRequestor(),
-  }
+```typescript
+const patchedUser = await serialFeature.patchSerial(
+  '/api/users/1',
+  'user-queue',
+  { name: 'Jane' }
 )
 ```
 
-### 状态机操作
+### getQueueKeys
+
+获取所有队列的标识。
+
+#### 类型签名
 
 ```typescript
-class WorkflowApi {
-  constructor(public requestCore: RequestCore) {}
-
-  // 工作流状态变更必须按顺序执行
-  async changeState(workflowId: string, newState: string) {
-    return this.requestCore.postSerial(
-      `/workflows/${workflowId}/state`,
-      `workflow-${workflowId}`, // 每个工作流独立队列
-      { state: newState },
-      undefined,
-      {
-        timeout: 10000,
-        debug: true, // 启用调试日志
-      }
-    )
-  }
-
-  // 执行一系列状态变更
-  async executeStateTransitions(
-    workflowId: string,
-    transitions: string[]
-  ) {
-    console.log(`执行状态变更序列: ${transitions.join(' -> ')}`)
-
-    const results = []
-
-    for (const state of transitions) {
-      try {
-        const result = await this.changeState(workflowId, state)
-        results.push({ success: true, state, result })
-      } catch (error) {
-        console.error(`状态变更失败: ${state}`, error)
-        results.push({ success: false, state, error })
-        // 状态变更失败时停止后续操作
-        break
-      }
-    }
-
-    return results
-  }
-}
-
-const apiClient = createApiClient(
-  { workflow: WorkflowApi },
-  {
-    requestor: createAxiosRequestor(),
-  }
-)
+getQueueKeys(): string[]
 ```
 
-### 数据同步队列
+#### 返回值
+
+返回所有队列标识的数组。
+
+#### 示例
 
 ```typescript
-class SyncApi {
-  constructor(public requestCore: RequestCore) {}
-
-  // 同步操作必须按顺序执行
-  async syncData(entityType: string, entityId: string, data: any) {
-    const serialKey = `sync-${entityType}-${entityId}`
-
-    return this.requestCore.postSerial(
-      '/sync',
-      serialKey,
-      {
-        entityType,
-        entityId,
-        data,
-        timestamp: Date.now(),
-      },
-      undefined,
-      {
-        maxQueueSize: 50,
-        timeout: 60000,
-      }
-    )
-  }
-
-  // 批量同步
-  async batchSync(items: Array<{ type: string; id: string; data: any }>) {
-    const promises = items.map(item =>
-      this.syncData(item.type, item.id, item.data)
-    )
-
-    const results = await Promise.allSettled(promises)
-
-    return {
-      total: results.length,
-      succeeded: results.filter(r => r.status === 'fulfilled').length,
-      failed: results.filter(r => r.status === 'rejected').length,
-    }
-  }
-}
-
-const apiClient = createApiClient(
-  { sync: SyncApi },
-  {
-    requestor: createAxiosRequestor(),
-  }
-)
+const queueKeys = serialFeature.getQueueKeys()
+console.log('Active queues:', queueKeys)
 ```
 
-## 最佳实践
+### clearQueue
 
-### 1. 合理选择 serialKey
+清空指定队列，取消所有等待中的任务。
+
+#### 类型签名
 
 ```typescript
-class BestPracticeApi {
-  constructor(public requestCore: RequestCore) {}
+clearQueue(serialKey: string): boolean
+```
 
-  // 粒度太粗 - 所有用户的操作都在一个队列
-  async updateUserBad(userId: string, data: any) {
-    return this.requestCore.putSerial(
-      `/users/${userId}`,
-      'all-users', // ❌ 不好：所有用户共用一个队列
-      data
-    )
-  }
+#### 参数
 
-  // 粒度合适 - 每个用户独立队列
-  async updateUserGood(userId: string, data: any) {
-    return this.requestCore.putSerial(
-      `/users/${userId}`,
-      `user-${userId}`, // ✅ 好：每个用户独立
-      data
-    )
-  }
+- `serialKey`: 队列标识
 
-  // 粒度太细 - 每个请求都是新队列
-  async updateUserBad2(userId: string, data: any) {
-    return this.requestCore.putSerial(
-      `/users/${userId}`,
-      `user-${userId}-${Date.now()}`, // ❌ 不好：失去串行意义
-      data
-    )
-  }
+#### 返回值
+
+如果队列存在并成功清空返回 `true`，否则返回 `false`。
+
+#### 示例
+
+```typescript
+const cleared = serialFeature.clearQueue('my-queue')
+if (cleared) {
+  console.log('Queue cleared successfully')
 }
 ```
 
-### 2. 设置队列大小限制
+**注意**：清空队列会取消所有等待中的任务，这些任务的 Promise 会被 reject，错误码为 `SERIAL_QUEUE_CLEARED`。
+
+### clearAllQueues
+
+清空所有队列。
+
+#### 类型签名
 
 ```typescript
-class SafeQueueApi {
-  constructor(public requestCore: RequestCore) {}
+clearAllQueues(): void
+```
 
-  async addTask(task: any) {
-    return this.requestCore.requestSerial(
-      {
-        url: '/tasks',
-        method: 'POST',
-        data: task,
-        serialKey: 'task-queue',
-      },
-      {
-        maxQueueSize: 100, // ✅ 防止队列无限增长
-        onQueueFull: (key) => {
-          // 提供用户反馈
-          console.error(`队列 ${key} 已满，请稍后再试`)
-          throw new Error('Task queue is full')
-        },
-      }
-    )
-  }
+#### 示例
+
+```typescript
+serialFeature.clearAllQueues()
+```
+
+### removeQueue
+
+移除指定队列，会先清空队列再移除。
+
+#### 类型签名
+
+```typescript
+removeQueue(serialKey: string): boolean
+```
+
+#### 参数
+
+- `serialKey`: 队列标识
+
+#### 返回值
+
+如果队列存在并成功移除返回 `true`，否则返回 `false`。
+
+#### 示例
+
+```typescript
+const removed = serialFeature.removeQueue('my-queue')
+if (removed) {
+  console.log('Queue removed successfully')
 }
 ```
 
-### 3. 使用超时保护
+### removeAllQueues
+
+移除所有队列。
+
+#### 类型签名
 
 ```typescript
-class TimeoutProtectedApi {
-  constructor(public requestCore: RequestCore) {}
+removeAllQueues(): void
+```
 
-  async processItem(item: any) {
-    return this.requestCore.requestSerial(
-      {
-        url: '/process',
-        method: 'POST',
-        data: item,
-        serialKey: 'process-queue',
-      },
-      {
-        timeout: 30000, // ✅ 设置合理的超时时间
-        onTaskTimeout: (task) => {
-          console.error(`任务 ${task.id} 超时，将被跳过`)
-          // 记录超时任务，后续重试
-          this.recordTimeout(task)
-        },
-      }
-    )
-  }
+#### 示例
 
-  private recordTimeout(task: any) {
-    // 记录超时任务的逻辑
-  }
+```typescript
+serialFeature.removeAllQueues()
+```
+
+### hasQueue
+
+检查队列是否存在。
+
+#### 类型签名
+
+```typescript
+hasQueue(serialKey: string): boolean
+```
+
+#### 参数
+
+- `serialKey`: 队列标识
+
+#### 返回值
+
+如果队列存在返回 `true`，否则返回 `false`。
+
+#### 示例
+
+```typescript
+if (serialFeature.hasQueue('my-queue')) {
+  console.log('Queue exists')
 }
 ```
 
-### 4. 批量操作使用 Promise.all
+### cleanup
+
+手动触发清理空队列。
+
+#### 类型签名
 
 ```typescript
-class BatchSerialApi {
-  constructor(public requestCore: RequestCore) {}
+cleanup(): void
+```
 
-  // ✅ 好：并发提交到队列
-  async batchProcessGood(items: any[]) {
-    const promises = items.map(item =>
-      this.requestCore.postSerial(
-        '/process',
-        'process-queue',
-        item
-      )
-    )
+#### 示例
 
-    // 并发提交，但实际执行是串行的
-    return Promise.all(promises)
-  }
+```typescript
+serialFeature.cleanup()
+```
 
-  // ❌ 不好：等待每个完成后才提交下一个
-  async batchProcessBad(items: any[]) {
-    const results = []
+### enable
 
-    for (const item of items) {
-      const result = await this.requestCore.postSerial(
-        '/process',
-        'process-queue',
-        item
-      )
-      results.push(result)
-    }
+启用串行功能。
 
-    // 效率低，失去了队列的优势
-    return results
-  }
+#### 类型签名
+
+```typescript
+enable(): void
+```
+
+#### 示例
+
+```typescript
+serialFeature.enable()
+```
+
+**注意**：功能启用后，所有带有 `serialKey` 的请求都会被串行化处理。
+
+### disable
+
+禁用串行功能。
+
+#### 类型签名
+
+```typescript
+disable(): void
+```
+
+#### 示例
+
+```typescript
+serialFeature.disable()
+```
+
+**注意**：功能禁用后，所有请求都会直接执行，`serialKey` 会被忽略。
+
+### isEnabled
+
+检查功能是否启用。
+
+#### 类型签名
+
+```typescript
+isEnabled(): boolean
+```
+
+#### 返回值
+
+如果功能启用返回 `true`，否则返回 `false`。
+
+#### 示例
+
+```typescript
+if (serialFeature.isEnabled()) {
+  console.log('Serial feature is enabled')
 }
 ```
 
-### 5. 错误处理
+### destroy
+
+销毁功能实例，清理所有资源。
+
+#### 类型签名
 
 ```typescript
-class RobustSerialApi {
-  constructor(public requestCore: RequestCore) {}
+destroy(): void
+```
 
-  async processWithRetry(item: any, maxRetries: number = 3) {
-    let lastError
+#### 示例
 
-    for (let attempt = 0; attempt < maxRetries; attempt++) {
-      try {
-        return await this.requestCore.requestSerial(
-          {
-            url: '/process',
-            method: 'POST',
-            data: item,
-            serialKey: 'process-queue',
-          },
-          {
-            timeout: 30000,
-          }
-        )
-      } catch (error) {
-        lastError = error
-        console.warn(`处理失败 (尝试 ${attempt + 1}/${maxRetries}):`, error)
+```typescript
+serialFeature.destroy()
+```
 
-        if (attempt < maxRetries - 1) {
-          // 等待一段时间后重试
-          await new Promise(resolve => setTimeout(resolve, 1000 * (attempt + 1)))
-        }
-      }
-    }
+**注意**：调用 `destroy()` 会清理所有队列和资源，实例销毁后不应再使用。
 
-    throw lastError
+## 错误处理
+
+### 队列满错误
+
+当队列中的任务数（包括等待中的任务和正在处理的任务）达到 `maxQueueSize` 限制时，新的请求会被拒绝。
+
+**错误信息**：
+
+- 错误类型：`RequestErrorType.VALIDATION_ERROR`
+- 错误码：`SERIAL_QUEUE_FULL`
+- 错误消息：`Serial queue is full`
+
+**处理示例**：
+
+```typescript
+try {
+  await serialFeature.requestSerial({
+    url: '/api/data',
+    serialKey: 'limited-queue',
+  })
+} catch (error) {
+  if (error.code === 'SERIAL_QUEUE_FULL') {
+    console.error('Queue is full, request rejected')
   }
 }
 ```
 
-## 注意事项
+### 任务超时错误
 
-1. **serialKey 必填**：使用串行请求时必须指定 serialKey
-2. **队列独立性**：不同 serialKey 的队列是独立的，互不影响
-3. **内存占用**：大量排队的请求会占用内存，应设置队列大小限制
-4. **超时设置**：为任务设置合理的超时时间，防止队列阻塞
-5. **错误处理**：一个任务失败不会影响队列中的其他任务
-6. **性能考虑**：串行执行会降低吞吐量，仅在必要时使用
-7. **调试模式**：开发时可启用 debug 模式查看详细日志
+当任务在队列中等待的时间超过 `timeout` 配置时，任务会被自动取消。
 
-## 使用场景
+**错误信息**：
 
-### 适合使用串行请求的场景
+- 错误类型：`RequestErrorType.TIMEOUT_ERROR`
+- 错误码：`SERIAL_TASK_TIMEOUT`
+- 错误消息：`Task timeout in serial queue`
 
-- ✅ 数据版本控制（需要保证更新顺序）
-- ✅ 状态机操作（状态变更必须按顺序）
-- ✅ 消息发送（保证消息顺序）
-- ✅ 文件上传（控制带宽占用）
-- ✅ 数据同步（避免冲突）
+**处理示例**：
 
-### 不适合使用串行请求的场景
+```typescript
+try {
+  await serialFeature.requestSerial({
+    url: '/api/slow',
+    serialKey: 'timeout-queue',
+  })
+} catch (error) {
+  if (error.code === 'SERIAL_TASK_TIMEOUT') {
+    console.error('Task timed out in queue')
+  }
+}
+```
 
-- ❌ 独立的查询操作（应使用并发）
-- ❌ 不同资源的操作（应使用并发）
-- ❌ 幂等的写操作（可考虑幂等功能）
-- ❌ 只需要请求去重（应使用幂等功能）
+### 队列清空错误
 
-## 与其他功能的对比
+当队列被清空时，所有等待中的任务会被取消。
 
-| 功能 | 串行请求 | 并发请求 | 幂等请求 |
-|------|----------|----------|----------|
-| 执行方式 | 顺序执行 | 同时执行 | 去重执行 |
-| 适用场景 | 有顺序要求 | 批量独立操作 | 防止重复提交 |
-| 性能影响 | 较慢 | 快 | 轻微 |
-| 队列管理 | 有队列 | 无队列 | 缓存 |
-| 典型用例 | 状态变更 | 批量查询 | 表单提交 |
+**错误信息**：
 
-## 相关文档
+- 错误类型：`RequestErrorType.VALIDATION_ERROR`
+- 错误码：`SERIAL_QUEUE_CLEARED`
+- 错误消息：`Serial queue cleared`
 
-- [基础请求 API](./basic-requests.md) - 了解基础请求方法
-- [并发请求 API](./concurrent-requests.md) - 批量并发请求
-- [幂等请求 API](./idempotent-requests.md) - 防止重复提交
+**处理示例**：
+
+```typescript
+const promise = serialFeature.requestSerial({
+  url: '/api/data',
+  serialKey: 'my-queue',
+})
+
+// 在另一个地方清空队列
+serialFeature.clearQueue('my-queue')
+
+try {
+  await promise
+} catch (error) {
+  if (error.code === 'SERIAL_QUEUE_CLEARED') {
+    console.error('Queue was cleared, task cancelled')
+  }
+}
+```
+
+### 请求失败处理
+
+如果队列中的一个请求失败，它所对应的 Promise 将被 reject。该失败**不会中断**整个队列的执行。请求完成后，会继续处理队列中的下一个请求。
+
+**处理示例**：
+
+```typescript
+// 请求A失败，但不会影响请求B的执行
+const promiseA = serialFeature
+  .requestSerial({
+    url: '/api/a',
+    serialKey: 'my-queue',
+  })
+  .catch((error) => {
+    console.error('Request A failed:', error)
+  })
+
+const promiseB = serialFeature
+  .requestSerial({
+    url: '/api/b',
+    serialKey: 'my-queue',
+  })
+  .then((result) => {
+    console.log('Request B succeeded:', result)
+    // 请求B会在请求A完成后执行，即使请求A失败
+  })
+```
