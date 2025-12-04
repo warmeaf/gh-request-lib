@@ -1,4 +1,4 @@
-import { RequestCore, GlobalConfig, RequestInterceptor, Requestor } from 'request-core'
+import { RequestCore, GlobalConfig, Requestor } from 'request-core'
 import { ApiClass } from '../types'
 import { createRequestCore } from '../core/factory'
 
@@ -11,15 +11,10 @@ export type ApiClient<T extends Record<string, ApiClass<any>>> = {
 } & {
   // 缓存管理功能
   clearCache(key?: string): void
-  getCacheStats(): any
   // 全局配置管理
   setGlobalConfig(config: GlobalConfig): void
-  // 拦截器管理
-  addInterceptor(interceptor: RequestInterceptor): void
-  clearInterceptors(): void
   // 实用方法
   destroy(): void
-  getAllStats(): any
 }
 
 /**
@@ -30,7 +25,6 @@ export interface ApiClientOptions {
   requestor?: Requestor
   requestCore?: RequestCore
   globalConfig?: GlobalConfig
-  interceptors?: RequestInterceptor[]
 }
 
 /**
@@ -68,7 +62,6 @@ function getOrCreateRequestCore(options: ApiClientOptions): RequestCore {
   if (options.requestor) {
     return createRequestCore(options.requestor, {
       globalConfig: options.globalConfig,
-      interceptors: options.interceptors,
     })
   }
   
@@ -115,31 +108,14 @@ function createEnhancedClient<T extends Record<string, ApiClass<any>>>(
       core.clearCache(key)
     },
 
-    getCacheStats: () => {
-      return core.getCacheStats()
-    },
-
     // 全局配置管理
     setGlobalConfig: (config: GlobalConfig) => {
       core.setGlobalConfig(config)
     },
 
-    // 拦截器管理
-    addInterceptor: (interceptor: RequestInterceptor) => {
-      core.addInterceptor(interceptor)
-    },
-
-    clearInterceptors: () => {
-      core.clearInterceptors()
-    },
-
     // 实用方法
     destroy: () => {
       core.destroy()
-    },
-
-    getAllStats: () => {
-      return core.getAllStats()
     },
   } as ApiClient<T>
 }

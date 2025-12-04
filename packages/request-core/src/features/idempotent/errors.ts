@@ -18,10 +18,7 @@ export function enhanceIdempotentError(
     timestamp: Date.now(),
     message: error instanceof RequestError 
       ? undefined 
-      : `Idempotent request failed: ${error instanceof Error ? error.message : 'Unknown error'}`,
-    suggestion: error instanceof RequestError 
-      ? undefined 
-      : 'Please check the network connection and request configuration'
+      : `Idempotent request failed: ${error instanceof Error ? error.message : 'Unknown error'}`
   })
 
   console.error(`❌ [Idempotent] Request failed: ${config.method} ${config.url}`, {

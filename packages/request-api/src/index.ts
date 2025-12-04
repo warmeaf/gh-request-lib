@@ -11,7 +11,6 @@ export type {
   PaginatedResponse,
   RestfulOptions,
   GlobalConfig,
-  RequestInterceptor,
   Requestor,
   // 功能配置类型
   CacheConfig,
@@ -19,7 +18,6 @@ export type {
   ConcurrentConfig,
   ConcurrentResult,
   IdempotentConfig,
-  IdempotentStats,
   // 缓存相关类型
   CacheKeyGenerator,
   CacheKeyStrategy,

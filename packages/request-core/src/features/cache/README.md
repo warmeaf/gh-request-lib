@@ -22,6 +22,16 @@
 
 ```typescript
 /**
+ * 缓存预设配置类型
+ */
+type CachePreset = 
+  | 'default'      // 默认配置：内存存储，5分钟TTL，不克隆
+  | 'short'        // 短期缓存：内存存储，1分钟TTL，不克隆
+  | 'medium'       // 中期缓存：LocalStorage，30分钟TTL，浅拷贝
+  | 'long'         // 长期缓存：IndexedDB，24小时TTL，深拷贝
+  | 'persistent'   // 持久化缓存：IndexedDB，7天TTL，深拷贝，最大5000条
+
+/**
  * 缓存配置接口
  */
 interface CacheConfig {
@@ -34,6 +44,7 @@ interface CacheConfig {
   storageAdapter?: StorageAdapter                 // 自定义存储适配器
   keyStrategy?: CacheKeyStrategy                  // 缓存键生成策略
   invalidationPolicy?: CacheInvalidationPolicy    // 缓存失效策略
+  preset?: CachePreset                            // 预设配置，会先应用预设，然后合并用户自定义配置
 }
 
 /**
@@ -57,7 +68,50 @@ enum StorageType {
 }
 ```
 
-### 3.2. 使用示例
+### 3.2. 构造函数
+
+`CacheFeature` 构造函数接受以下参数：
+
+```typescript
+constructor(
+  requestor: Requestor,                    // 请求器实例（必需）
+  maxEntries?: number,                     // 最大缓存条目数，默认 1000
+  keyGeneratorConfig?: CacheKeyConfig,     // 缓存键生成器配置，可选
+  storageType?: StorageType                // 存储类型，默认 StorageType.MEMORY
+)
+```
+
+**参数说明**：
+- `requestor`: 实现了 `Requestor` 接口的请求器实例，用于执行实际的网络请求
+- `maxEntries`: 缓存的最大条目数，默认值为 1000。当缓存条目数超过此值时，会触发 LRU 淘汰策略
+- `keyGeneratorConfig`: 缓存键生成器的配置选项，用于自定义键生成行为
+- `storageType`: 存储类型，默认为 `StorageType.MEMORY`。如果指定的存储类型不可用（如 LocalStorage 或 IndexedDB 在非浏览器环境），会自动降级到内存存储
+
+**使用示例**：
+
+```typescript
+import { CacheFeature, StorageType } from '@request-core';
+
+// 使用默认配置（内存存储，最大 1000 条）
+const cache1 = new CacheFeature(requestor);
+
+// 指定最大缓存条目数
+const cache2 = new CacheFeature(requestor, 500);
+
+// 自定义键生成器配置和存储类型
+const cache3 = new CacheFeature(
+  requestor,
+  1000,
+  {
+    includeHeaders: true,
+    headersWhitelist: ['authorization'],
+    enableHashCache: true
+  },
+  StorageType.INDEXED_DB
+);
+```
+
+### 3.3. 使用示例
 
 ```typescript
 import { CacheFeature, StorageType } from '@request-core';
@@ -119,16 +173,198 @@ const response6 = await cacheFeature.requestWithCache({
   keyStrategy: new UrlPathKeyStrategy()
 });
 
+// 使用预设配置：短期缓存（1分钟，内存存储）
+const response7 = await cacheFeature.requestWithCache({
+  url: '/api/temp-data',
+  method: 'GET'
+}, {
+  preset: 'short'
+});
+
+// 使用预设配置：中期缓存（30分钟，LocalStorage）
+const response8 = await cacheFeature.requestWithCache({
+  url: '/api/user-profile',
+  method: 'GET'
+}, {
+  preset: 'medium'
+});
+
+// 使用预设配置：长期缓存（24小时，IndexedDB）
+const response9 = await cacheFeature.requestWithCache({
+  url: '/api/config',
+  method: 'GET'
+}, {
+  preset: 'long'
+});
+
+// 预设配置可以被用户自定义配置覆盖
+const response10 = await cacheFeature.requestWithCache({
+  url: '/api/data',
+  method: 'GET'
+}, {
+  preset: 'medium',        // 先应用 medium 预设（30分钟，LocalStorage）
+  ttl: 60 * 60 * 1000,     // 然后覆盖 TTL 为 1 小时
+  clone: 'deep'            // 覆盖克隆模式为深拷贝
+});
+
 // 清除特定缓存
 await cacheFeature.clearCache('search-keyword-page1');
 
 // 清除所有缓存
 await cacheFeature.clearCache();
+```
 
-// 获取缓存统计信息
-const stats = await cacheFeature.getCacheStats();
-console.log('Cache size:', stats.size);
-console.log('Hit rate:', stats.hitRate);
+### 3.4. API 方法详解
+
+#### 3.4.1. 核心方法
+
+**`requestWithCache<T>(config: RequestConfig, cacheConfig?: CacheConfig): Promise<T>`**
+
+执行带缓存的请求。如果缓存命中则直接返回缓存数据，否则执行网络请求并缓存结果。
+
+**`clearCache(key?: string): Promise<void>`**
+
+清除缓存。如果提供 `key` 参数，则清除指定键的缓存；否则清除所有缓存。
+
+**`destroy(): Promise<void>`**
+
+销毁缓存实例，清理所有资源。应该在不再使用缓存实例时调用，以释放内存和存储资源。
+
+```typescript
+// 销毁缓存实例
+await cacheFeature.destroy();
+```
+
+#### 3.4.2. 存储适配器管理
+
+**`setStorageAdapter(adapter: StorageAdapter): void`**
+
+设置自定义存储适配器。允许使用完全自定义的存储实现。
+
+```typescript
+import { CustomStorageAdapter } from './custom-adapter';
+
+const customAdapter = new CustomStorageAdapter();
+cacheFeature.setStorageAdapter(customAdapter);
+```
+
+**`getStorageType(): StorageType`**
+
+获取当前使用的存储类型。
+
+```typescript
+const storageType = cacheFeature.getStorageType();
+console.log('Current storage:', storageType); // 'memory' | 'localStorage' | 'indexedDB'
+```
+
+#### 3.4.3. 缓存键生成器管理
+
+**`updateKeyGeneratorConfig(config: Partial<CacheKeyConfig>): void`**
+
+更新缓存键生成器的配置。可以动态修改键生成行为。
+
+```typescript
+// 更新键生成器配置，包含请求头
+cacheFeature.updateKeyGeneratorConfig({
+  includeHeaders: true,
+  headersWhitelist: ['authorization', 'x-custom-header']
+});
+```
+
+**`clearKeyGeneratorCache(): void`**
+
+清理键生成器的哈希缓存。当需要释放内存或重置缓存状态时使用。
+
+```typescript
+// 清理键生成器的哈希缓存
+cacheFeature.clearKeyGeneratorCache();
+```
+
+**`warmupKeyGeneratorCache(configs: RequestConfig[]): void`**
+
+预热键生成器缓存。预先计算并缓存常用请求配置的键，提升后续请求的性能。
+
+```typescript
+// 预热常用请求的键
+cacheFeature.warmupKeyGeneratorCache([
+  { url: '/api/users', method: 'GET' },
+  { url: '/api/posts', method: 'GET', params: { page: 1 } }
+]);
+```
+
+#### 3.4.4. 缓存策略管理
+
+**`setKeyStrategy(strategy: CacheKeyStrategy): void`**
+
+设置缓存键生成策略。允许使用自定义的键生成逻辑。
+
+```typescript
+import { UrlPathKeyStrategy } from '@request-core';
+
+// 使用 URL 路径策略（忽略查询参数）
+cacheFeature.setKeyStrategy(new UrlPathKeyStrategy());
+```
+
+**`setInvalidationPolicy(policy: CacheInvalidationPolicy): void`**
+
+设置缓存失效策略。允许使用自定义的失效判断逻辑。
+
+```typescript
+import { FIFOInvalidationPolicy } from '@request-core';
+
+// 使用 FIFO（先进先出）失效策略
+cacheFeature.setInvalidationPolicy(new FIFOInvalidationPolicy());
+```
+
+#### 3.4.5. 缓存项操作
+
+**`getCacheItem(key: string): Promise<any | null>`**
+
+获取指定键的缓存项。返回完整的缓存项对象（包含元数据），如果不存在则返回 `null`。
+
+```typescript
+const item = await cacheFeature.getCacheItem('cache-key');
+if (item) {
+  console.log('Data:', item.data);
+  console.log('TTL remaining:', item.ttl - (Date.now() - item.timestamp));
+  console.log('Access count:', item.accessCount);
+}
+```
+
+**`setCacheItem(item: StorageItem): Promise<void>`**
+
+手动设置缓存项。允许直接操作缓存存储，用于高级场景。
+
+```typescript
+await cacheFeature.setCacheItem({
+  key: 'custom-key',
+  data: { custom: 'data' },
+  timestamp: Date.now(),
+  ttl: 60000,
+  accessTime: Date.now(),
+  accessCount: 0
+});
+```
+
+**`removeCacheItem(key: string): Promise<void>`**
+
+移除指定键的缓存项。与 `clearCache(key)` 功能相同，但提供更明确的语义。
+
+```typescript
+await cacheFeature.removeCacheItem('cache-key');
+```
+
+**`isCacheItemValid(item: any): boolean`**
+
+检查缓存项是否有效（未过期）。用于手动验证缓存项的有效性。
+
+```typescript
+const item = await cacheFeature.getCacheItem('cache-key');
+if (item && cacheFeature.isCacheItemValid(item)) {
+  console.log('Cache item is valid');
+} else {
+  console.log('Cache item is expired or invalid');
+}
 ```
 
 ## 4. 实现思路
@@ -724,8 +960,9 @@ describe('CacheFeature Integration', () => {
     // 触发清理
     await cache.requestWithCache(config2, { ttl: 5000 })
     
-    const stats = await cache.getCacheStats()
-    expect(stats.size).toBe(1) // 过期项已被清理
+    // 验证过期项已被清理（通过检查缓存项）
+    const item = await cache.getCacheItem(cacheKey)
+    expect(item).toBeNull() // 过期项已被清理
   })
 })
 ```
@@ -866,12 +1103,21 @@ const imageData = await cache.requestWithCache({
 **场景**：缓存应用配置，减少启动时间。
 
 ```typescript
+// 使用预设配置：长期缓存（24小时，IndexedDB，深拷贝）
 const appConfig = await cache.requestWithCache({
   url: '/api/config',
   method: 'GET'
 }, {
-  ttl: 24 * 60 * 60 * 1000,  // 24 小时
-  storageType: StorageType.LOCAL_STORAGE,
+  preset: 'long',
+  key: 'app-config'  // 自定义键，便于管理
+})
+
+// 或者使用持久化预设（7天）
+const persistentConfig = await cache.requestWithCache({
+  url: '/api/config',
+  method: 'GET'
+}, {
+  preset: 'persistent',
   key: 'app-config'
 })
 ```
@@ -924,12 +1170,17 @@ for (let page = 1; page <= 5; page++) {
    - 便于管理和清理
    - 避免键冲突
 
-6. **监控缓存统计**：
+6. **监控缓存状态**：
    ```typescript
-   const stats = await cache.getCacheStats()
-   console.log('Cache hit rate:', stats.hitRate)
-   console.log('Cache size:', stats.size)
-   console.log('Max entries:', stats.maxEntries)
+   // 获取当前存储类型
+   const storageType = cache.getStorageType()
+   console.log('Current storage type:', storageType)
+   
+   // 检查特定缓存项是否有效
+   const item = await cache.getCacheItem('cache-key')
+   if (item && cache.isCacheItemValid(item)) {
+     console.log('Cache item is valid')
+   }
    ```
 
 ## 11. 性能优化
@@ -1066,6 +1317,191 @@ for (let page = 1; page <= 5; page++) {
    // 自动降级到 Memory
    const cache = new CacheFeature(requestor, 1000, undefined, StorageType.INDEXED_DB)
    // 如果 IndexedDB 不可用，会自动使用 Memory
+   ```
+
+### 12.5. 错误处理和降级机制
+
+缓存功能实现了完善的错误处理和自动降级机制，确保在各种异常情况下仍能正常工作。
+
+#### 12.5.1. 存储适配器自动降级
+
+当指定的存储类型不可用时，系统会自动降级到内存存储：
+
+```typescript
+// 在非浏览器环境或存储不可用时，自动降级到内存存储
+const cache = new CacheFeature(requestor, 1000, undefined, StorageType.LOCAL_STORAGE)
+// 如果 LocalStorage 不可用，会自动使用 MemoryStorageAdapter
+```
+
+**降级场景**：
+- LocalStorage 在非浏览器环境不可用 → 降级到 Memory
+- IndexedDB 在非浏览器环境或旧浏览器不可用 → 降级到 Memory
+- 存储操作失败时 → 记录警告，但不影响请求执行
+
+#### 12.5.2. 存储操作错误处理
+
+所有存储操作都包含错误处理，确保单个操作的失败不会影响整体功能：
+
+**读取操作失败**：
+- 缓存读取失败时，记录警告日志
+- 将错误视为缓存未命中，继续执行网络请求
+- 不影响数据返回
+
+```typescript
+// 内部实现示例
+try {
+  cachedItem = await this.storageAdapter.getItem(cacheKey)
+} catch (error) {
+  // 存储适配器读取失败时，记录警告并将其视为缓存未命中
+  this.handleStorageError('read', cacheKey, error, 'cache miss')
+  cachedItem = null
+}
+```
+
+**写入操作失败**：
+- 缓存写入失败时，记录警告日志
+- 数据仍然正常返回，只是未缓存
+- 不影响用户体验
+
+```typescript
+// 内部实现示例
+try {
+  await this.storageAdapter.setItem(cacheItem)
+} catch (error) {
+  // 缓存存储失败，但不影响数据返回
+  this.logCacheEvent('error', cacheKey, {
+    'operation': 'set cache item',
+    'error': error instanceof Error ? error.message : 'Unknown storage error',
+    'status': 'data returned successfully'
+  })
+}
+```
+
+**清理操作失败**：
+- 清理操作失败时，记录警告日志
+- 不会抛出异常，避免影响主流程
+
+```typescript
+// 内部实现示例
+try {
+  await this.storageAdapter.removeItem(key)
+} catch (error) {
+  this.handleStorageError('remove item', key, error, 'removal failed')
+  return // 移除失败时，不需要继续获取统计信息
+}
+```
+
+#### 12.5.3. 统一错误日志记录
+
+所有错误都通过统一的日志记录机制处理：
+
+```typescript
+// 错误日志格式
+console.warn(
+  LogFormatter.formatCacheLog('error', key, {
+    'operation': operation,           // 操作类型：read, write, remove 等
+    'error': error.message,           // 错误信息
+    'status': status                  // 状态：cache miss, removal failed 等
+  })
+)
+```
+
+**日志类型**：
+- `hit`: 缓存命中
+- `miss`: 缓存未命中
+- `set`: 设置缓存
+- `clear`: 清理缓存
+- `error`: 错误信息
+
+#### 12.5.4. 键生成错误处理
+
+缓存键生成失败时，会抛出 `RequestError`，包含原始错误信息：
+
+```typescript
+try {
+  return this.keyGenerator.generateCacheKey(config, customKey)
+} catch (error) {
+  throw new RequestError(
+    `Failed to generate cache key: ${error.message}`,
+    { originalError: error }
+  )
+}
+```
+
+#### 12.5.5. 数据克隆错误处理
+
+数据克隆失败时，会降级处理：
+
+**structuredClone 失败**：
+- 降级到 JSON 序列化方式
+- 记录警告日志
+
+**JSON 克隆失败**：
+- 返回原始数据
+- 记录警告日志
+
+```typescript
+// 内部实现示例
+private deepClone<T>(data: T): T {
+  if (typeof structuredClone === 'function') {
+    try {
+      return structuredClone(data)
+    } catch (error) {
+      console.warn('[Cache] structuredClone failed, falling back to JSON clone:', error)
+    }
+  }
+  
+  try {
+    return JSON.parse(JSON.stringify(data))
+  } catch (error) {
+    console.warn('[Cache] JSON clone failed, returning original data:', error)
+    return data
+  }
+}
+```
+
+#### 12.5.6. 销毁操作错误处理
+
+销毁缓存实例时，即使存储适配器销毁失败，也会确保内部状态被重置：
+
+```typescript
+async destroy(): Promise<void> {
+  try {
+    await this.storageAdapter.destroy()
+  } catch (error) {
+    // 存储适配器销毁失败时记录警告，但不阻止清理过程
+    this.handleStorageError('storage destroy', 'destroy', error, 'cleanup continued')
+  } finally {
+    // 确保内部状态总是被重置
+    this.lastCleanupTime = 0
+  }
+}
+```
+
+#### 12.5.7. 最佳实践
+
+1. **监听控制台日志**：
+   - 关注警告日志，及时发现存储问题
+   - 根据日志调整存储策略
+
+2. **处理键生成错误**：
+   ```typescript
+   try {
+     const data = await cache.requestWithCache(config, { ttl: 60000 })
+   } catch (error) {
+     if (error instanceof RequestError && error.message.includes('cache key')) {
+       // 处理键生成错误
+       console.error('Cache key generation failed:', error)
+     }
+   }
+   ```
+
+3. **定期检查存储状态**：
+   ```typescript
+   const storageType = cache.getStorageType()
+   if (storageType === StorageType.MEMORY && expectedType !== StorageType.MEMORY) {
+     console.warn('Storage downgraded to memory, check storage availability')
+   }
    ```
 
 ## 13. 未来优化方向

@@ -10,7 +10,7 @@
 - **并发控制**: 支持限制最大并发数，避免同时发起过多请求导致的资源耗尽或服务端压力过大。
 - **容错性**: 支持失败快速返回（failFast）和容错继续（graceful degradation）两种模式。
 - **超时控制**: 支持整体超时机制，避免批量请求无限期等待。
-- **统计分析**: 提供详细的执行统计信息，包括成功率、平均耗时、最大并发数等。
+- **日志输出**: 提供详细的执行日志，包括请求开始、完成、失败等信息。
 - **资源管理**: 自动管理信号量等资源，支持优雅销毁。
 - **易用性**: 提供简洁的 API 和合理的默认配置。
 
@@ -42,18 +42,6 @@ interface ConcurrentResult<T> {
   index: number                // 请求在批次中的索引
   duration?: number            // 请求耗时（毫秒）
   retryCount?: number          // 重试次数
-}
-
-/**
- * 并发性能统计
- */
-interface ConcurrentStats {
-  total: number                // 总请求数
-  completed: number            // 已完成数
-  successful: number           // 成功数
-  failed: number               // 失败数
-  averageDuration: number      // 平均耗时
-  maxConcurrencyUsed: number   // 实际使用的最大并发数
 }
 ```
 
@@ -119,16 +107,15 @@ if (concurrentFeature.hasFailures(results1)) {
   console.log('Some requests failed');
 }
 
-// 示例 9: 获取统计信息
-const stats = concurrentFeature.getConcurrentStats();
-console.log(`Success rate: ${stats.successful}/${stats.total}`);
-console.log(`Average duration: ${stats.averageDuration}ms`);
-
-// 示例 10: 获取详细结果统计
-const resultsStats = concurrentFeature.getResultsStats(results1);
-console.log(`Success rate: ${resultsStats.successRate}%`);
-console.log(`Min duration: ${resultsStats.minDuration}ms`);
-console.log(`Max duration: ${resultsStats.maxDuration}ms`);
+// 示例 9: 手动计算统计信息
+const successfulCount = results1.filter(r => r.success).length;
+const failedCount = results1.filter(r => !r.success).length;
+const durations = results1.map(r => r.duration || 0).filter(d => d > 0);
+const avgDuration = durations.length > 0 
+  ? Math.round(durations.reduce((sum, d) => sum + d, 0) / durations.length)
+  : 0;
+console.log(`Success rate: ${successfulCount}/${results1.length}`);
+console.log(`Average duration: ${avgDuration}ms`);
 
 // 清理资源
 concurrentFeature.destroy();
@@ -141,7 +128,7 @@ concurrentFeature.destroy();
 1. **`ConcurrentFeature` (并发功能类)**:
    - 封装并发请求逻辑的核心类
    - 依赖 `Requestor` 接口来执行实际的请求
-   - 管理统计信息和活动的信号量
+   - 管理活动的信号量和日志输出
 
 2. **`Semaphore` (信号量)**:
    - 用于控制并发数量的同步原语
@@ -151,7 +138,7 @@ concurrentFeature.destroy();
 3. **`ResultCollector` (结果收集器)**:
    - 高效收集和管理并发请求结果
    - 使用预分配数组，按索引存储结果
-   - 提供多种结果过滤和统计方法
+   - 提供基本的结果查询方法（getCompletedCount、isComplete、getResults）
 
 ### 4.2. 工作流程
 
@@ -173,11 +160,11 @@ concurrentFeature.destroy();
 
 **关键代码流程**:
 
-1. 初始化统计信息和结果收集器
+1. 初始化结果收集器
 2. 为每个请求配置创建异步任务
 3. 根据 `failFast` 选择 `Promise.all`（快速失败）或 `Promise.allSettled`（容错）
 4. 可选的超时控制包装
-5. 收集结果并更新统计信息
+5. 收集所有结果并返回
 
 #### 4.2.2. 并发限制模式
 
@@ -202,7 +189,7 @@ concurrentFeature.destroy();
 **关键代码流程**:
 
 1. 创建 `Semaphore` 实例，设置最大并发数
-2. 为每个请求创建 `executeRequestWithSemaphore` 任务
+2. 为每个请求创建 `executeSingleRequest` 任务
 3. 任务执行前调用 `semaphore.acquire()` 获取许可证
 4. 如果许可证不足，任务会在等待队列中排队
 5. 请求执行完成后调用 `semaphore.release()` 释放许可证
@@ -286,9 +273,11 @@ class Semaphore {
 class ResultCollector<T> {
   private results: Array<ConcurrentResult<T> | undefined>
   private completedCount = 0
+  private readonly totalCount: number
 
   constructor(totalCount: number) {
     // 预分配数组，避免动态扩容
+    this.totalCount = totalCount
     this.results = new Array(totalCount)
   }
 
@@ -297,6 +286,18 @@ class ResultCollector<T> {
       this.completedCount++
     }
     this.results[index] = result
+  }
+
+  getCompletedCount(): number {
+    return this.completedCount
+  }
+
+  isComplete(): boolean {
+    return this.completedCount >= this.totalCount
+  }
+
+  getResults(): ConcurrentResult<T>[] {
+    return this.results.filter((r): r is ConcurrentResult<T> => Boolean(r))
   }
 }
 ```
@@ -308,51 +309,6 @@ class ResultCollector<T> {
 3. **内存高效**: 预分配避免多次内存分配
 4. **线程安全**: 每个索引只写入一次（在单线程 JS 中）
 
-### 5.3. 统计信息算法
-
-```typescript
-private updateSuccessStats(duration: number): void {
-  this.stats.completed++
-  this.stats.successful++
-  this.durations.push(duration)
-  this.updateAverageDuration()
-}
-
-private updateAverageDuration(): void {
-  if (this.durations.length > 0) {
-    this.stats.averageDuration = Math.round(
-      this.durations.reduce((sum, d) => sum + d, 0) / this.durations.length
-    )
-  }
-}
-```
-
-**统计指标**:
-
-- `total`: 总请求数
-- `completed`: 已完成数（包括成功和失败）
-- `successful`: 成功请求数
-- `failed`: 失败请求数
-- `averageDuration`: 平均耗时（仅统计实际请求执行时间）
-- `maxConcurrencyUsed`: 实际达到的最大并发数
-
-### 5.4. 最大并发数追踪
-
-```typescript
-// 在 executeRequestWithSemaphore 中
-const currentConcurrency = maxConcurrency - semaphore.available()
-this.stats.maxConcurrencyUsed = Math.max(
-  this.stats.maxConcurrencyUsed,
-  currentConcurrency
-)
-```
-
-**计算公式**: 
-```
-当前并发数 = 最大许可数 - 当前可用许可数
-```
-
-这个指标反映了实际的并发压力，对于性能分析很有价值。
 
 ## 6. 配置详解
 
@@ -599,11 +555,10 @@ async function preloadImages(imageUrls: string[]) {
     failFast: false,  // 失败不影响其他图片
     timeout: 30000
   });
-  
-  const stats = concurrentFeature.getResultsStats(results);
-  console.log(`Preloaded ${stats.successful}/${stats.total} images`);
-  console.log(`Success rate: ${stats.successRate}%`);
-  
+
+  const successfulCount = results.filter(r => r.success).length;
+  console.log(`Preloaded ${successfulCount}/${results.length} images`);
+
   return concurrentFeature.getSuccessfulResults(results);
 }
 ```
@@ -686,16 +641,21 @@ async function checkApiHealth(endpoints: string[]) {
     responseTime: results[index].duration,
     error: results[index].error
   }));
-  
-  const stats = concurrentFeature.getResultsStats(results);
-  
+
+  const successfulResults = results.filter(r => r.success);
+  const failedResults = results.filter(r => !r.success);
+  const durations = successfulResults.map(r => r.duration || 0).filter(d => d > 0);
+  const averageResponseTime = durations.length > 0
+    ? Math.round(durations.reduce((sum, d) => sum + d, 0) / durations.length)
+    : 0;
+
   return {
     health,
     summary: {
-      healthy: stats.successful,
-      unhealthy: stats.failed,
+      healthy: successfulResults.length,
+      unhealthy: failedResults.length,
       totalTime,
-      averageResponseTime: stats.averageDuration
+      averageResponseTime
     }
   };
 }
@@ -763,18 +723,28 @@ async function stressTest(url: string, requestCount: number) {
     }
   );
   const totalTime = Date.now() - startTime;
-  
-  const stats = concurrentFeature.getResultsStats(results);
-  
+
+  const successfulResults = results.filter(r => r.success);
+  const failedResults = results.filter(r => !r.success);
+  const durations = successfulResults.map(r => r.duration || 0).filter(d => d > 0);
+  const successRate = results.length > 0
+    ? Math.round((successfulResults.length / results.length) * 100)
+    : 0;
+  const averageDuration = durations.length > 0
+    ? Math.round(durations.reduce((sum, d) => sum + d, 0) / durations.length)
+    : 0;
+  const minDuration = durations.length > 0 ? Math.min(...durations) : 0;
+  const maxDuration = durations.length > 0 ? Math.max(...durations) : 0;
+
   return {
     requestCount,
-    successCount: stats.successful,
-    failureCount: stats.failed,
-    successRate: stats.successRate,
+    successCount: successfulResults.length,
+    failureCount: failedResults.length,
+    successRate,
     totalTime,
-    averageDuration: stats.averageDuration,
-    minDuration: stats.minDuration,
-    maxDuration: stats.maxDuration,
+    averageDuration,
+    minDuration,
+    maxDuration,
     requestsPerSecond: Math.round((requestCount / totalTime) * 1000)
   };
 }
@@ -787,7 +757,7 @@ console.log(`Success rate: ${report.successRate}%`);
 
 **优势**:
 - 高并发模拟真实压力
-- 详细的性能指标
+- 通过结果数组手动计算详细的性能指标
 - 容错模式获取完整测试结果
 
 ## 8. 性能优化
@@ -893,65 +863,75 @@ private awaitWithTimeout<T>(promise: Promise<T>, timeout: number): Promise<T> {
 
 **性能提升**: 避免 Node.js 警告和潜在的定时器问题。
 
-### 8.4. 统计信息计算优化
+### 8.4. 统计信息计算
 
-**问题**: 每次更新都重新计算平均值，重复计算。
-
-**优化方案**: 增量更新。
+**说明**: 当前实现不提供内置的统计信息收集功能。如需统计信息，可以从 `ConcurrentResult[]` 数组中手动计算：
 
 ```typescript
-// ❌ 低效实现
-private updateAverageDuration() {
-  let sum = 0;
-  for (const duration of this.durations) {
-    sum += duration;
-  }
-  this.stats.averageDuration = sum / this.durations.length;
-}
-
-// ✅ 高效实现（使用 reduce）
-private updateAverageDuration() {
-  if (this.durations.length > 0) {
-    this.stats.averageDuration = Math.round(
-      this.durations.reduce((sum, d) => sum + d, 0) / this.durations.length
-    );
-  }
-}
-
-// 💡 更优实现（增量更新，避免存储所有 duration）
-private totalDuration = 0;
-
-private updateSuccessStats(duration: number) {
-  this.stats.completed++;
-  this.stats.successful++;
-  this.totalDuration += duration;
-  this.stats.averageDuration = Math.round(
-    this.totalDuration / this.stats.completed
-  );
+// ✅ 从结果数组计算统计信息
+function calculateStats<T>(results: ConcurrentResult<T>[]) {
+  const successfulResults = results.filter(r => r.success);
+  const failedResults = results.filter(r => !r.success);
+  const durations = successfulResults.map(r => r.duration || 0).filter(d => d > 0);
+  
+  return {
+    total: results.length,
+    successful: successfulResults.length,
+    failed: failedResults.length,
+    successRate: results.length > 0
+      ? Math.round((successfulResults.length / results.length) * 100)
+      : 0,
+    averageDuration: durations.length > 0
+      ? Math.round(durations.reduce((sum, d) => sum + d, 0) / durations.length)
+      : 0,
+    minDuration: durations.length > 0 ? Math.min(...durations) : 0,
+    maxDuration: durations.length > 0 ? Math.max(...durations) : 0
+  };
 }
 ```
 
-**性能提升**: 计算复杂度从 O(n) 降至 O(1)。
+**优势**: 
+- 按需计算，不占用额外内存
+- 灵活，可以根据需要计算不同的指标
+- 结果数组已包含所有必要信息（success、duration 等）
 
 ### 8.5. 日志输出优化
 
-**问题**: 频繁的字符串拼接和对象序列化影响性能。
+**实现**: 使用 `LogFormatter.formatConcurrentLog` 统一格式化日志输出。
 
-**优化方案**: 
-1. 使用模板字符串替代字符串拼接
-2. 条件性日志输出（生产环境可关闭）
+**日志格式**:
+- 使用 emoji 图标标识日志类型（🚀 开始、✅ 完成、❌ 失败）
+- 结构化输出，包含请求索引、总数、URL 等信息
+- 支持额外的上下文信息（如 active requests、waiting count、duration 等）
 
 ```typescript
-// ✅ 使用模板字符串
+// 实现中使用 LogFormatter.formatConcurrentLog
 console.log(
-  `[Concurrent] Request ${index + 1}/${total} completed: ${url} (${duration}ms)`
+  LogFormatter.formatConcurrentLog('start', index, total, config.url, {
+    'active requests': currentConcurrency,
+    waiting: semaphore.waitingCount(),
+  })
 );
 
-// 💡 条件性日志（未来可扩展）
-if (this.enableLogs) {
-  console.log(...);
-}
+console.log(
+  LogFormatter.formatConcurrentLog('complete', index, total, config.url, {
+    duration: `${Math.round(duration)}ms`,
+    'active requests': currentConcurrency - 1
+  })
+);
+
+console.error(
+  LogFormatter.formatConcurrentLog('failed', index, total, config.url, {
+    duration: `${Math.round(duration)}ms`,
+    error: error instanceof Error ? error.message : String(error),
+  })
+);
 ```
+
+**优势**:
+- 统一的日志格式，便于解析和监控
+- 包含丰富的上下文信息
+- 使用 emoji 提升可读性
 
 ### 8.6. 内存管理优化
 
@@ -966,10 +946,6 @@ destroy(): void {
     semaphore.destroy();
   });
   this.activeSemaphores.clear();
-  
-  // 清理统计数据
-  this.resetStats(0);
-  this.durations = [];
 }
 ```
 
@@ -1253,7 +1229,7 @@ await concurrentFeature.requestConcurrent(configs, {
 ### 10.4. 监控和日志
 
 ```typescript
-// ✅ 推荐：记录详细统计信息
+// ✅ 推荐：手动计算统计信息并记录
 const startTime = Date.now();
 
 const results = await concurrentFeature.requestConcurrent(configs, {
@@ -1261,27 +1237,39 @@ const results = await concurrentFeature.requestConcurrent(configs, {
 });
 
 const totalTime = Date.now() - startTime;
-const stats = concurrentFeature.getResultsStats(results);
+
+// 手动计算统计信息
+const successfulResults = results.filter(r => r.success);
+const failedResults = results.filter(r => !r.success);
+const durations = successfulResults.map(r => r.duration || 0).filter(d => d > 0);
+const successRate = results.length > 0
+  ? Math.round((successfulResults.length / results.length) * 100)
+  : 0;
+const avgDuration = durations.length > 0
+  ? Math.round(durations.reduce((sum, d) => sum + d, 0) / durations.length)
+  : 0;
+const minDuration = durations.length > 0 ? Math.min(...durations) : 0;
+const maxDuration = durations.length > 0 ? Math.max(...durations) : 0;
 
 // 记录到监控系统
 logger.info('Concurrent request completed', {
-  total: stats.total,
-  successful: stats.successful,
-  failed: stats.failed,
-  successRate: stats.successRate,
-  avgDuration: stats.averageDuration,
-  minDuration: stats.minDuration,
-  maxDuration: stats.maxDuration,
+  total: results.length,
+  successful: successfulResults.length,
+  failed: failedResults.length,
+  successRate,
+  avgDuration,
+  minDuration,
+  maxDuration,
   totalTime
 });
 
 // 性能告警
-if (stats.successRate < 90) {
-  logger.warn('Low success rate detected', { successRate: stats.successRate });
+if (successRate < 90) {
+  logger.warn('Low success rate detected', { successRate });
 }
 
-if (stats.averageDuration > 2000) {
-  logger.warn('High average duration detected', { avgDuration: stats.averageDuration });
+if (avgDuration > 2000) {
+  logger.warn('High average duration detected', { avgDuration });
 }
 ```
 
@@ -1407,8 +1395,8 @@ await batchConcurrentRequest(configs, 20, 6);
 3. 服务端限流或客户端网络限制
 
 **解决方案**:
-- 检查 `stats.maxConcurrencyUsed` 确认实际并发数
-- 使用 `getResultsStats()` 查看响应时间分布
+- 通过日志输出观察实际的并发情况（日志中包含 active requests 信息）
+- 从结果数组中分析响应时间分布，找出慢请求
 - 考虑调整超时或优化慢请求
 
 ### Q2: failFast 模式下，已发起的请求会被取消吗？
@@ -1475,15 +1463,16 @@ if (failedResults.length > 0) {
 - ✅ 智能并发控制：基于信号量的高效实现
 - ✅ 容错机制：failFast 和 graceful degradation 两种模式
 - ✅ 超时控制：整体超时保护
-- ✅ 详细统计：成功率、耗时、并发数等多维度指标
+- ✅ 详细日志：提供请求开始、完成、失败等日志信息
+- ✅ 结果信息：每个结果包含 success、duration、error 等详细信息，可手动计算统计
 - ✅ 资源管理：自动清理信号量和内存
 - ✅ 易于使用：简洁的 API 和合理的默认配置
 
 **性能优势**:
 - 🚀 事件驱动信号量，零轮询开销
 - 🚀 预分配数组收集结果，O(1) 插入复杂度
-- 🚀 增量统计更新，避免重复计算
 - 🚀 高效的内存管理和清理机制
+- 🚀 按需计算统计信息，不占用额外内存
 
 **应用场景**:
 - 页面初始化数据加载

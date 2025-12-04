@@ -23,7 +23,6 @@ export type {
   PaginatedResponse,
   RestfulOptions,
   GlobalConfig,
-  RequestInterceptor,
   Requestor,
   // 功能配置类型
   CacheConfig,
@@ -31,7 +30,6 @@ export type {
   ConcurrentConfig,
   ConcurrentResult,
   IdempotentConfig,
-  IdempotentStats,
 } from 'request-core'
 
 // 重导出缓存相关类型

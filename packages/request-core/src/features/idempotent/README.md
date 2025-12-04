@@ -11,7 +11,6 @@
 - **灵活的键生成策略**: 支持自定义幂等键生成逻辑，可根据 URL、method、data、headers 等参数灵活组合。
 - **智能缓存管理**: 基于 TTL 的缓存过期机制，自动清理过期缓存。
 - **容错与降级**: 提供完善的错误处理和降级策略，确保在异常情况下系统仍能正常运行。
-- **统计分析**: 提供详细的统计信息，包括总请求数、重复请求阻止数、缓存命中率等。
 - **易用性**: 提供简洁的 API 和合理的默认配置，支持各种 HTTP 方法的快捷调用。
 
 ## 3. API 设计
@@ -34,20 +33,6 @@ interface IdempotentConfig {
     originalRequest: RequestConfig,
     duplicateRequest: RequestConfig
   ) => void
-}
-
-/**
- * 幂等统计信息
- */
-interface IdempotentStats {
-  totalRequests: number           // 总请求数
-  duplicatesBlocked: number       // 阻止的重复请求数
-  pendingRequestsReused: number   // 复用正在进行中的请求数
-  cacheHits: number               // 缓存命中数
-  actualNetworkRequests: number   // 实际发出的网络请求数
-  duplicateRate: number           // 重复率（百分比）
-  avgResponseTime: number         // 平均响应时间（毫秒）
-  keyGenerationTime: number       // 平均键生成耗时（毫秒）
 }
 
 /**
@@ -125,24 +110,13 @@ const result7 = await idempotentFeature.getIdempotent(
   { ttl: 30000 }
 );
 
-// 示例 8: 获取统计信息
-const stats = idempotentFeature.getIdempotentStats();
-console.log(`
-  总请求: ${stats.totalRequests}
-  重复请求阻止: ${stats.duplicatesBlocked}
-  重复率: ${stats.duplicateRate.toFixed(2)}%
-  缓存命中: ${stats.cacheHits}
-  实际网络请求: ${stats.actualNetworkRequests}
-  平均响应时间: ${stats.avgResponseTime.toFixed(2)}ms
-`);
-
-// 示例 9: 清除特定幂等缓存
+// 示例 8: 清除特定幂等缓存
 await idempotentFeature.clearIdempotentCache('payment:order:12345');
 
-// 示例 10: 清除所有幂等缓存
+// 示例 9: 清除所有幂等缓存
 await idempotentFeature.clearIdempotentCache();
 
-// 示例 11: 销毁实例
+// 示例 10: 销毁实例
 await idempotentFeature.destroy();
 ```
 
@@ -158,14 +132,16 @@ idempotent:hash(method + url + data + selected_headers)
 ```
 
 **键生成流程**：
-1. 收集请求信息：method、url、params、data
-2. 根据配置决定是否包含 headers
-3. 使用指定的哈希算法生成哈希值
+1. 如果提供了自定义 `key`，直接使用
+2. 否则，合并配置（默认配置 → 实例配置 → 请求配置）
+3. 使用 `CacheKeyGenerator` 生成基础键（包含 method、url、params、data、headers）
 4. 添加 `idempotent:` 前缀
 
 **降级策略**：
-- 如果键生成失败，使用 `fallback key`: `idempotent:fallback:hash(method|url|data)`
-- 如果仍失败，使用 `emergency key`: `idempotent:emergency:timestamp_random`
+- 如果键生成过程中抛出异常，捕获异常并使用降级键
+- 降级键生成：`idempotent:fallback:hash(method|url|data)`
+- 如果降级键生成也失败，使用紧急键：`idempotent:emergency:timestamp_random`
+- 降级时会输出警告日志：`⚠️ [Idempotent] Key generation failed`
 
 ### 4.2. 请求去重机制
 
@@ -236,7 +212,7 @@ TTL 定义了幂等保护的时间窗口，在此窗口内相同的请求会被�
 │  - requestIdempotent()                                       │
 │  - getIdempotent() / postIdempotent() / ...                 │
 │  - clearIdempotentCache()                                   │
-│  - getIdempotentStats()                                     │
+│  - destroy()                                                 │
 └─────────────────────────────────────────────────────────────┘
                             │
             ┌───────────────┼───────────────┐
@@ -260,7 +236,7 @@ TTL 定义了幂等保护的时间窗口，在此窗口内相同的请求会被�
   │
   ├─ 1. 验证配置 (validateIdempotentConfig)
   │
-  ├─ 2. 生成幂等键 (generateIdempotentKeyWithStats)
+  ├─ 2. 生成幂等键 (generateIdempotentKey)
   │   ├─ 使用自定义键？
   │   │   ├─ 是：直接使用
   │   │   └─ 否：基于配置生成键
@@ -303,36 +279,23 @@ private pendingRequests: Map<string, Promise<unknown>>
 - 请求开始：添加到 Map
 - 请求完成：从 Map 中移除
 - 请求失败：从 Map 中移除
-
-#### stats 统计对象
-```typescript
-private stats: IdempotentStats
-```
-
-**用途**：记录幂等功能的运行统计信息。
-
-**更新时机**：
-- 每次请求：totalRequests++
-- 缓存命中：duplicatesBlocked++, cacheHits++
-- Pending 复用：duplicatesBlocked++, pendingRequestsReused++
-- 新请求：actualNetworkRequests++
-- 请求完成：更新平均响应时间
+- 调用 `clearIdempotentCache()` 时也会清理对应的 pending 请求
 
 ### 5.4. 关键模块实现
 
 #### 5.4.1. 键生成模块（key.ts）
 
 ```typescript
-function generateIdempotentKey(
+export function generateIdempotentKey(
   config: RequestConfig,
   instanceKeyConfig: CacheKeyConfig,
   overrideKeyConfig?: CacheKeyConfig
 ): string {
-  // 1. 合并配置
+  // 1. 合并配置（优先级：默认配置 < 实例配置 < 请求配置）
   const mergedConfig = {
     ...DEFAULT_CACHE_KEY_CONFIG,
     ...instanceKeyConfig,
-    ...overrideKeyConfig
+    ...overrideKeyConfig,
   }
   
   // 2. 使用 CacheKeyGenerator 生成基础键
@@ -344,51 +307,93 @@ function generateIdempotentKey(
 }
 ```
 
-**降级键生成**：
+**键生成错误处理**：
+在 `feature.ts` 中，键生成被包装在 try-catch 中：
 ```typescript
-function generateFallbackKey(config: RequestConfig): string {
+private generateIdempotentKey(
+  config: RequestConfig,
+  keyConfig: CacheKeyConfig,
+  customKey?: string
+): string {
   try {
-    // 简化版键生成：method|url|data
-    const parts = [
-      config.method || 'GET',
-      config.url || '',
-      config.data ? safeStringify(config.data) : ''
-    ]
-    const baseKey = parts.join('|')
-    return `idempotent:fallback:${simpleHash(baseKey)}`
-  } catch {
-    // 终极降级：时间戳 + 随机数
-    return `idempotent:emergency:${Date.now()}_${Math.random().toString(36)}`
+    return customKey || generateIdempotentKey(config, this.cacheKeyConfig, keyConfig)
+  } catch (_error) {
+    const fallbackKey = generateFallbackKey(config)
+    console.warn(
+      `⚠️ [Idempotent] Key generation failed for ${config.method} ${config.url}, using fallback:`,
+      {
+        fallbackKey,
+        customKey,
+      }
+    )
+    return fallbackKey
   }
 }
 ```
 
-#### 5.4.2. 统计模块（stats.ts）
-
-**平均响应时间计算**：
+**降级键生成**：
 ```typescript
-function updateAvgResponseTime(
-  stats: IdempotentStats,
-  responseTime: number
-): void {
-  // 累计响应时间
-  const totalResponseTime = stats.avgResponseTime * (stats.totalRequests - 1)
-  // 计算新的平均值
-  stats.avgResponseTime = (totalResponseTime + responseTime) / stats.totalRequests
+export function generateFallbackKey(config: RequestConfig): string {
+  try {
+    // 简化版键生成：method|url|data
+    const parts: string[] = [
+      config.method || 'GET',
+      config.url || '',
+      config.data ? safeStringify(config.data) : '',
+    ]
+    const baseKey = parts.join('|')
+    const hash = simpleHash(baseKey)
+    return `idempotent:fallback:${hash}`
+  } catch (_error) {
+    // 终极降级：时间戳 + 随机数
+    const timestamp = Date.now()
+    const random = Math.random().toString(36).substring(2, 8)
+    return `idempotent:emergency:${timestamp}_${random}`
+  }
 }
 ```
 
-**重复率计算**：
+#### 5.4.2. 配置处理模块
+
+**配置合并逻辑**：
 ```typescript
-function withDuplicateRate(stats: IdempotentStats): IdempotentStats {
-  const duplicateRate = stats.totalRequests > 0
-    ? (stats.duplicatesBlocked / stats.totalRequests) * 100
-    : 0
-  return { ...stats, duplicateRate }
+private prepareIdempotentConfig(idempotentConfig: IdempotentConfig) {
+  const {
+    ttl = DEFAULT_IDEMPOTENT_CONFIG.TTL,
+    key,
+    includeHeaders, // 不设置默认值，让后面逻辑处理
+    includeAllHeaders = false,
+    hashAlgorithm = 'fnv1a',
+    onDuplicate,
+  } = idempotentConfig
+
+  // 如果请求没有指定includeHeaders，则使用实例配置的headersWhitelist
+  let effectiveHeadersWhitelist = includeAllHeaders ? undefined : includeHeaders
+  if (!includeHeaders && !includeAllHeaders) {
+    effectiveHeadersWhitelist = this.cacheKeyConfig.headersWhitelist
+  }
+
+  const keyGeneratorConfig: CacheKeyConfig = {
+    includeHeaders: includeAllHeaders || (effectiveHeadersWhitelist?.length ?? 0) > 0,
+    headersWhitelist: effectiveHeadersWhitelist,
+    hashAlgorithm,
+  }
+
+  return {
+    ttl,
+    key,
+    keyGeneratorConfig,
+    onDuplicate,
+  }
 }
 ```
 
-#### 5.4.4. 工具模块（utils.ts）
+**配置优先级**：
+1. 请求级别的 `includeHeaders` 或 `includeAllHeaders` 优先
+2. 如果请求级别未指定，使用实例级别的 `headersWhitelist`
+3. `includeAllHeaders: true` 会覆盖所有其他 headers 配置
+
+#### 5.4.3. 工具模块（utils.ts）
 
 **安全数据克隆**：
 ```typescript
@@ -449,7 +454,7 @@ enum IdempotentErrorType {
 ```
 
 #### 错误增强
-所有错误都会被增强，添加上下文信息：
+所有错误都会被增强，使用 `ErrorHandler.enhanceError` 添加上下文信息：
 
 ```typescript
 function enhanceIdempotentError(
@@ -457,31 +462,47 @@ function enhanceIdempotentError(
   config: RequestConfig,
   responseTime: number
 ): RequestError {
-  return new RequestError(
-    `Idempotent request failed: ${errorMessage}`,
-    {
-      type: RequestErrorType.UNKNOWN_ERROR,
-      originalError: error,
-      context: {
-        url: config.url,
-        method: config.method,
-        duration: responseTime,
-        timestamp: Date.now(),
-        userAgent: navigator?.userAgent || 'Node.js'
-      },
-      suggestion: 'Please check the network connection and request configuration'
-    }
-  )
+  const enhancedError = ErrorHandler.enhanceError(error, {
+    url: config.url,
+    method: config.method,
+    tag: config.tag,
+    duration: responseTime,
+    timestamp: Date.now(),
+    message: error instanceof RequestError 
+      ? undefined 
+      : `Idempotent request failed: ${error instanceof Error ? error.message : 'Unknown error'}`,
+    suggestion: error instanceof RequestError 
+      ? undefined 
+      : 'Please check the network connection and request configuration'
+  })
+
+  console.error(`❌ [Idempotent] Request failed: ${config.method} ${config.url}`, {
+    error: enhancedError.toJSON(),
+    duration: `${responseTime}ms`,
+  })
+
+  return enhancedError
 }
 ```
 
 #### 降级策略
 
-1. **键生成失败**：使用降级键（fallback key 或 emergency key）
-2. **缓存操作失败**：记录警告，继续执行请求
+1. **键生成失败**：使用降级键（fallback key 或 emergency key），并输出警告日志
+2. **缓存操作失败**：使用 `safeCacheOperation` 包装，记录警告，继续执行请求
 3. **缓存访问信息更新失败**：记录警告，不影响主流程
 4. **过期缓存清理失败**：记录警告，不影响主流程
 5. **重复回调执行失败**：捕获错误，记录警告，不影响主流程
+
+#### 日志输出
+
+幂等功能会在关键操作时输出日志，便于调试和监控：
+
+- `💾 [Idempotent] Cache hit` - 缓存命中时
+- `🔄 [Idempotent] Waiting for pending request` - 等待进行中的请求时
+- `🗑️ [Idempotent] Removing expired cache` - 清理过期缓存时
+- `⚠️ [Idempotent] Key generation failed` - 键生成失败，使用降级键时
+- `✅ [Idempotent] Cache cleared successfully` - 缓存清理成功时
+- `❌ [Idempotent] Request failed` - 请求失败时
 
 ## 6. 使用场景
 
@@ -674,8 +695,10 @@ const cacheKeyConfig: CacheKeyConfig = {
 // 当缓存条目数超过 maxEntries 时，自动淘汰最少使用的条目
 
 const idempotentFeature = new IdempotentFeature(requestor, {
-  // 通过构造函数传递给 CacheFeature
-  maxEntries: 5000  // 最大缓存条目数
+  // 实例级别的 CacheKeyConfig（影响所有请求的键生成）
+  includeHeaders: true,
+  headersWhitelist: ['Authorization', 'X-API-Key'],
+  hashAlgorithm: 'fnv1a'
 });
 ```
 
@@ -741,25 +764,17 @@ if (existing) {
 ### 7.5. 性能监控
 
 ```typescript
-// 获取性能统计
-const stats = idempotentFeature.getIdempotentStats();
+// 通过日志监控性能
+// 幂等功能会自动输出日志，包括：
+// - 缓存命中情况
+// - 等待 pending 请求的情况
+// - 键生成失败的情况
+// - 请求失败的情况
 
-console.log(`
-  性能指标:
-  - 平均响应时间: ${stats.avgResponseTime.toFixed(2)}ms
-  - 平均键生成时间: ${stats.keyGenerationTime.toFixed(2)}ms
-  - 重复率: ${stats.duplicateRate.toFixed(2)}%
-  - 缓存命中率: ${(stats.cacheHits / stats.totalRequests * 100).toFixed(2)}%
-`);
-
-// 性能优化建议
-if (stats.keyGenerationTime > 1.0) {
-  console.warn('键生成耗时过长，考虑切换到 xxhash 算法');
-}
-
-if (stats.duplicateRate > 50) {
-  console.info('高重复率，幂等功能发挥了重要作用');
-}
+// 可以通过监听日志来分析性能：
+// 1. 缓存命中率高说明去重效果好
+// 2. 频繁出现 pending 请求说明并发去重生效
+// 3. 键生成失败警告说明需要优化请求参数
 ```
 
 ## 8. 测试策略
@@ -791,9 +806,10 @@ describe('Key Generation', () => {
   
   it('should use fallback key on generation failure', () => {
     const invalidConfig = { url: null, method: null };
-    const key = generateIdempotentKeyWithStats(invalidConfig);
+    // 键生成失败时会捕获异常并使用降级键
+    const key = generateIdempotentKey(invalidConfig, defaultConfig);
     
-    expect(key.idempotentKey).toMatch(/^idempotent:fallback:/);
+    expect(key).toMatch(/^idempotent:(fallback|emergency):/);
   });
 });
 ```
@@ -866,13 +882,6 @@ describe('Idempotent Integration', () => {
     const result2 = await feature.requestIdempotent(config, { ttl: 30000 });
     expect(requestor.request).toHaveBeenCalledTimes(1);
     expect(result1).toEqual(result2);
-    
-    // 统计验证
-    const stats = feature.getIdempotentStats();
-    expect(stats.totalRequests).toBe(2);
-    expect(stats.duplicatesBlocked).toBe(1);
-    expect(stats.cacheHits).toBe(1);
-    expect(stats.actualNetworkRequests).toBe(1);
   });
 });
 ```
@@ -898,9 +907,9 @@ describe('Performance', () => {
     // 期望在合理时间内完成（例如 < 1秒）
     expect(duration).toBeLessThan(1000);
     
-    // 验证大部分请求被去重
-    const stats = feature.getIdempotentStats();
-    expect(stats.actualNetworkRequests).toBeLessThan(100);
+    // 验证大部分请求被去重（通过请求调用次数验证）
+    // 由于有10个不同的URL，每个URL可能有多个重复请求
+    // 实际网络请求应该远少于1000次
   });
   
   it('should have low key generation overhead', () => {
@@ -1070,6 +1079,7 @@ const result = await feature.requestIdempotent(config, {
 // 场景 1: 用户登出时清理所有缓存
 async function logout() {
   await idempotentFeature.clearIdempotentCache();
+  // clearIdempotentCache() 会同时清理缓存和 pendingRequests
   // ... 其他登出逻辑
 }
 
@@ -1077,7 +1087,7 @@ async function logout() {
 async function updateProfile(profileData) {
   const result = await api.updateProfile(profileData);
   
-  // 清理相关的幂等缓存
+  // 清理相关的幂等缓存（会自动添加 idempotent: 前缀）
   await idempotentFeature.clearIdempotentCache('profile:update');
   
   return result;
@@ -1089,47 +1099,13 @@ setInterval(async () => {
 }, 10 * 60 * 1000);  // 每10分钟清理一次
 ```
 
-### 9.6. 统计分析
+**注意**：`clearIdempotentCache()` 方法会：
+- 清理指定的缓存项（如果提供了 key）
+- 清理所有缓存（如果没有提供 key）
+- 同时清理对应的 `pendingRequests` Map 中的条目
+- 输出清理成功的日志
 
-```typescript
-// ✅ 推荐：定期分析统计数据，优化配置
-
-// 方式 1: 定期打印统计
-setInterval(() => {
-  const stats = idempotentFeature.getIdempotentStats();
-  
-  console.log('Idempotent Stats:', {
-    totalRequests: stats.totalRequests,
-    duplicateRate: `${stats.duplicateRate.toFixed(2)}%`,
-    cacheHitRate: `${(stats.cacheHits / stats.totalRequests * 100).toFixed(2)}%`,
-    avgResponseTime: `${stats.avgResponseTime.toFixed(2)}ms`,
-    actualNetworkRequests: stats.actualNetworkRequests
-  });
-  
-  // 根据统计数据优化
-  if (stats.duplicateRate > 30) {
-    console.info('高重复率，考虑增加 TTL');
-  }
-  
-  if (stats.keyGenerationTime > 1.0) {
-    console.warn('键生成耗时较长，考虑切换哈希算法');
-  }
-}, 60000);  // 每分钟
-
-// 方式 2: 上报到监控系统
-function reportStats() {
-  const stats = idempotentFeature.getIdempotentStats();
-  
-  monitor.gauge('idempotent.total_requests', stats.totalRequests);
-  monitor.gauge('idempotent.duplicate_rate', stats.duplicateRate);
-  monitor.gauge('idempotent.avg_response_time', stats.avgResponseTime);
-  monitor.gauge('idempotent.cache_hit_rate', 
-    stats.cacheHits / stats.totalRequests * 100
-  );
-}
-```
-
-### 9.7. 错误处理
+### 9.6. 错误处理
 
 ```typescript
 // ✅ 推荐：完善的错误处理
@@ -1361,23 +1337,19 @@ describe('Form Submission', () => {
 ```typescript
 // 1. 启用日志（已内置）
 // 幂等功能会自动输出详细日志：
-// - 🚀 新请求
-// - 💾 缓存命中
-// - 🔄 等待 pending 请求
-// - 🗑️ 清理过期缓存
-// - ✅ 请求成功
-// - ❌ 请求失败
+// - 💾 [Idempotent] Cache hit - 缓存命中
+// - 🔄 [Idempotent] Waiting for pending request - 等待进行中的请求
+// - 🗑️ [Idempotent] Removing expired cache - 清理过期缓存
+// - ⚠️ [Idempotent] Key generation failed - 键生成失败
+// - ✅ [Idempotent] Cache cleared successfully - 缓存清理成功
+// - ❌ [Idempotent] Request failed - 请求失败
 
-// 2. 查看统计信息
-const stats = idempotentFeature.getIdempotentStats();
-console.log('Idempotent Stats:', stats);
-
-// 3. 使用自定义键便于追踪
+// 2. 使用自定义键便于追踪
 const result = await feature.requestIdempotent(config, {
   key: 'debug:test:123'  // 明确的键名
 });
 
-// 4. 监听重复请求
+// 3. 监听重复请求
 const result = await feature.requestIdempotent(config, {
   onDuplicate: (original, duplicate) => {
     console.log('Duplicate detected:', { original, duplicate });
@@ -1465,7 +1437,7 @@ const apiClient = new APIClient({
 3. **灵活配置**：支持自定义 TTL、幂等键、哈希算法等
 4. **容错降级**：完善的错误处理和降级策略
 5. **性能优化**：LRU 缓存、哈希缓存、高效的键生成
-6. **统计分析**：详细的运行时统计信息
+6. **日志监控**：详细的日志输出，便于调试和监控
 
 ### 11.2. 适用场景
 
@@ -1515,7 +1487,7 @@ const requestor: Requestor = createRequestor();
 
 // 2. 创建幂等功能实例（带自定义配置）
 const idempotentFeature = new IdempotentFeature(requestor, {
-  // 实例级别的配置（影响所有请求）
+  // 实例级别的 CacheKeyConfig（影响所有请求的键生成）
   includeHeaders: true,
   headersWhitelist: ['Authorization', 'X-API-Key'],
   maxKeyLength: 512,
@@ -1557,9 +1529,7 @@ const result = await idempotentFeature.requestIdempotent(
 | `putIdempotent(url, data?, config?, idempotentConfig?)` | PUT 幂等请求 | string, any, RequestConfig, IdempotentConfig |
 | `patchIdempotent(url, data?, config?, idempotentConfig?)` | PATCH 幂等请求 | string, any, RequestConfig, IdempotentConfig |
 | `deleteIdempotent(url, config?, idempotentConfig?)` | DELETE 幂等请求 | string, RequestConfig, IdempotentConfig |
-| `clearIdempotentCache(key?)` | 清除缓存 | string? |
-| `getIdempotentStats()` | 获取统计 | - |
-| `resetStats()` | 重置统计 | - |
+| `clearIdempotentCache(key?)` | 清除缓存和 pending 请求 | string? |
 | `destroy()` | 销毁实例 | - |
 
 ### C. 默认配置值

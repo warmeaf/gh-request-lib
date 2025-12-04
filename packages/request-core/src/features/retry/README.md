@@ -19,6 +19,9 @@
 ### 3.1. 类型定义
 
 ```typescript
+/**
+ * @description 重试配置
+ */
 interface RetryConfig {
   retries: number                                          // 重试次数（不包括首次请求）
   delay?: number                                           // 基础延迟时间（毫秒），默认 1000ms
@@ -28,7 +31,27 @@ interface RetryConfig {
 }
 ```
 
-### 3.2. 使用示例
+### 3.2. 构造函数
+
+`RetryFeature` 构造函数接受以下参数：
+
+```typescript
+constructor(requestor: Requestor)
+```
+
+**参数说明**：
+- `requestor`: 实现了 `Requestor` 接口的请求器实例，用于执行实际的网络请求
+
+**使用示例**：
+
+```typescript
+import { RetryFeature } from '@request-core';
+
+// 创建重试功能实例
+const retryFeature = new RetryFeature(requestor);
+```
+
+### 3.3. 使用示例
 
 ```typescript
 import { RetryFeature } from '@request-core';
@@ -64,7 +87,9 @@ const response3 = await retryFeature.requestWithRetry({
 });
 
 // 指数退避 + 抖动：避免"惊群效应"
-// 实际延迟 = baseDelay * backoffFactor^attempt + random(0, baseDelay * jitter)
+// 延迟计算：delayBase = backoffFactor === 1 ? baseDelay : baseDelay * backoffFactor^attempt
+// 抖动计算：jitterDelta = delayBase * (Math.random() * jitter)
+// 实际延迟 = delayBase + jitterDelta
 const response4 = await retryFeature.requestWithRetry({
   url: '/api/data',
   method: 'GET'
@@ -116,7 +141,10 @@ const response5 = await retryFeature.requestWithRetry({
 
 2. **初始化配置**:
    - 计算最大尝试次数 `maxAttempts = retries + 1`。
-   - 设置默认值：`baseDelay = 1000ms`，`backoffFactor = 1`，`jitter = 0`。
+   - 设置默认值：`baseDelay = delay ?? 1000ms`，`jitter = 0`。
+   - 计算退避因子：`backoff = backoffFactor && backoffFactor > 1 ? backoffFactor : 1`
+     - 如果 `backoffFactor` 未定义、为 0、为 1 或 <= 1，使用固定延迟（`backoff = 1`）
+     - 只有当 `backoffFactor > 1` 时，才会使用指数退避
    - 使用用户提供的 `shouldRetry` 或默认的判断函数。
 
 3. **循环执行**:
@@ -126,16 +154,19 @@ const response5 = await retryFeature.requestWithRetry({
    - 如果失败，进入错误处理逻辑。
 
 4. **错误处理**:
-   - 如果是最后一次尝试，直接抛出错误。
-   - 调用 `shouldRetry` 函数判断是否应该重试。
-   - 如果 `shouldRetry` 抛出异常或返回 `false`，停止重试并抛出原始错误。
+   - 如果是最后一次尝试，**不会调用** `shouldRetry`，直接抛出错误。
+   - 如果不是最后一次尝试，调用 `shouldRetry` 函数判断是否应该重试。
+   - 如果 `shouldRetry` 抛出异常，停止重试并抛出原始请求错误。
+   - 如果 `shouldRetry` 返回 `false`，停止重试并抛出原始错误。
    - 如果应该重试，计算延迟时间并等待。
 
 5. **延迟计算**:
-   - **基础延迟**: `baseDelay`
-   - **指数退避**: `baseDelay * backoffFactor^attempt`
-   - **抖动**: `delayBase + random(0, delayBase * jitter)`
-   - 最终延迟: `max(0, floor(delayBase + jitterDelta))`
+   - **基础延迟**: `baseDelay`（默认 1000ms）
+   - **指数退避计算**: 
+     - 如果 `backoffFactor === 1`，使用固定延迟：`delayBase = baseDelay`
+     - 否则使用指数退避：`delayBase = baseDelay * Math.pow(backoffFactor, attempt)`
+   - **抖动计算**: `jitterDelta = delayBase * (Math.random() * jitter)`（仅在 `jitter > 0` 时计算）
+   - **最终延迟**: `waitMs = Math.max(0, Math.floor(delayBase + jitterDelta))`
 
 6. **日志输出**:
    - 每次尝试前输出日志：尝试次数、URL、方法。
@@ -224,10 +255,10 @@ flowchart TD
 
 ### 5.1. 针对 `RequestError`
 
-- **5xx 服务器错误** (500-599): 返回 `true`
+- **5xx 服务器错误** (`status >= 500 && status < 600`): 返回 `true`
   - 表示服务器临时故障，有可能恢复。
   
-- **非 HTTP 错误**: 返回 `true`
+- **非 HTTP 错误** (`!isHttpError`): 返回 `true`
   - 如网络连接失败、超时等，通常是临时性问题。
   
 - **其他 HTTP 错误** (4xx 等): 返回 `false`
@@ -235,7 +266,7 @@ flowchart TD
 
 ### 5.2. 针对其他 `Error`
 
-检查错误消息（不区分大小写）是否包含以下关键词：
+检查错误消息（转换为小写后）是否包含以下关键词：
 - `network`: 网络错误
 - `timeout`: 超时错误
 - `connection`: 连接错误
@@ -258,7 +289,17 @@ flowchart TD
 }
 ```
 
-每次重试前等待固定的时间（1000ms）。
+或者显式设置 `backoffFactor: 1`：
+
+```typescript
+{
+  retries: 3,
+  delay: 1000,
+  backoffFactor: 1  // 显式指定不退避
+}
+```
+
+每次重试前等待固定的时间（1000ms）。当 `backoffFactor` 未指定或为 `1` 时，使用固定延迟策略。
 
 **优点**: 简单、可预测。  
 **缺点**: 可能在服务器负载高时加剧问题。
@@ -274,9 +315,11 @@ flowchart TD
 ```
 
 延迟时间按指数增长：
-- 第 1 次重试: 1000ms
-- 第 2 次重试: 2000ms
-- 第 3 次重试: 4000ms
+- 第 1 次重试: delayBase = 1000 * 2^0 = 1000ms
+- 第 2 次重试: delayBase = 1000 * 2^1 = 2000ms
+- 第 3 次重试: delayBase = 1000 * 2^2 = 4000ms
+
+**注意**: 当 `backoffFactor === 1` 时，无论 `attempt` 值如何，都会使用固定延迟 `baseDelay`，等同于固定延迟策略。
 
 **优点**: 给服务器更多恢复时间。  
 **缺点**: 可能导致多个客户端同时重试（惊群效应）。
@@ -293,9 +336,9 @@ flowchart TD
 ```
 
 在指数退避的基础上增加随机抖动：
-- 第 1 次重试: 1000ms + random(0, 100ms)
-- 第 2 次重试: 2000ms + random(0, 200ms)
-- 第 3 次重试: 4000ms + random(0, 400ms)
+- 第 1 次重试: delayBase = 1000ms，抖动 = 1000ms * (random(0, 1) * 0.1) = random(0, 100ms)，实际延迟 = 1000ms + random(0, 100ms)
+- 第 2 次重试: delayBase = 2000ms，抖动 = 2000ms * (random(0, 1) * 0.1) = random(0, 200ms)，实际延迟 = 2000ms + random(0, 200ms)
+- 第 3 次重试: delayBase = 4000ms，抖动 = 4000ms * (random(0, 1) * 0.1) = random(0, 400ms)，实际延迟 = 4000ms + random(0, 400ms)
 
 **优点**: 避免多个客户端同时重试，减轻服务器压力。  
 **建议**: 这是推荐的生产环境配置。
@@ -312,9 +355,10 @@ flowchart TD
 
 ### 7.2. 重试过程中的错误
 
-- **所有尝试都失败**: 抛出最后一次请求的错误。
-- **`shouldRetry` 抛出异常**: 停止重试，抛出原始请求错误。
+- **最后一次尝试失败**: 不会调用 `shouldRetry`，直接抛出最后一次请求的错误。
+- **`shouldRetry` 抛出异常**: 停止重试，抛出原始请求错误（不是 `shouldRetry` 抛出的异常）。
 - **`shouldRetry` 返回 `false`**: 停止重试，抛出原始请求错误。
+- **所有尝试都失败**: 抛出最后一次请求的错误。
 
 ### 7.3. 意外错误
 
@@ -389,7 +433,7 @@ Unexpected retry loop exit
 
 ### 9.4. 设置最大延迟时间
 
-避免延迟时间过长：
+避免延迟时间过长，可以在 `shouldRetry` 中根据尝试次数限制最大延迟：
 ```typescript
 {
   retries: 5,
@@ -398,11 +442,32 @@ Unexpected retry loop exit
   shouldRetry: (error, attempt) => {
     // 最多等待 30 秒
     const maxDelay = 30000;
-    const delay = 1000 * Math.pow(2, attempt);
-    if (delay > maxDelay) {
-      return false;
+    // 计算当前尝试的延迟时间（与实际实现保持一致）
+    // 注意：backoffFactor > 1 时使用指数退避，否则使用固定延迟
+    const backoff = 2;  // 与 backoffFactor 保持一致
+    const delayBase = backoff === 1 ? 1000 : 1000 * Math.pow(backoff, attempt);
+    
+    if (delayBase > maxDelay) {
+      return false;  // 延迟时间过长，不再重试
     }
-    return defaultShouldRetry(error, attempt);
+    
+    // 使用默认重试策略判断是否应该重试
+    if (error instanceof RequestError) {
+      if (error.status && error.status >= 500 && error.status < 600) {
+        return true;
+      }
+      if (!error.isHttpError) {
+        return true;
+      }
+    }
+    if (error instanceof Error) {
+      const message = error.message.toLowerCase();
+      return message.includes('network') || 
+             message.includes('timeout') || 
+             message.includes('connection') || 
+             message.includes('fetch');
+    }
+    return false;
   }
 }
 ```
